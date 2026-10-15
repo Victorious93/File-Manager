@@ -8,7 +8,8 @@ import kotlinx.serialization.json.JsonObject
 /**
  * Optional RootForge-style Messenger envelope. File Manager is a standalone
  * product; this protocol is a stub so a later hub PR can recognize the app.
- * It is **not** a BOUND_COMPANION AIDL contract and does not require DCA.
+ * Fleet class is EXTERNAL_NODE: not a BOUND_COMPANION AIDL contract, no
+ * hub signature permission, and it does not require DCA.
  */
 const val BRIDGE_PROTOCOL_MAJOR = 1
 const val BRIDGE_ACTION = "ai.victorious.filemanager.action.BRIDGE"
@@ -19,6 +20,8 @@ const val BRIDGE_MSG_REQUEST = 1
 const val BRIDGE_MSG_RESPONSE = 2
 const val BRIDGE_KEY_REQUEST = "request"
 const val BRIDGE_KEY_RESPONSE = "response"
+
+const val FLEET_CLASS = "external_node"
 
 const val APP_VERSION = "0.1.0"
 const val APP_ID = "filemanager"
@@ -43,6 +46,8 @@ object ErrorCategory {
     const val UNKNOWN_OPERATION = "unknown_operation"
     const val BAD_PARAMETERS = "bad_parameters"
     const val FAILED = "operation_failed"
+    const val EXTERNAL_CONTROL_DISABLED = "external_control_disabled"
+    const val UNAUTHORIZED_CALLER = "unauthorized_caller"
 }
 
 @Serializable

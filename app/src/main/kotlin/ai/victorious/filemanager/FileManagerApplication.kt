@@ -2,6 +2,8 @@ package ai.victorious.filemanager
 
 import ai.victorious.filemanager.core.bookmarks.BookmarkStore
 import ai.victorious.filemanager.core.fleet.BridgeExecutor
+import ai.victorious.filemanager.core.fleet.CallerPolicy
+import ai.victorious.filemanager.fleet.FleetSettings
 import ai.victorious.filemanager.core.fs.NioFileIo
 import ai.victorious.filemanager.core.ops.OperationQueue
 import ai.victorious.filemanager.core.search.FileSearch
@@ -25,6 +27,8 @@ class FileManagerApplication : Application() {
         private set
     lateinit var bridge: BridgeExecutor
         private set
+    lateinit var fleetSettings: FleetSettings
+        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -34,7 +38,12 @@ class FileManagerApplication : Application() {
         queue = OperationQueue(io, trash)
         search = FileSearch(io)
         nodeId = loadOrCreateNodeId()
-        bridge = BridgeExecutor(nodeId)
+        fleetSettings = FleetSettings(this)
+        bridge = BridgeExecutor(
+            nodeId = nodeId,
+            policy = CallerPolicy(certPins = CallerPolicy.parsePins(BuildConfig.FLEET_CALLER_CERT_PINS)),
+            externalControlEnabled = fleetSettings::isExternalControlEnabled,
+        )
     }
 
     private fun loadOrCreateNodeId(): String {

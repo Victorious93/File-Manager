@@ -24,7 +24,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-enum class Dest { FILES, SEARCH, BOOKMARKS, TRASH }
+enum class Dest { FILES, SEARCH, BOOKMARKS, TRASH, SETTINGS }
 
 data class TabState(
     val id: String,
