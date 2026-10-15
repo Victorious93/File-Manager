@@ -19,6 +19,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.commons.compress)
     implementation(libs.xz)
+    implementation(libs.apksig)
     testImplementation(libs.junit)
 }
 
