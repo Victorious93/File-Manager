@@ -53,12 +53,14 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes += "/META-INF/{LICENSE,LICENSE.txt,NOTICE,NOTICE.txt,DEPENDENCIES}"
         }
     }
 }
 
 dependencies {
     implementation(project(":core"))
+    implementation(libs.apksig)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.ktx)

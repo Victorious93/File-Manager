@@ -31,6 +31,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Android
+import androidx.compose.material.icons.outlined.Archive
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Bookmark
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.Close
@@ -49,6 +52,8 @@ import androidx.compose.material.icons.automirrored.outlined.Undo
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
@@ -102,6 +107,21 @@ fun FileManagerApp(
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { onRefreshPermissions() }
+
+    val viewer = state.viewer
+    if (viewer != null) {
+        val otherDir = if (state.focusedPane == 0) state.right.active.path else state.left.active.path
+        Box(Modifier.fillMaxSize()) {
+            ViewerHost(
+                request = viewer,
+                extractDir = otherDir,
+                onClose = { onEvent(UiEvent.CloseViewer) },
+                onMessage = { onEvent(UiEvent.ShowMessage(it)) },
+            )
+            SnackbarHost(snackbarHost, Modifier.align(Alignment.BottomCenter))
+        }
+        return
+    }
 
     Scaffold(
         topBar = {
@@ -160,6 +180,23 @@ fun FileManagerApp(
                             }
                             IconButton(onClick = { onEvent(UiEvent.RequestRename) }) {
                                 Icon(Icons.Outlined.DriveFileRenameOutline, contentDescription = "Rename")
+                            }
+                            IconButton(onClick = { onEvent(UiEvent.ZipSelected) }) {
+                                Icon(Icons.Outlined.Archive, contentDescription = "Zip selected")
+                            }
+                            IconButton(onClick = {
+                                val apks = selectedApks(state)
+                                if (apks.isEmpty()) onEvent(UiEvent.ShowMessage("Select one or more .apk files"))
+                                else apkAction(context, onEvent) { ai.victorious.filemanager.apk.ApkInstaller.install(context, apks) }
+                            }) {
+                                Icon(Icons.Outlined.Android, contentDescription = "Install selected APKs")
+                            }
+                            IconButton(onClick = {
+                                val files = selectedFiles(state)
+                                if (files.isEmpty()) onEvent(UiEvent.ShowMessage("Select files to share"))
+                                else apkAction(context, onEvent) { ai.victorious.filemanager.apk.ApkInstaller.share(context, files); null }
+                            }) {
+                                Icon(Icons.Outlined.Share, contentDescription = "Share / export")
                             }
                             IconButton(onClick = { onEvent(UiEvent.Undo) }, enabled = state.canUndo) {
                                 Icon(Icons.AutoMirrored.Outlined.Undo, contentDescription = "Undo")
@@ -245,6 +282,8 @@ fun FileManagerApp(
             onConfirm = { onEvent(UiEvent.ConfirmRename(it)) },
         )
     }
+    state.apkInfo?.let { ApkInfoDialog(it, onEvent) }
+    state.signTarget?.let { SignDialog(it, onEvent) }
     if (state.showAbout) {
         AboutDialog(state = state, onDismiss = { onEvent(UiEvent.ToggleAbout) })
     }
@@ -376,6 +415,8 @@ private fun FilePane(
                         onEvent(UiEvent.FocusPane(index))
                         if (entry.isDirectory && pane.selected.isEmpty()) {
                             onEvent(UiEvent.Open(index, entry.path))
+                        } else if (pane.selected.isEmpty()) {
+                            onEvent(UiEvent.OpenFile(entry.path))
                         } else {
                             onEvent(UiEvent.Select(index, entry.path, additive = pane.selected.isNotEmpty()))
                         }
@@ -383,6 +424,13 @@ private fun FilePane(
                     onLongClick = {
                         onEvent(UiEvent.FocusPane(index))
                         onEvent(UiEvent.Select(index, entry.path, additive = true))
+                    },
+                    menu = if (entry.isDirectory) { dismiss ->
+                        FolderMenuItems(entry.path, onEvent, dismiss)
+                    } else { dismiss ->
+                        OpenWithItems(entry.path, onEvent, dismiss)
+                        ShareMenuItem(entry.path, onEvent, dismiss)
+                        if (isApk(entry.path)) ApkMenuItems(entry.path, onEvent, dismiss)
                     },
                 )
             }
@@ -396,14 +444,16 @@ private fun FileRow(
     selected: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
+    menu: (@Composable (dismiss: () -> Unit) -> Unit)? = null,
 ) {
+    var menuOpen by remember { mutableStateOf(false) }
     val bg = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
     else MaterialTheme.colorScheme.surface
     Row(
         Modifier
             .fillMaxWidth()
             .background(bg)
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .combinedClickable(onClick = onClick, onLongClick = { if (menu != null) menuOpen = true else onLongClick() })
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -422,6 +472,27 @@ private fun FileRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        if (menu != null) {
+            Box {
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    DropdownMenuItem(text = { Text("Select") }, onClick = { menuOpen = false; onLongClick() })
+                    menu { menuOpen = false }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun OpenWithItems(path: String, onEvent: (UiEvent) -> Unit, dismiss: () -> Unit) {
+    listOf(
+        "Open in text editor" to ViewerMode.TEXT,
+        "Open in hex editor" to ViewerMode.HEX,
+        "Preview image" to ViewerMode.IMAGE,
+        "Media info" to ViewerMode.MEDIA_INFO,
+        "Open as archive" to ViewerMode.ARCHIVE,
+    ).forEach { (label, mode) ->
+        DropdownMenuItem(text = { Text(label) }, onClick = { dismiss(); onEvent(UiEvent.OpenFile(path, mode)) })
     }
 }
 
@@ -447,7 +518,10 @@ private fun SearchPane(state: UiState, onEvent: (UiEvent) -> Unit) {
                 FileRow(
                     entry = hit.entry,
                     selected = false,
-                    onClick = { onEvent(UiEvent.OpenSearchHit(hit.entry.path, hit.entry.isDirectory)) },
+                    onClick = {
+                        if (hit.entry.isDirectory) onEvent(UiEvent.OpenSearchHit(hit.entry.path, true))
+                        else onEvent(UiEvent.OpenFile(hit.entry.path))
+                    },
                     onLongClick = {},
                 )
             }
