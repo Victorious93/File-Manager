@@ -1,1 +1,91 @@
-# File-Manager
+# Victorious File Manager
+
+A fast, standalone Android file manager (Phase 1) with an **optional** DroidCommand AI fleet stub.
+
+This app is an MT Manager–class product: **it works fully on its own**. It is not a dependent companion APK. DroidCommand AI is never required, and removing DCA does not disable any file-manager feature.
+
+## Phase 1 includes
+
+- Kotlin + Jetpack Compose + Material 3
+- Dual panes (side-by-side on wide screens, stacked on phones) with per-pane tabs
+- File operations: **copy, move, delete, rename**
+- Sequential **operation queue** with **undo**
+- Search (local name match)
+- Bookmarks
+- Trash (soft-delete into the app trash store; restore / empty / permanent delete)
+- Optional RootForge-style **Messenger** fleet stub (not LIVE control)
+
+`applicationId`: `ai.victorious.filemanager`  
+Version: `0.1.0`  
+`minSdk`: **26** · `targetSdk` / `compileSdk`: **35**
+
+Debug builds use `ai.victorious.filemanager.debug`.
+
+## Build
+
+Requirements: JDK 17+, Android SDK with platform 35.
+
+```bash
+./gradlew :core:test :app:testDebugUnitTest
+./gradlew :app:assembleDebug
+```
+
+Debug APK: `app/build/outputs/apk/debug/app-debug.apk`
+
+On device, grant **all-files access** (Android 11+) for snappy local storage browsing. Without it, the app still runs against its own directories. `requestLegacyExternalStorage` is set for Android 10.
+
+## Architecture
+
+| Module | Role |
+| --- | --- |
+| `:core` | Pure JVM logic — path helpers, `FileIo`, operation queue + undo, trash, bookmarks, search, fleet JSON envelope |
+| `:app` | Android UI (Compose) + optional Messenger bound service |
+
+Unit tests live in `:core` so queue/undo/trash/fleet JSON are verified without an emulator.
+
+## Fleet notes (optional, pending owner choice)
+
+File Manager is **not** registered as a hub `KnownCompanions` / `BOUND_COMPANION` member in this repo, and this PR does **not** modify [droidcommand-AI](https://github.com/Victorious93/droidcommand-AI).
+
+Until Don confirms the fleet class, Phase 1 ships a **soft Messenger stub** modeled on RootForge OS (`EXTERNAL_NODE` shape), not an AIDL companion:
+
+| | This app | Dependent companions (HackerAI / Pentest / EDL) |
+| --- | --- | --- |
+| Works without DCA | **Yes** | No (`DependencyGuard`) |
+| Shared signing key required | **No** | Yes |
+| Transport | Bound **Messenger** + JSON envelope | AIDL `ICompanionService` / domain AIDL |
+| Action | `ai.victorious.filemanager.action.BRIDGE` | `ai.droidcommand.companion.ICompanionService` |
+| LIVE control | **No** — stubs only | Companion-specific |
+
+### Messenger stub
+
+- Exported bound service, **no** `BIND_FILEMANAGER` signature permission (that permission is **not** claimed to exist on the hub today).
+- Envelope `protocol_major` 1, same *shape* as RootForge (`request_id`, `operation`, `ok` / `error.category`).
+- `Message.what = 1` + bundle key `request`; reply `what = 2` + `response`.
+- Operations:
+  - `filemanager.capabilities.get` — lists stub ops, `live: false`, `dca_required: false`, `fleet_class: pending`
+  - `filemanager.status` — id `filemanager`, version `0.1.0`
+  - `filemanager.list` — honest empty stub; does **not** expose device files
+- Unknown ops return `unknown_operation` and will **not** pretend LIVE control.
+- There is **no DependencyGuard**. AIDL/JSON methods are not fail-closed when `ai.droidcommand.app` is missing.
+
+**Hub recognition requires a later PR on droidcommand-AI.** Possible future classes (owner decides):
+
+1. **EXTERNAL_NODE** (RootForge-like) — keep this Messenger bridge, pairing in this app, never DependencyGuard.
+2. **BOUND_COMPANION** — would need a hub-side signature permission, `KnownCompanions` entry, and a companion that *stops* without DCA. That would be a product change, not the default.
+
+Do not add File Manager to `TERMUX_IPC` or `HOST_PROCESS_TOOL`.
+
+## CI
+
+GitHub Actions on every pull request:
+
+1. Run unit tests (`:core:test`, `:app:testDebugUnitTest`)
+2. Build a debug APK
+3. Upload `app-debug` as a workflow artifact
+
+## Not in Phase 1
+
+- Network/cloud providers, archives as a first-class FS, root/Magisk browsing
+- LIVE fleet file control, hub catalog wiring, shared debug keystore with DCA
+- Inventing `ai.droidcommand.permission.BIND_FILEMANAGER` as if the hub already declares it
