@@ -8,6 +8,8 @@ coreKtx = "1.16.0"
 junit = "4.13.2"
 serialization = "1.8.1"
 coroutines = "1.10.2"
+commonsCompress = "1.27.1"
+xz = "1.10"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -25,6 +27,8 @@ androidx-compose-material-icons-extended = { module = "androidx.compose.material
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
+commons-compress = { module = "org.apache.commons:commons-compress", version.ref = "commonsCompress" }
+xz = { module = "org.tukaani:xz", version.ref = "xz" }
 junit = { module = "junit:junit", version.ref = "junit" }
 
 [plugins]

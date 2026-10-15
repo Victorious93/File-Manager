@@ -1,12 +1,15 @@
 package ai.victorious.filemanager.ui
 
 import ai.victorious.filemanager.FileManagerApplication
+import ai.victorious.filemanager.core.archive.Archives
 import ai.victorious.filemanager.core.bookmarks.Bookmark
 import ai.victorious.filemanager.core.fs.FileEntry
 import ai.victorious.filemanager.core.fs.FileIo
 import ai.victorious.filemanager.core.ops.OpKind
 import ai.victorious.filemanager.core.search.SearchHit
 import ai.victorious.filemanager.core.trash.TrashEntry
+import ai.victorious.filemanager.core.viewer.FileKind
+import ai.victorious.filemanager.core.viewer.FileKinds
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
@@ -23,6 +26,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+fun defaultMode(file: File): ViewerMode = when (FileKinds.detect(file)) {
+    FileKind.TEXT -> ViewerMode.TEXT
+    FileKind.IMAGE -> ViewerMode.IMAGE
+    FileKind.AUDIO, FileKind.VIDEO -> ViewerMode.MEDIA_INFO
+    FileKind.ARCHIVE -> ViewerMode.ARCHIVE
+    FileKind.BINARY -> ViewerMode.HEX
+}
 
 enum class Dest { FILES, SEARCH, BOOKMARKS, TRASH, SETTINGS }
 
@@ -59,6 +70,7 @@ data class UiState(
     val nodeId: String = "",
     val dcaInstalled: Boolean = false,
     val busy: Boolean = false,
+    val viewer: ViewerRequest? = null,
 )
 
 sealed interface UiEvent {
@@ -89,6 +101,11 @@ sealed interface UiEvent {
     data object DismissSnackbar : UiEvent
     data object ToggleAbout : UiEvent
     data object Refresh : UiEvent
+    /** Open a file in a viewer; null mode picks the default from the file type. */
+    data class OpenFile(val path: String, val mode: ViewerMode? = null) : UiEvent
+    data object CloseViewer : UiEvent
+    data class ShowMessage(val message: String) : UiEvent
+    data object ZipSelected : UiEvent
 }
 
 class FileManagerViewModel(
@@ -184,6 +201,10 @@ class FileManagerViewModel(
             UiEvent.DismissSnackbar -> _ui.update { it.copy(snackbar = null) }
             UiEvent.ToggleAbout -> _ui.update { it.copy(showAbout = !it.showAbout) }
             UiEvent.Refresh -> refreshAll()
+            is UiEvent.OpenFile -> _ui.update { it.copy(viewer = ViewerRequest(event.path, event.mode ?: defaultMode(File(event.path)))) }
+            UiEvent.CloseViewer -> { _ui.update { it.copy(viewer = null) }; refreshAll() }
+            is UiEvent.ShowMessage -> snack(event.message)
+            UiEvent.ZipSelected -> zipSelected()
         }
     }
 
@@ -320,6 +341,33 @@ class FileManagerViewModel(
                     snack(it.message)
                 },
                 onFailure = { snack(it.message ?: "Operation failed") },
+            )
+        }
+    }
+
+    private fun zipSelected() {
+        val sources = selectedSources()
+        if (sources.isEmpty()) {
+            snack("Select files to zip")
+            return
+        }
+        val dir = File(pane(_ui.value, _ui.value.focusedPane).active.path)
+        val base = if (sources.size == 1) File(sources.first()).nameWithoutExtension.ifBlank { "archive" } else "archive"
+        viewModelScope.launch {
+            _ui.update { it.copy(busy = true) }
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val out = Archives.uniqueZipName(dir, base)
+                    Archives.createZip(sources.map(::File), out) to out
+                }
+            }
+            _ui.update { it.copy(busy = false) }
+            result.fold(
+                onSuccess = { (count, out) ->
+                    refreshAll()
+                    snack("Zipped $count file(s) into ${out.name}")
+                },
+                onFailure = { snack("Zip failed: ${it.message}") },
             )
         }
     }
