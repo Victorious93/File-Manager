@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test-and-apk:
+    name: Unit tests + debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      # Do not use android-actions/setup-android's default package list: it
+      # still installs the obsolete `tools` package, which sdkmanager no
+      # longer ships. GitHub-hosted runners already have cmdline-tools and
+      # ANDROID_HOME; install only current packages.
+      - name: Accept licenses and install Android packages
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          if [ -z "$SDK" ]; then
+            echo "ANDROID_HOME / ANDROID_SDK_ROOT is not set on this runner"
+            exit 1
+          fi
+          echo "ANDROID_HOME=$SDK"
+          SDKMANAGER="$(find "$SDK/cmdline-tools" -name sdkmanager -type f | sort | tail -n1)"
+          if [ -z "$SDKMANAGER" ]; then
+            echo "sdkmanager not found under $SDK"
+            ls -la "$SDK" || true
+            exit 1
+          fi
+          echo "Using $SDKMANAGER"
+          yes | "$SDKMANAGER" --sdk_root="$SDK" --licenses >/dev/null || true
+          "$SDKMANAGER" --sdk_root="$SDK" \
+            "platform-tools" \
+            "build-tools;35.0.0" \
+            "platforms;android-35"
+
+      - name: Grant Gradle wrapper execute bit
+        run: chmod +x gradlew
+
+      - name: Unit tests
+        run: ./gradlew --no-daemon :core:test :app:testDebugUnitTest
+
+      - name: Assemble debug APK
+        run: ./gradlew --no-daemon :app:assembleDebug
+
+      - name: Show debug APK
+        run: ls -lh app/build/outputs/apk/debug/*.apk
+
+      # Artifact upload is best-effort: this GitHub account has hit Actions
+      # artifact storage quota, which we cannot free from the workflow. The
+      # APK is still produced by assembleDebug above.
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v7
+        continue-on-error: true
+        with:
+          name: app-debug
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 1
