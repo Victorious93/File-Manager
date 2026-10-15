@@ -8,7 +8,7 @@ on:
 jobs:
   test-and-apk:
     name: Unit tests + debug APK
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - name: Checkout
@@ -21,21 +21,31 @@ jobs:
           java-version: "17"
           cache: gradle
 
-      - name: Install Android platform
+      # Do not use android-actions/setup-android's default package list: it
+      # still installs the obsolete `tools` package, which sdkmanager no
+      # longer ships. GitHub-hosted runners already have cmdline-tools and
+      # ANDROID_HOME; install only current packages.
+      - name: Accept licenses and install Android packages
         run: |
           set -euo pipefail
           SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
           if [ -z "$SDK" ]; then
-            echo "ANDROID_HOME is not set on this runner"
+            echo "ANDROID_HOME / ANDROID_SDK_ROOT is not set on this runner"
             exit 1
           fi
-          SDKMANAGER="$(find "$SDK/cmdline-tools" -name sdkmanager -type f | head -n1)"
+          echo "ANDROID_HOME=$SDK"
+          SDKMANAGER="$(find "$SDK/cmdline-tools" -name sdkmanager -type f | sort | tail -n1)"
           if [ -z "$SDKMANAGER" ]; then
             echo "sdkmanager not found under $SDK"
+            ls -la "$SDK" || true
             exit 1
           fi
+          echo "Using $SDKMANAGER"
           yes | "$SDKMANAGER" --sdk_root="$SDK" --licenses >/dev/null || true
-          "$SDKMANAGER" --sdk_root="$SDK" "platforms;android-35" "build-tools;35.0.0"
+          "$SDKMANAGER" --sdk_root="$SDK" \
+            "platform-tools" \
+            "build-tools;35.0.0" \
+            "platforms;android-35"
 
       - name: Grant Gradle wrapper execute bit
         run: chmod +x gradlew
