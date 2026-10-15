@@ -107,7 +107,7 @@ object AxmlParser {
         return out
     }
 
-    private fun readStringPool(buf: ByteBuffer, start: Int): List<String> {
+    internal fun readStringPool(buf: ByteBuffer, start: Int): List<String> {
         val headerSize = buf.getShort(start + 2).toInt() and 0xFFFF
         val count = buf.getInt(start + 8)
         val flags = buf.getInt(start + 16)

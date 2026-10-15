@@ -20,6 +20,10 @@ dependencies {
     implementation(libs.commons.compress)
     implementation(libs.xz)
     implementation(libs.apksig)
+    api(libs.smali.dexlib2)
+    implementation(libs.smali.baksmali) {
+        exclude(group = "com.beust", module = "jcommander")
+    }
     testImplementation(libs.junit)
 }
 

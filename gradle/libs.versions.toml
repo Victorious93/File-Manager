@@ -11,6 +11,7 @@ coroutines = "1.10.2"
 commonsCompress = "1.27.1"
 xz = "1.10"
 apksig = "8.13.0"
+smali = "3.0.9"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -31,6 +32,8 @@ kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutine
 commons-compress = { module = "org.apache.commons:commons-compress", version.ref = "commonsCompress" }
 xz = { module = "org.tukaani:xz", version.ref = "xz" }
 apksig = { module = "com.android.tools.build:apksig", version.ref = "apksig" }
+smali-dexlib2 = { module = "com.android.tools.smali:smali-dexlib2", version.ref = "smali" }
+smali-baksmali = { module = "com.android.tools.smali:smali-baksmali", version.ref = "smali" }
 junit = { module = "junit:junit", version.ref = "junit" }
 
 [plugins]
