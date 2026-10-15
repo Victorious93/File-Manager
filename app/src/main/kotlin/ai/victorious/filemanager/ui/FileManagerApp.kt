@@ -36,6 +36,7 @@ import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Settings as SettingsIcon
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.automirrored.outlined.DriveFileMove
 import androidx.compose.material.icons.outlined.DriveFileRenameOutline
@@ -114,6 +115,7 @@ fun FileManagerApp(
                                 Dest.SEARCH -> "Search"
                                 Dest.BOOKMARKS -> "Bookmarks"
                                 Dest.TRASH -> "Trash"
+                                Dest.SETTINGS -> "Settings"
                             },
                             style = MaterialTheme.typography.bodySmall,
                             maxLines = 1,
@@ -190,6 +192,12 @@ fun FileManagerApp(
                         icon = { Icon(Icons.Outlined.RestoreFromTrash, contentDescription = null) },
                         label = { Text("Trash") },
                     )
+                    NavigationBarItem(
+                        selected = state.destination == Dest.SETTINGS,
+                        onClick = { onEvent(UiEvent.Navigate(Dest.SETTINGS)) },
+                        icon = { Icon(Icons.Outlined.SettingsIcon, contentDescription = null) },
+                        label = { Text("Settings") },
+                    )
                 }
             }
         },
@@ -225,6 +233,7 @@ fun FileManagerApp(
                 Dest.SEARCH -> SearchPane(state, onEvent)
                 Dest.BOOKMARKS -> BookmarksPane(state, onEvent)
                 Dest.TRASH -> TrashPane(state, onEvent)
+                Dest.SETTINGS -> SettingsPane()
             }
         }
     }

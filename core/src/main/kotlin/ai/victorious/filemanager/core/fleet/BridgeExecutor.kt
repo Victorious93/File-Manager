@@ -8,14 +8,21 @@ import kotlinx.serialization.json.buildJsonObject
 
 /**
  * Honest Phase 1 fleet stub. Never claims LIVE control. Never requires
- * DroidCommand AI. Hub recognition needs a later PR in droidcommand-AI;
- * fleet class (EXTERNAL_NODE vs BOUND_COMPANION) is pending owner choice.
+ * DroidCommand AI. Fleet class is EXTERNAL_NODE.
+ *
+ * Gating order (see docs/FLEET_BRIDGE.md):
+ * 1. envelope parse / protocol_major / target node
+ * 2. caller identity ([CallerPolicy]) -> unauthorized_caller
+ * 3. external-control toggle -> external_control_disabled, except the
+ *    read-only capabilities.get / status which answer with enabled:false
  */
 class BridgeExecutor(
     private val nodeId: String,
     private val version: String = APP_VERSION,
+    private val policy: CallerPolicy = CallerPolicy(),
+    private val externalControlEnabled: () -> Boolean = { false },
 ) {
-    fun handle(requestLine: String): String {
+    fun handle(requestLine: String, caller: CallerIdentity?): String {
         if (requestLine.isBlank()) {
             return fail(null, ErrorCategory.MALFORMED, "empty request")
         }
@@ -38,9 +45,21 @@ class BridgeExecutor(
                 "wrong node: this File Manager node is $nodeId",
             )
         }
+        val decision = policy.evaluate(caller)
+        if (!decision.allowed) {
+            return fail(request.requestId, ErrorCategory.UNAUTHORIZED_CALLER, decision.reason)
+        }
+        val enabled = externalControlEnabled()
+        if (!enabled && request.operation != BridgeOp.CAPABILITIES && request.operation != BridgeOp.STATUS) {
+            return fail(
+                request.requestId,
+                ErrorCategory.EXTERNAL_CONTROL_DISABLED,
+                "External control is off. Enable it in File Manager Settings.",
+            )
+        }
         return when (request.operation) {
-            BridgeOp.CAPABILITIES -> ok(request.requestId, capabilities())
-            BridgeOp.STATUS -> ok(request.requestId, status())
+            BridgeOp.CAPABILITIES -> ok(request.requestId, capabilities(enabled, decision.matchedPackage))
+            BridgeOp.STATUS -> ok(request.requestId, status(enabled))
             BridgeOp.LIST -> ok(request.requestId, listStub(request.parameters))
             else -> fail(
                 request.requestId,
@@ -50,7 +69,7 @@ class BridgeExecutor(
         }
     }
 
-    private fun capabilities(): JsonObject = buildJsonObject {
+    private fun capabilities(enabled: Boolean, callerPackage: String?): JsonObject = buildJsonObject {
         put("protocol_major", JsonPrimitive(BRIDGE_PROTOCOL_MAJOR))
         put("node_kind", JsonPrimitive("android-host-app"))
         put("app", JsonPrimitive("victorious-filemanager"))
@@ -59,11 +78,10 @@ class BridgeExecutor(
         put("live", JsonPrimitive(false))
         put("mode", JsonPrimitive("stub"))
         put("dca_required", JsonPrimitive(false))
-        put("fleet_class", JsonPrimitive("pending"))
-        put(
-            "fleet_class_note",
-            JsonPrimitive("Owner has not chosen EXTERNAL_NODE vs BOUND_COMPANION. Hub recognition requires a later droidcommand-AI PR."),
-        )
+        put("fleet_class", JsonPrimitive(FLEET_CLASS))
+        put("enabled", JsonPrimitive(enabled))
+        put("caller_package", JsonPrimitive(callerPackage ?: ""))
+        put("cert_pinning", JsonPrimitive(policy.pinningEnabled))
         put(
             "operations",
             JsonArray(
@@ -76,14 +94,15 @@ class BridgeExecutor(
         )
     }
 
-    private fun status(): JsonObject = buildJsonObject {
+    private fun status(enabled: Boolean): JsonObject = buildJsonObject {
         put("id", JsonPrimitive(APP_ID))
         put("version", JsonPrimitive(version))
         put("application_id", JsonPrimitive(APPLICATION_ID))
         put("live", JsonPrimitive(false))
         put("mode", JsonPrimitive("stub"))
         put("dca_required", JsonPrimitive(false))
-        put("fleet_class", JsonPrimitive("pending"))
+        put("fleet_class", JsonPrimitive(FLEET_CLASS))
+        put("enabled", JsonPrimitive(enabled))
         put(
             "message",
             JsonPrimitive(

@@ -14,6 +14,11 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
+        // Optional signing-cert pins for bridge callers, e.g.
+        // -PfleetCallerCertPins="ai.droidcommand.app=<sha256hex>;ai.droidcommand.app.debug=<sha256hex>"
+        // Empty (default) = package-name allowlist only. See docs/FLEET_BRIDGE.md.
+        val pins = (project.findProperty("fleetCallerCertPins") as String?).orEmpty().replace("\"", "")
+        buildConfigField("String", "FLEET_CALLER_CERT_PINS", "\"$pins\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
