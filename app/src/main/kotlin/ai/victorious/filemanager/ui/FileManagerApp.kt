@@ -31,7 +31,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Android
 import androidx.compose.material.icons.outlined.Archive
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Bookmark
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.Close
@@ -182,6 +184,20 @@ fun FileManagerApp(
                             IconButton(onClick = { onEvent(UiEvent.ZipSelected) }) {
                                 Icon(Icons.Outlined.Archive, contentDescription = "Zip selected")
                             }
+                            IconButton(onClick = {
+                                val apks = selectedApks(state)
+                                if (apks.isEmpty()) onEvent(UiEvent.ShowMessage("Select one or more .apk files"))
+                                else apkAction(context, onEvent) { ai.victorious.filemanager.apk.ApkInstaller.install(context, apks) }
+                            }) {
+                                Icon(Icons.Outlined.Android, contentDescription = "Install selected APKs")
+                            }
+                            IconButton(onClick = {
+                                val files = selectedFiles(state)
+                                if (files.isEmpty()) onEvent(UiEvent.ShowMessage("Select files to share"))
+                                else apkAction(context, onEvent) { ai.victorious.filemanager.apk.ApkInstaller.share(context, files); null }
+                            }) {
+                                Icon(Icons.Outlined.Share, contentDescription = "Share / export")
+                            }
                             IconButton(onClick = { onEvent(UiEvent.Undo) }, enabled = state.canUndo) {
                                 Icon(Icons.AutoMirrored.Outlined.Undo, contentDescription = "Undo")
                             }
@@ -266,6 +282,8 @@ fun FileManagerApp(
             onConfirm = { onEvent(UiEvent.ConfirmRename(it)) },
         )
     }
+    state.apkInfo?.let { ApkInfoDialog(it, onEvent) }
+    state.signTarget?.let { SignDialog(it, onEvent) }
     if (state.showAbout) {
         AboutDialog(state = state, onDismiss = { onEvent(UiEvent.ToggleAbout) })
     }
@@ -407,8 +425,12 @@ private fun FilePane(
                         onEvent(UiEvent.FocusPane(index))
                         onEvent(UiEvent.Select(index, entry.path, additive = true))
                     },
-                    menu = if (entry.isDirectory) null else { dismiss ->
+                    menu = if (entry.isDirectory) { dismiss ->
+                        FolderMenuItems(entry.path, onEvent, dismiss)
+                    } else { dismiss ->
                         OpenWithItems(entry.path, onEvent, dismiss)
+                        ShareMenuItem(entry.path, onEvent, dismiss)
+                        if (isApk(entry.path)) ApkMenuItems(entry.path, onEvent, dismiss)
                     },
                 )
             }

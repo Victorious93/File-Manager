@@ -103,3 +103,11 @@ GitHub Actions on every pull request:
 - **Create ZIP** from selected files/folders (bottom-bar Zip button) into the current folder (`name.zip`, `name (2).zip`, …).
 - **Image preview** (PNG/JPEG/GIF/WebP/BMP/HEIF, downsampled) and **media info** for audio/video via `MediaMetadataRetriever` (no player).
 - **Integration**: tap a file to open it in the default viewer for its type (sniffed when the extension is unknown); long-press a file for *Select* / *Open in text editor / hex editor / Preview image / Media info / Open as archive*.
+
+## Phase 3: APK tools
+
+Long-press an `.apk`: APK info, Install (PackageInstaller session, user-confirmed), Extract APK,
+Sign APK (V1/V2/V3 via apksig, Apache-2.0), Uninstall (from APK info), Share / export.
+Long-press an extracted folder: Rebuild APK (aligned, unsigned). Multi-select APKs + the Android
+bottom-bar icon installs them in sequence. Signing uses your keystore or a per-device debug key
+generated in-app — no keys in the repo. Details: [docs/APK_TOOLS.md](docs/APK_TOOLS.md).

@@ -1,6 +1,11 @@
 package ai.victorious.filemanager.ui
 
 import ai.victorious.filemanager.FileManagerApplication
+import ai.victorious.filemanager.apk.ApkInfo
+import ai.victorious.filemanager.apk.ApkRepository
+import ai.victorious.filemanager.core.apk.ApkBuilder
+import ai.victorious.filemanager.core.apk.ApkSigning
+import ai.victorious.filemanager.core.apk.SignSchemes
 import ai.victorious.filemanager.core.archive.Archives
 import ai.victorious.filemanager.core.bookmarks.Bookmark
 import ai.victorious.filemanager.core.fs.FileEntry
@@ -71,6 +76,20 @@ data class UiState(
     val dcaInstalled: Boolean = false,
     val busy: Boolean = false,
     val viewer: ViewerRequest? = null,
+    val apkInfo: ApkInfo? = null,
+    val signTarget: String? = null,
+)
+
+/** Signing request from the Sign APK dialog. Passwords live only in memory for this call. */
+data class SignOptions(
+    val useDebugKey: Boolean,
+    val keystorePath: String = "",
+    val storePassword: String = "",
+    val alias: String = "",
+    val keyPassword: String = "",
+    val v1: Boolean = true,
+    val v2: Boolean = true,
+    val v3: Boolean = true,
 )
 
 sealed interface UiEvent {
@@ -106,6 +125,13 @@ sealed interface UiEvent {
     data object CloseViewer : UiEvent
     data class ShowMessage(val message: String) : UiEvent
     data object ZipSelected : UiEvent
+    data class ShowApkInfo(val path: String) : UiEvent
+    data object DismissApkInfo : UiEvent
+    data class ExtractApk(val path: String) : UiEvent
+    data class RebuildApk(val dir: String) : UiEvent
+    data class RequestSign(val path: String) : UiEvent
+    data object DismissSign : UiEvent
+    data class ConfirmSign(val path: String, val options: SignOptions) : UiEvent
 }
 
 class FileManagerViewModel(
@@ -205,6 +231,28 @@ class FileManagerViewModel(
             UiEvent.CloseViewer -> { _ui.update { it.copy(viewer = null) }; refreshAll() }
             is UiEvent.ShowMessage -> snack(event.message)
             UiEvent.ZipSelected -> zipSelected()
+            is UiEvent.ShowApkInfo -> background("Reading APK…", { apkRepo.info(File(event.path)) }) { info ->
+                _ui.update { it.copy(apkInfo = info) }
+            }
+            UiEvent.DismissApkInfo -> _ui.update { it.copy(apkInfo = null) }
+            is UiEvent.ExtractApk -> background("Extracting…", {
+                val apk = File(event.path)
+                val dest = ApkBuilder.extractDirFor(apk)
+                Archives.extract(apk, dest) to dest
+            }) { (n, dest) -> refreshAll(); snack("Extracted $n file(s) to ${dest.name}") }
+            is UiEvent.RebuildApk -> background("Rebuilding…", {
+                val dir = File(event.dir)
+                val out = ApkBuilder.rebuiltNameFor(dir)
+                ApkBuilder.rebuild(dir, out) to out
+            }) { (n, out) -> refreshAll(); snack("Rebuilt ${out.name} ($n entries, unsigned — sign before installing)") }
+            is UiEvent.RequestSign -> _ui.update { it.copy(signTarget = event.path) }
+            UiEvent.DismissSign -> _ui.update { it.copy(signTarget = null) }
+            is UiEvent.ConfirmSign -> {
+                _ui.update { it.copy(signTarget = null) }
+                background("Signing…", { sign(File(event.path), event.options) }) { out ->
+                    refreshAll(); snack("Signed → ${out.name}")
+                }
+            }
         }
     }
 
@@ -342,6 +390,34 @@ class FileManagerViewModel(
                 },
                 onFailure = { snack(it.message ?: "Operation failed") },
             )
+        }
+    }
+
+    private val apkRepo by lazy { ApkRepository(app) }
+
+    private fun sign(apk: File, o: SignOptions): File {
+        val schemes = SignSchemes(o.v1, o.v2, o.v3)
+        val (key, alias) = if (o.useDebugKey) {
+            apkRepo.debugKey() to ApkSigning.DEBUG_ALIAS
+        } else {
+            val ks = File(o.keystorePath.trim())
+            require(ks.isFile) { "Keystore not found: ${o.keystorePath}" }
+            val store = o.storePassword.toCharArray()
+            val keyPass = o.keyPassword.takeIf { it.isNotEmpty() }?.toCharArray()
+            ApkSigning.loadKey(ks, store, o.alias.ifBlank { null }, keyPass) to o.alias.ifBlank { "CERT" }
+        }
+        val out = ApkSigning.signedNameFor(apk)
+        ApkSigning.sign(apk, out, key, alias, schemes)
+        return out
+    }
+
+    /** Runs [work] on IO with the busy bar; reports failures as a snackbar prefixed by the op label. */
+    private fun <T> background(label: String, work: () -> T, onSuccess: (T) -> Unit) {
+        viewModelScope.launch {
+            _ui.update { it.copy(busy = true) }
+            val result = withContext(Dispatchers.IO) { runCatching(work) }
+            _ui.update { it.copy(busy = false) }
+            result.fold(onSuccess, { snack("${label.removeSuffix("…")} failed: ${it.message}") })
         }
     }
 
