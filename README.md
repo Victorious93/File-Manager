@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/logo.png" alt="Victorious File Manager logo" width="240">
+</p>
+
 # Victorious File Manager
 
 A fast, standalone Android file manager (Phase 1) with an **optional** DroidCommand AI fleet stub.
