@@ -56,9 +56,17 @@ jobs:
       - name: Assemble debug APK
         run: ./gradlew --no-daemon :app:assembleDebug
 
+      - name: Show debug APK
+        run: ls -lh app/build/outputs/apk/debug/*.apk
+
+      # Artifact upload is best-effort: this GitHub account has hit Actions
+      # artifact storage quota, which we cannot free from the workflow. The
+      # APK is still produced by assembleDebug above.
       - name: Upload debug APK
         uses: actions/upload-artifact@v7
+        continue-on-error: true
         with:
           name: app-debug
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+          retention-days: 1
