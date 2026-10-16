@@ -15,6 +15,7 @@ object AxmlTestEncoder {
         val strings = resAttrs.map { it.first }.toMutableList()
         fun idx(s: String): Int { val i = strings.indexOf(s); if (i >= 0) return i; strings += s; return strings.lastIndex }
         val ns = idx(NS)
+        idx("android")
         // (nsIdx, nameIdx, raw, type, data)
         class A(val ns: Int, val name: Int, val raw: Int, val type: Int, val data: Int)
         fun str(nsI: Int, n: String, v: String) = idx(v).let { A(nsI, idx(n), it, 0x03, it) }

@@ -49,6 +49,7 @@ fun apkAction(context: Context, onEvent: (UiEvent) -> Unit, block: () -> String?
 fun ApkMenuItems(path: String, onEvent: (UiEvent) -> Unit, dismiss: () -> Unit) {
     val context = LocalContext.current
     HorizontalDivider()
+    DropdownMenuItem(text = { Text("APK surgery (DEX / res / manifest)") }, onClick = { dismiss(); onEvent(UiEvent.OpenSurgery(path)) })
     DropdownMenuItem(text = { Text("APK info") }, onClick = { dismiss(); onEvent(UiEvent.ShowApkInfo(path)) })
     DropdownMenuItem(text = { Text("Install APK") }, onClick = {
         dismiss(); apkAction(context, onEvent) { ApkInstaller.install(context, listOf(File(path))) }
@@ -56,6 +57,25 @@ fun ApkMenuItems(path: String, onEvent: (UiEvent) -> Unit, dismiss: () -> Unit) 
     DropdownMenuItem(text = { Text("Extract APK") }, onClick = { dismiss(); onEvent(UiEvent.ExtractApk(path)) })
     DropdownMenuItem(text = { Text("Sign APK…") }, onClick = { dismiss(); onEvent(UiEvent.RequestSign(path)) })
     DropdownMenuItem(text = { Text("Uninstall app…") }, onClick = { dismiss(); onEvent(UiEvent.ShowApkInfo(path)) })
+}
+
+/** Long-press items for .dex files. */
+@Composable
+fun DexMenuItems(path: String, onEvent: (UiEvent) -> Unit, dismiss: () -> Unit) {
+    HorizontalDivider()
+    DropdownMenuItem(text = { Text("Browse DEX → smali") }, onClick = { dismiss(); onEvent(UiEvent.OpenSurgery(path)) })
+}
+
+/** After Rebuild APK: remind that the output is unsigned and link to the existing Sign flow. */
+@Composable
+fun RebuiltSignReminder(path: String, onEvent: (UiEvent) -> Unit) {
+    AlertDialog(
+        onDismissRequest = { onEvent(UiEvent.DismissRebuilt) },
+        title = { Text("Re-sign before installing") },
+        text = { Text("${File(path).name} was rebuilt without a signature. Android will refuse to install it until it is signed (V1/V2/V3).") },
+        confirmButton = { TextButton(onClick = { onEvent(UiEvent.RequestSign(path)) }) { Text("Sign now…") } },
+        dismissButton = { TextButton(onClick = { onEvent(UiEvent.DismissRebuilt) }) { Text("Later") } },
+    )
 }
 
 /** Long-press items for any file. */
@@ -71,6 +91,10 @@ fun ShareMenuItem(path: String, onEvent: (UiEvent) -> Unit, dismiss: () -> Unit)
 @Composable
 fun FolderMenuItems(path: String, onEvent: (UiEvent) -> Unit, dismiss: () -> Unit) {
     val hasManifest = remember(path) { File(path, "AndroidManifest.xml").isFile }
+    val surgery = remember(path) { runCatching { isSurgeryTarget(path) }.getOrDefault(false) }
+    if (surgery) {
+        DropdownMenuItem(text = { Text("APK surgery (DEX / res / manifest)") }, onClick = { dismiss(); onEvent(UiEvent.OpenSurgery(path)) })
+    }
     if (hasManifest) {
         DropdownMenuItem(text = { Text("Rebuild APK from folder") }, onClick = { dismiss(); onEvent(UiEvent.RebuildApk(path)) })
     } else {

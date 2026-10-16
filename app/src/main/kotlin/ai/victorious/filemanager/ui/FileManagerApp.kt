@@ -122,6 +122,15 @@ fun FileManagerApp(
         }
         return
     }
+    state.surgeryTarget?.let { target ->
+        Box(Modifier.fillMaxSize()) {
+            ApkSurgeryScreen(target, onEvent)
+            SnackbarHost(snackbarHost, Modifier.align(Alignment.BottomCenter))
+        }
+        state.rebuiltApk?.let { RebuiltSignReminder(it, onEvent) }
+        state.signTarget?.let { SignDialog(it, onEvent) }
+        return
+    }
 
     Scaffold(
         topBar = {
@@ -284,6 +293,7 @@ fun FileManagerApp(
     }
     state.apkInfo?.let { ApkInfoDialog(it, onEvent) }
     state.signTarget?.let { SignDialog(it, onEvent) }
+    state.rebuiltApk?.let { RebuiltSignReminder(it, onEvent) }
     if (state.showAbout) {
         AboutDialog(state = state, onDismiss = { onEvent(UiEvent.ToggleAbout) })
     }
@@ -431,6 +441,7 @@ private fun FilePane(
                         OpenWithItems(entry.path, onEvent, dismiss)
                         ShareMenuItem(entry.path, onEvent, dismiss)
                         if (isApk(entry.path)) ApkMenuItems(entry.path, onEvent, dismiss)
+                        if (entry.path.endsWith(".dex", ignoreCase = true)) DexMenuItems(entry.path, onEvent, dismiss)
                     },
                 )
             }

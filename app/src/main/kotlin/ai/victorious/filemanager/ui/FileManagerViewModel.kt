@@ -78,6 +78,10 @@ data class UiState(
     val viewer: ViewerRequest? = null,
     val apkInfo: ApkInfo? = null,
     val signTarget: String? = null,
+    /** APK surgery screen target (.apk, .dex or extracted folder). */
+    val surgeryTarget: String? = null,
+    /** Unsigned APK just produced by Rebuild; drives the "sign now?" reminder. */
+    val rebuiltApk: String? = null,
 )
 
 /** Signing request from the Sign APK dialog. Passwords live only in memory for this call. */
@@ -132,6 +136,9 @@ sealed interface UiEvent {
     data class RequestSign(val path: String) : UiEvent
     data object DismissSign : UiEvent
     data class ConfirmSign(val path: String, val options: SignOptions) : UiEvent
+    data class OpenSurgery(val path: String) : UiEvent
+    data object CloseSurgery : UiEvent
+    data object DismissRebuilt : UiEvent
 }
 
 class FileManagerViewModel(
@@ -244,8 +251,15 @@ class FileManagerViewModel(
                 val dir = File(event.dir)
                 val out = ApkBuilder.rebuiltNameFor(dir)
                 ApkBuilder.rebuild(dir, out) to out
-            }) { (n, out) -> refreshAll(); snack("Rebuilt ${out.name} ($n entries, unsigned — sign before installing)") }
-            is UiEvent.RequestSign -> _ui.update { it.copy(signTarget = event.path) }
+            }) { (n, out) ->
+                refreshAll()
+                snack("Rebuilt ${out.name} ($n entries, unsigned — sign before installing)")
+                _ui.update { it.copy(rebuiltApk = out.absolutePath) }
+            }
+            is UiEvent.RequestSign -> _ui.update { it.copy(signTarget = event.path, rebuiltApk = null) }
+            is UiEvent.OpenSurgery -> _ui.update { it.copy(surgeryTarget = event.path) }
+            UiEvent.CloseSurgery -> { _ui.update { it.copy(surgeryTarget = null) }; refreshAll() }
+            UiEvent.DismissRebuilt -> _ui.update { it.copy(rebuiltApk = null) }
             UiEvent.DismissSign -> _ui.update { it.copy(signTarget = null) }
             is UiEvent.ConfirmSign -> {
                 _ui.update { it.copy(signTarget = null) }
