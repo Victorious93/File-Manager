@@ -39,7 +39,7 @@ object ApkInstaller {
         if (apks.isEmpty()) return "No APKs"
         if (!canInstall(context)) {
             context.startActivity(unknownSourcesSettings(context))
-            return "Allow "Install unknown apps" for this app, then try again"
+            return "Allow \"Install unknown apps\" for this app, then try again"
         }
         try {
             val installer = context.packageManager.packageInstaller
