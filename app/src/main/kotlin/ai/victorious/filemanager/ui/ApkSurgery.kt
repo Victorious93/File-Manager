@@ -1,6 +1,8 @@
 package ai.victorious.filemanager.ui
 
 import ai.victorious.filemanager.core.apk.ApkResources
+import ai.victorious.filemanager.core.apk.Arsc
+import ai.victorious.filemanager.core.apk.ArscString
 import ai.victorious.filemanager.core.apk.DexClassInfo
 import ai.victorious.filemanager.core.apk.DexSource
 import ai.victorious.filemanager.core.apk.DexTools
@@ -80,8 +82,8 @@ private sealed interface DexNav {
 }
 
 /**
- * MT Manager–style APK surgery (read/browse/export): DEX → classes → methods → smali,
- * res/ + assets/ browser with binary-XML decoding, and readable AndroidManifest.
+ * APK surgery: DEX → classes → methods → smali (edit + assemble), ARSC string editor,
+ * res/ + assets/ with binary-XML decoding (@ref names resolved), and readable AndroidManifest.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -115,14 +117,15 @@ fun ApkSurgeryScreen(path: String, onEvent: (UiEvent) -> Unit) {
         Column(Modifier.padding(padding).fillMaxSize()) {
             if (!isDexOnly) {
                 TabRow(selectedTabIndex = tab) {
-                    listOf("DEX", "Resources", "Manifest").forEachIndexed { i, t ->
+                    listOf("DEX", "Strings", "Resources", "Manifest").forEachIndexed { i, t ->
                         Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t) })
                     }
                 }
             }
             when (if (isDexOnly) 0 else tab) {
                 0 -> DexPane(target, isDexOnly, nav, { nav = it }, onEvent)
-                1 -> ResourcesPane(target, onEvent)
+                1 -> StringsPane(target, onEvent)
+                2 -> ResourcesPane(target, onEvent)
                 else -> ManifestPane(target, onEvent)
             }
         }
@@ -231,11 +234,21 @@ private fun DexPane(target: File, isDexOnly: Boolean, nav: DexNav, setNav: (DexN
             val smali = classSmali?.takeIf { it.first == nav.cls.descriptor }?.second ?: return Loading()
             val blocks = remember(smali) { SmaliText.methods(smali) }
             Column(Modifier.fillMaxSize()) {
+                val exportFile = remember(nav.cls) { DexTools.smaliExportFile(surgeryExportRoot(target), nav.cls.descriptor) }
                 Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(nav.cls.javaName, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
                     TextButton(onClick = {
-                        scope.launch { exportAndOpen(DexTools.smaliExportFile(surgeryExportRoot(target), nav.cls.descriptor), smali, onEvent) }
-                    }) { Text("Export .smali") }
+                        scope.launch { exportAndOpen(exportFile, smali, onEvent) }
+                    }) { Text("Edit") }
+                    if (target.isDirectory) {
+                        TextButton(onClick = {
+                            if (!exportFile.isFile) {
+                                onEvent(UiEvent.ShowMessage("Tap Edit, save changes, then Assemble"))
+                            } else {
+                                onEvent(UiEvent.AssembleSmali(exportFile.absolutePath, target.absolutePath))
+                            }
+                        }) { Text("Assemble") }
+                    }
                 }
                 var showWhole by remember(nav.cls) { mutableStateOf(false) }
                 TextButton(onClick = { showWhole = !showWhole }) { Text(if (showWhole) "Show method list" else "Show whole class smali") }
@@ -288,7 +301,7 @@ private fun ResourcesPane(target: File, onEvent: (UiEvent) -> Unit) {
                 when (e.kind) {
                     ResKind.XML -> {
                         val out = File(surgeryExportRoot(target), "decoded/" + e.path)
-                        out.parentFile?.mkdirs(); out.writeText(ApkResources.readableXml(ApkResources.read(target, e.path)))
+                        out.parentFile?.mkdirs(); out.writeText(ApkResources.readableXml(target, e.path))
                         out to ViewerMode.TEXT
                     }
                     else -> {
@@ -336,5 +349,72 @@ private fun ManifestPane(target: File, onEvent: (UiEvent) -> Unit) {
             }
         }
         CodeText(t)
+    }
+}
+
+@Composable
+private fun StringsPane(target: File, onEvent: (UiEvent) -> Unit) {
+    var arsc by remember(target) { mutableStateOf<Arsc?>(null) }
+    var error by remember(target) { mutableStateOf<String?>(null) }
+    var filter by remember { mutableStateOf("") }
+    var locale by remember { mutableStateOf<String?>(null) }
+    var edits by remember(target) { mutableStateOf<Map<Int, String>>(emptyMap()) }
+    var editing by remember { mutableStateOf<ArscString?>(null) }
+    var draft by remember { mutableStateOf("") }
+    LaunchedEffect(target) {
+        withContext(Dispatchers.IO) { runCatching { Arsc.loadFromTarget(target) } }
+            .onSuccess { arsc = it }.onFailure { error = it.message ?: "No resources.arsc" }
+    }
+    error?.let { Loading(it); return }
+    val a = arsc ?: return Loading()
+    val locales = remember(a) { a.locales() }
+    val shown = remember(a, filter, locale, edits) {
+        a.search(filter, locale).map { s -> edits[s.poolIndex]?.let { s.copy(value = it) } ?: s }
+    }
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(filter, { filter = it }, label = { Text("Search ${a.strings.size} strings") },
+                singleLine = true, modifier = Modifier.weight(1f))
+            TextButton(enabled = edits.isNotEmpty() && target.isDirectory, onClick = {
+                onEvent(UiEvent.SaveArscEdits(target.absolutePath, edits))
+                edits = emptyMap()
+            }) { Text("Save (${edits.size})") }
+        }
+        if (!target.isDirectory) {
+            Text("Open an extracted folder to edit & save strings.", Modifier.padding(horizontal = 16.dp),
+                style = MaterialTheme.typography.bodySmall)
+        }
+        Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp)) {
+            TextButton(onClick = { locale = null }) { Text(if (locale == null) "[all]" else "all") }
+            locales.forEach { loc ->
+                TextButton(onClick = { locale = loc }) { Text(if (locale == loc) "[$loc]" else loc) }
+            }
+        }
+        LazyColumn(Modifier.fillMaxSize()) {
+            items(shown.take(2000), key = { "${it.resId}:${it.locale}:${it.poolIndex}" }) { s ->
+                Row2(
+                    "0x${Integer.toHexString(s.resId)} · ${s.name} (${s.locale})",
+                    s.value,
+                ) {
+                    editing = s; draft = s.value
+                }
+            }
+        }
+    }
+    editing?.let { s ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { editing = null },
+            title = { Text("Edit ${s.name}") },
+            text = {
+                OutlinedTextField(draft, { draft = it }, modifier = Modifier.fillMaxWidth(), label = { Text(s.locale) })
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    edits = edits + (s.poolIndex to draft)
+                    editing = null
+                }) { Text("OK") }
+            },
+            dismissButton = { TextButton(onClick = { editing = null }) { Text("Cancel") } },
+        )
     }
 }

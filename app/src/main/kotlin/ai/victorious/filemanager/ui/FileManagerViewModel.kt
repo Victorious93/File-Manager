@@ -14,6 +14,10 @@ import ai.victorious.filemanager.core.ops.OpKind
 import ai.victorious.filemanager.core.search.SearchHit
 import ai.victorious.filemanager.core.trash.TrashEntry
 import ai.victorious.filemanager.core.archive.EncryptedZip
+import ai.victorious.filemanager.core.apk.ApkBundles
+import ai.victorious.filemanager.core.apk.Arsc
+import ai.victorious.filemanager.core.apk.SmaliAssembler
+import ai.victorious.filemanager.core.apk.SmaliAssemblyException
 import ai.victorious.filemanager.core.viewer.FileKind
 import ai.victorious.filemanager.core.viewer.FileKinds
 import android.Manifest
@@ -84,6 +88,8 @@ data class UiState(
     val surgeryTarget: String? = null,
     /** Unsigned APK just produced by Rebuild; drives the "sign now?" reminder. */
     val rebuiltApk: String? = null,
+    val verifyResult: Pair<String, ai.victorious.filemanager.core.apk.VerifyResult>? = null,
+    val bundle: ai.victorious.filemanager.core.apk.ApkBundle? = null,
 )
 
 /** Signing request from the Sign APK dialog. Passwords live only in memory for this call. */
@@ -96,6 +102,7 @@ data class SignOptions(
     val v1: Boolean = true,
     val v2: Boolean = true,
     val v3: Boolean = true,
+    val v4: Boolean = false,
 )
 
 sealed interface UiEvent {
@@ -144,6 +151,13 @@ sealed interface UiEvent {
     data class OpenSurgery(val path: String) : UiEvent
     data object CloseSurgery : UiEvent
     data object DismissRebuilt : UiEvent
+    data class AssembleSmali(val smaliPath: String, val extractedDir: String) : UiEvent
+    data class VerifyApk(val path: String) : UiEvent
+    data object DismissVerify : UiEvent
+    data class OpenBundle(val path: String) : UiEvent
+    data object CloseBundle : UiEvent
+    data class MergeBundle(val outName: String = "universal.apk") : UiEvent
+    data class SaveArscEdits(val target: String, val edits: Map<Int, String>) : UiEvent
 }
 
 class FileManagerViewModel(
@@ -267,6 +281,49 @@ class FileManagerViewModel(
             is UiEvent.RequestSign -> _ui.update { it.copy(signTarget = event.path, rebuiltApk = null) }
             is UiEvent.OpenSurgery -> _ui.update { it.copy(surgeryTarget = event.path) }
             UiEvent.CloseSurgery -> { _ui.update { it.copy(surgeryTarget = null) }; refreshAll() }
+            is UiEvent.AssembleSmali -> background("Assembling smali…", {
+                val smali = File(event.smaliPath).readText()
+                val dir = File(event.extractedDir)
+                require(dir.isDirectory) { "Assemble needs an extracted APK folder" }
+                val type = Regex("""\.class\s+[^\n]*?(L[^;]+;)""").find(smali)?.groupValues?.get(1)
+                    ?: error("No .class descriptor in smali")
+                val dex = SmaliAssembler.dexContaining(dir, type) ?: File(dir, "classes.dex")
+                require(dex.isFile) { "No DEX for $type — Extract APK first" }
+                try {
+                    SmaliAssembler.replaceInDexFile(dex, smali)
+                } catch (e: SmaliAssemblyException) {
+                    error(e.errors.joinToString("\n").ifBlank { e.message ?: "Assembly failed" })
+                }
+            }) { type -> snack("Assembled $type into DEX — Rebuild APK, then Sign") }
+            is UiEvent.VerifyApk -> background("Verifying…", {
+                ApkSigning.verify(File(event.path))
+            }) { r -> _ui.update { it.copy(verifyResult = event.path to r) } }
+            UiEvent.DismissVerify -> _ui.update { it.copy(verifyResult = null) }
+            is UiEvent.OpenBundle -> background("Opening bundle…", {
+                val f = File(event.path)
+                val work = File(app.cacheDir, "bundles/" + f.nameWithoutExtension)
+                work.deleteRecursively()
+                ApkBundles.open(f, work)
+            }) { b -> _ui.update { it.copy(bundle = b) } }
+            UiEvent.CloseBundle -> {
+                _ui.value.bundle?.extractDir?.deleteRecursively()
+                _ui.update { it.copy(bundle = null) }
+                refreshAll()
+            }
+            is UiEvent.MergeBundle -> {
+                val b = _ui.value.bundle ?: return
+                val destDir = File(pane(_ui.value, _ui.value.focusedPane).active.path)
+                background("Merging splits…", {
+                    val out = File(destDir, event.outName)
+                    ApkBundles.merge(b.splits.map { it.file }, out) to out
+                }) { (n, out) -> snack("Merged $n entries → ${out.name} (unsigned — Sign before install)") }
+            }
+            is UiEvent.SaveArscEdits -> background("Writing resources.arsc…", {
+                val target = File(event.target)
+                require(target.isDirectory) { "Save ARSC in an extracted folder, then Rebuild" }
+                File(target, "resources.arsc").writeBytes(Arsc.loadFromTarget(target).withEdits(event.edits))
+                event.edits.size
+            }) { n -> snack("Updated $n string(s) in resources.arsc — Rebuild APK + Sign") }
             UiEvent.DismissRebuilt -> _ui.update { it.copy(rebuiltApk = null) }
             UiEvent.DismissSign -> _ui.update { it.copy(signTarget = null) }
             is UiEvent.ConfirmSign -> {
@@ -418,7 +475,7 @@ class FileManagerViewModel(
     private val apkRepo by lazy { ApkRepository(app) }
 
     private fun sign(apk: File, o: SignOptions): File {
-        val schemes = SignSchemes(o.v1, o.v2, o.v3)
+        val schemes = SignSchemes(o.v1, o.v2, o.v3, o.v4)
         val (key, alias) = if (o.useDebugKey) {
             apkRepo.debugKey() to ApkSigning.DEBUG_ALIAS
         } else {

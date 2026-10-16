@@ -20,7 +20,7 @@ object AxmlDecoder {
     fun isBinaryXml(bytes: ByteArray): Boolean =
         bytes.size >= 8 && (bytes[0].toInt() and 0xFF) == RES_XML && bytes[1].toInt() == 0
 
-    fun toXml(bytes: ByteArray): String {
+    fun toXml(bytes: ByteArray, names: Map<Int, String> = emptyMap()): String {
         require(isBinaryXml(bytes)) { "Not a binary XML file" }
         val buf = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
         var strings: List<String> = emptyList()
@@ -63,7 +63,7 @@ object AxmlDecoder {
                         var attrName = str(nameIdx).orEmpty()
                         if (attrName.isEmpty()) attrName = resIds.getOrNull(nameIdx)?.let { "attr_0x" + Integer.toHexString(it) } ?: "attr$i"
                         val prefix = ns?.let { nsPrefix[it] ?: "ns" }
-                        val value = formatValue(str(buf.getInt(a + 8)), bytes[a + 15].toInt() and 0xFF, buf.getInt(a + 16), strings)
+                        val value = formatValue(str(buf.getInt(a + 8)), bytes[a + 15].toInt() and 0xFF, buf.getInt(a + 16), strings, names)
                         sb.append(attrIndent)
                         if (prefix != null) sb.append(prefix).append(':')
                         sb.append(attrName).append("=\"").append(escape(value)).append('"')
@@ -85,12 +85,12 @@ object AxmlDecoder {
     private val DIM_UNITS = arrayOf("px", "dp", "sp", "pt", "in", "mm")
 
     /** Formats a Res_value. [raw] wins when present (string attributes). */
-    fun formatValue(raw: String?, dataType: Int, data: Int, strings: List<String> = emptyList()): String {
+    fun formatValue(raw: String?, dataType: Int, data: Int, strings: List<String> = emptyList(), names: Map<Int, String> = emptyMap()): String {
         if (raw != null) return raw
         return when (dataType) {
             0x00 -> ""
-            0x01 -> if (data == 0) "@null" else "@0x" + hex8(data)
-            0x02 -> "?0x" + hex8(data)
+            0x01 -> if (data == 0) "@null" else names[data]?.let { "@$it" } ?: ("@0x" + hex8(data))
+            0x02 -> names[data]?.let { "?$it" } ?: ("?0x" + hex8(data))
             0x03 -> strings.getOrNull(data) ?: ""
             0x04 -> java.lang.Float.intBitsToFloat(data).toString()
             0x05 -> trimFloat(complex(data)) + DIM_UNITS.getOrElse(data and 0xF) { "?" }

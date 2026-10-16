@@ -18,8 +18,8 @@ import java.util.Locale
 import java.util.TimeZone
 
 /** Which APK signature schemes to apply. */
-data class SignSchemes(val v1: Boolean = true, val v2: Boolean = true, val v3: Boolean = true) {
-    init { require(v1 || v2 || v3) { "Enable at least one signature scheme" } }
+data class SignSchemes(val v1: Boolean = true, val v2: Boolean = true, val v3: Boolean = true, val v4: Boolean = false) {
+    init { require(v1 || v2 || v3 || v4) { "Enable at least one signature scheme" } }
 }
 
 /** A key + certificate chain loaded from a user keystore or the app's debug keystore. */
@@ -27,10 +27,20 @@ class SigningKey(val privateKey: PrivateKey, val certs: List<X509Certificate>) {
     val subject: String get() = certs.first().subjectX500Principal.name
 }
 
-data class VerifyResult(val verified: Boolean, val v1: Boolean, val v2: Boolean, val v3: Boolean, val errors: List<String>)
+data class SignerInfo(val subject: String, val sha256: String)
+
+data class VerifyResult(
+    val verified: Boolean,
+    val v1: Boolean,
+    val v2: Boolean,
+    val v3: Boolean,
+    val v4: Boolean,
+    val signers: List<SignerInfo>,
+    val errors: List<String>,
+)
 
 /**
- * APK signing via Google's apksig (Apache-2.0): v1 (JAR), v2 and v3 schemes.
+ * APK signing via Google's apksig (Apache-2.0): v1 (JAR), v2, v3 and optional v4 (.apk.idsig) schemes.
  * Keys are never bundled: either a user-provided keystore (PKCS12 / JKS where the platform
  * supports it) or a per-install debug keystore generated on-device by [generateDebugKeystore].
  */
@@ -92,8 +102,9 @@ object ApkSigning {
             .setV1SigningEnabled(schemes.v1)
             .setV2SigningEnabled(schemes.v2)
             .setV3SigningEnabled(schemes.v3)
-            .setV4SigningEnabled(false)
+            .setV4SigningEnabled(schemes.v4)
             .setCreatedBy("Victorious File Manager")
+        if (schemes.v4) builder.setV4SignatureOutputFile(File(output.path + ".idsig"))
         val minSdk = fallbackMinSdk ?: runCatching { AxmlParser.fromApk(input).minSdk }.getOrNull()
         if (minSdk == null) builder.setMinSdkVersion(DEFAULT_MIN_SDK) else builder.setMinSdkVersion(minSdk)
         builder.build().sign()
@@ -103,9 +114,20 @@ object ApkSigning {
         val b = ApkVerifier.Builder(apk)
         if (minSdk != null) b.setMinCheckedPlatformVersion(minSdk)
         val r = b.build().verify()
+        val signers = (r.signerCertificates.orEmpty()).map { c ->
+            SignerInfo(
+                c.subjectX500Principal.name,
+                java.security.MessageDigest.getInstance("SHA-256").digest(c.encoded)
+                    .joinToString("") { b -> "%02x".format(b) },
+            )
+        }
+        val v4 = runCatching {
+            // ApkVerifier may expose V4 via isVerifiedUsingV4Scheme on newer apksig; fall back to false.
+            r.javaClass.methods.any { it.name == "isVerifiedUsingV4Scheme" && (it.invoke(r) as Boolean) }
+        }.getOrDefault(false)
         return VerifyResult(
             r.isVerified, r.isVerifiedUsingV1Scheme, r.isVerifiedUsingV2Scheme, r.isVerifiedUsingV3Scheme,
-            r.errors.map { it.toString() },
+            v4, signers, r.errors.map { it.toString() },
         )
     }
 

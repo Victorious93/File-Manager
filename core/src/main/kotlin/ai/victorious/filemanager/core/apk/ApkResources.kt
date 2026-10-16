@@ -40,9 +40,15 @@ object ApkResources {
     fun read(target: File, path: String): ByteArray = if (target.isDirectory) File(target, path).readBytes()
     else ZipFile(target).use { z -> z.getInputStream(z.getEntry(path) ?: error("Missing $path")).use { it.readBytes() } }
 
-    /** Readable text for an XML resource: binary AXML is decoded, plain XML returned as-is. */
-    fun readableXml(bytes: ByteArray): String =
-        if (AxmlDecoder.isBinaryXml(bytes)) AxmlDecoder.toXml(bytes) else String(bytes, Charsets.UTF_8)
+    fun readableXml(bytes: ByteArray, names: Map<Int, String> = emptyMap()): String =
+        if (AxmlDecoder.isBinaryXml(bytes)) AxmlDecoder.toXml(bytes, names) else String(bytes, Charsets.UTF_8)
 
-    fun manifestXml(target: File): String = readableXml(read(target, "AndroidManifest.xml"))
+    /** Decodes XML and resolves @0x7f… refs using resources.arsc when present. */
+    fun readableXml(target: File, path: String): String {
+        val bytes = read(target, path)
+        val names = runCatching { Arsc.loadFromTarget(target).names }.getOrDefault(emptyMap())
+        return readableXml(bytes, names)
+    }
+
+    fun manifestXml(target: File): String = readableXml(target, "AndroidManifest.xml")
 }

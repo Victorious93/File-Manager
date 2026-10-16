@@ -46,6 +46,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -75,6 +76,7 @@ sealed interface ToolRequest {
     data class Compare(val left: String, val right: String) : ToolRequest
     data class Duplicates(val root: String) : ToolRequest
     data class Storage(val root: String) : ToolRequest
+    data class ExtractApps(val dest: String) : ToolRequest
 }
 
 @Composable
@@ -114,6 +116,11 @@ fun ToolsPane(state: UiState, onEvent: (UiEvent) -> Unit) {
                 else askZipPassword = true
             }
         }
+        item {
+            ToolItem(Icons.Outlined.Folder, "Extract installed apps", "Copy base + split APKs into this folder") {
+                onEvent(UiEvent.OpenTool(ToolRequest.ExtractApps(dir)))
+            }
+        }
     }
     if (askZipPassword) {
         PasswordDialog(
@@ -142,6 +149,7 @@ fun ToolHost(request: ToolRequest, onClose: () -> Unit, onEvent: (UiEvent) -> Un
         is ToolRequest.Compare -> CompareScreen(File(request.left), File(request.right), onClose)
         is ToolRequest.Duplicates -> DuplicatesScreen(File(request.root), onClose, onEvent)
         is ToolRequest.Storage -> StorageScreen(File(request.root), onClose)
+        is ToolRequest.ExtractApps -> ExtractAppsScreen(File(request.dest), onClose, onEvent)
     }
 }
 
@@ -348,6 +356,96 @@ private fun StorageScreen(root: File, onClose: () -> Unit) {
                             "${e.fileCount} file(s) · ${"%.1f".format(r.fraction(e) * 100)}%",
                             style = MaterialTheme.typography.labelSmall,
                         )
+                    }
+                }
+            }
+        }
+    }
+}
+
+data class InstalledApp(val label: String, val packageName: String, val apkPaths: List<File>, val size: Long)
+
+@Composable
+private fun ExtractAppsScreen(dest: File, onClose: () -> Unit, onEvent: (UiEvent) -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var apps by remember { mutableStateOf<List<InstalledApp>?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var filter by remember { mutableStateOf("") }
+    val selected = remember { mutableStateListOf<String>() }
+    var busy by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val pm = context.packageManager
+                pm.getInstalledApplications(0).mapNotNull { ai ->
+                    val base = File(ai.sourceDir ?: return@mapNotNull null)
+                    if (!base.isFile) return@mapNotNull null
+                    val splits = (ai.splitSourceDirs?.map(::File) ?: emptyList()).filter { it.isFile }
+                    val paths = listOf(base) + splits
+                    InstalledApp(
+                        label = ai.loadLabel(pm)?.toString() ?: ai.packageName,
+                        packageName = ai.packageName,
+                        apkPaths = paths,
+                        size = paths.sumOf { it.length() },
+                    )
+                }.sortedBy { it.label.lowercase() }
+            }
+        }.onSuccess { apps = it }.onFailure { error = it.message ?: "Cannot list apps" }
+    }
+    ToolScaffold("Installed apps → ${dest.name}", onClose, actions = {
+        TextButton(enabled = selected.isNotEmpty() && !busy, onClick = {
+            busy = true
+            val pick = apps?.filter { it.packageName in selected }.orEmpty()
+            scope.launch {
+                val n = withContext(Dispatchers.IO) {
+                    var count = 0
+                    for (app in pick) {
+                        val dir = File(dest, app.packageName).apply { mkdirs() }
+                        for (apk in app.apkPaths) {
+                            apk.copyTo(File(dir, apk.name), overwrite = true)
+                            count++
+                        }
+                    }
+                    count
+                }
+                busy = false
+                onEvent(UiEvent.ShowMessage("Copied $n APK(s) for ${pick.size} app(s)"))
+                onEvent(UiEvent.Refresh)
+            }
+        }) { Text("Extract ${selected.size}") }
+    }) { modifier ->
+        val list = apps
+        if (list == null) Loading(modifier, error) else Column(modifier) {
+            androidx.compose.material3.OutlinedTextField(
+                filter, { filter = it }, label = { Text("Filter ${list.size} apps") },
+                singleLine = true, modifier = Modifier.fillMaxWidth().padding(8.dp),
+            )
+            if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+            val shown = remember(list, filter) {
+                if (filter.isBlank()) list else list.filter {
+                    it.label.contains(filter, true) || it.packageName.contains(filter, true)
+                }
+            }
+            LazyColumn(Modifier.fillMaxSize()) {
+                items(shown, key = { it.packageName }) { app ->
+                    Row(
+                        Modifier.fillMaxWidth().clickable {
+                            if (app.packageName in selected) selected.remove(app.packageName) else selected.add(app.packageName)
+                        }.padding(horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(checked = app.packageName in selected, onCheckedChange = {
+                            if (it) selected.add(app.packageName) else selected.remove(app.packageName)
+                        })
+                        Column(Modifier.weight(1f)) {
+                            Text(app.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(
+                                "${app.packageName} · ${app.apkPaths.size} APK(s) · ${StorageAnalyzer.human(app.size)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
             }

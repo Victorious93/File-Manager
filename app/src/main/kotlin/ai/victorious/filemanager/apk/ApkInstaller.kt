@@ -31,7 +31,42 @@ object ApkInstaller {
         Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
-    /** Queues [apks] and starts installing. Returns a user-facing status string. */
+    /**
+     * Installs [apks] together in one PackageInstaller session (split APKs / bundles).
+     * All APKs must belong to the same package. User confirms once.
+     */
+    fun installSplits(context: Context, apks: List<File>): String {
+        if (apks.isEmpty()) return "No APKs"
+        if (!canInstall(context)) {
+            context.startActivity(unknownSourcesSettings(context))
+            return "Allow "Install unknown apps" for this app, then try again"
+        }
+        try {
+            val installer = context.packageManager.packageInstaller
+            val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
+            if (Build.VERSION.SDK_INT >= 31) params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_REQUIRED)
+            params.setSize(apks.sumOf { it.length() })
+            val id = installer.createSession(params)
+            installer.openSession(id).use { session ->
+                apks.forEachIndexed { i, apk ->
+                    apk.inputStream().use { input ->
+                        session.openWrite("split_$i.apk", 0, apk.length()).use { out ->
+                            input.copyTo(out); session.fsync(out)
+                        }
+                    }
+                }
+                val intent = Intent(context, InstallResultReceiver::class.java)
+                    .setAction(ACTION_RESULT).putExtra(EXTRA_NAME, apks.first().name + " +" + (apks.size - 1) + " splits")
+                val flags = PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0)
+                session.commit(PendingIntent.getBroadcast(context, id, intent, flags).intentSender)
+            }
+            return "Installing ${apks.size} splits together…"
+        } catch (e: Exception) {
+            return "Split install failed: ${e.message}"
+        }
+    }
+
+    /** Queues [apks] and starts installing one-by-one. Returns a user-facing status string. */
     @Synchronized
     fun install(context: Context, apks: List<File>): String {
         if (apks.isEmpty()) return "No APKs selected"
