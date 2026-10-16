@@ -13,6 +13,7 @@ import ai.victorious.filemanager.core.fs.FileIo
 import ai.victorious.filemanager.core.ops.OpKind
 import ai.victorious.filemanager.core.search.SearchHit
 import ai.victorious.filemanager.core.trash.TrashEntry
+import ai.victorious.filemanager.core.archive.EncryptedZip
 import ai.victorious.filemanager.core.viewer.FileKind
 import ai.victorious.filemanager.core.viewer.FileKinds
 import android.Manifest
@@ -40,7 +41,7 @@ fun defaultMode(file: File): ViewerMode = when (FileKinds.detect(file)) {
     FileKind.BINARY -> ViewerMode.HEX
 }
 
-enum class Dest { FILES, SEARCH, BOOKMARKS, TRASH, SETTINGS }
+enum class Dest { FILES, SEARCH, BOOKMARKS, TOOLS, TRASH, SETTINGS }
 
 data class TabState(
     val id: String,
@@ -76,6 +77,7 @@ data class UiState(
     val dcaInstalled: Boolean = false,
     val busy: Boolean = false,
     val viewer: ViewerRequest? = null,
+    val tool: ToolRequest? = null,
     val apkInfo: ApkInfo? = null,
     val signTarget: String? = null,
     /** APK surgery screen target (.apk, .dex or extracted folder). */
@@ -127,6 +129,9 @@ sealed interface UiEvent {
     /** Open a file in a viewer; null mode picks the default from the file type. */
     data class OpenFile(val path: String, val mode: ViewerMode? = null) : UiEvent
     data object CloseViewer : UiEvent
+    data class OpenTool(val request: ToolRequest) : UiEvent
+    data object CloseTool : UiEvent
+    class ZipSelectedEncrypted(val password: CharArray) : UiEvent
     data class ShowMessage(val message: String) : UiEvent
     data object ZipSelected : UiEvent
     data class ShowApkInfo(val path: String) : UiEvent
@@ -237,6 +242,9 @@ class FileManagerViewModel(
             is UiEvent.OpenFile -> _ui.update { it.copy(viewer = ViewerRequest(event.path, event.mode ?: defaultMode(File(event.path)))) }
             UiEvent.CloseViewer -> { _ui.update { it.copy(viewer = null) }; refreshAll() }
             is UiEvent.ShowMessage -> snack(event.message)
+            is UiEvent.OpenTool -> _ui.update { it.copy(tool = event.request) }
+            UiEvent.CloseTool -> { _ui.update { it.copy(tool = null) }; refreshAll() }
+            is UiEvent.ZipSelectedEncrypted -> zipSelected(event.password)
             UiEvent.ZipSelected -> zipSelected()
             is UiEvent.ShowApkInfo -> background("Reading APK…", { apkRepo.info(File(event.path)) }) { info ->
                 _ui.update { it.copy(apkInfo = info) }
@@ -435,7 +443,7 @@ class FileManagerViewModel(
         }
     }
 
-    private fun zipSelected() {
+    private fun zipSelected(password: CharArray? = null) {
         val sources = selectedSources()
         if (sources.isEmpty()) {
             snack("Select files to zip")
@@ -448,7 +456,10 @@ class FileManagerViewModel(
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     val out = Archives.uniqueZipName(dir, base)
-                    Archives.createZip(sources.map(::File), out) to out
+                    val n = if (password != null) EncryptedZip.create(sources.map(::File), out, password)
+                    else Archives.createZip(sources.map(::File), out)
+                    password?.fill('\u0000')
+                    n to out
                 }
             }
             _ui.update { it.copy(busy = false) }

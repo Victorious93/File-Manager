@@ -12,6 +12,7 @@ commonsCompress = "1.27.1"
 xz = "1.10"
 apksig = "8.13.0"
 smali = "3.0.9"
+zip4j = "2.11.5"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -34,6 +35,7 @@ xz = { module = "org.tukaani:xz", version.ref = "xz" }
 apksig = { module = "com.android.tools.build:apksig", version.ref = "apksig" }
 smali-dexlib2 = { module = "com.android.tools.smali:smali-dexlib2", version.ref = "smali" }
 smali-baksmali = { module = "com.android.tools.smali:smali-baksmali", version.ref = "smali" }
+zip4j = { module = "net.lingala.zip4j:zip4j", version.ref = "zip4j" }
 junit = { module = "junit:junit", version.ref = "junit" }
 
 [plugins]

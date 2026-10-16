@@ -58,6 +58,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -108,6 +109,13 @@ fun FileManagerApp(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { onRefreshPermissions() }
 
+    state.tool?.let { tool ->
+        Box(Modifier.fillMaxSize()) {
+            ToolHost(tool, onClose = { onEvent(UiEvent.CloseTool) }, onEvent = onEvent)
+            SnackbarHost(snackbarHost, Modifier.align(Alignment.BottomCenter))
+        }
+        return
+    }
     val viewer = state.viewer
     if (viewer != null) {
         val otherDir = if (state.focusedPane == 0) state.right.active.path else state.left.active.path
@@ -143,6 +151,7 @@ fun FileManagerApp(
                                 Dest.FILES -> pane(state).active.path
                                 Dest.SEARCH -> "Search"
                                 Dest.BOOKMARKS -> "Bookmarks"
+                                Dest.TOOLS -> "Tools"
                                 Dest.TRASH -> "Trash"
                                 Dest.SETTINGS -> "Settings"
                             },
@@ -233,6 +242,12 @@ fun FileManagerApp(
                         label = { Text("Bookmarks") },
                     )
                     NavigationBarItem(
+                        selected = state.destination == Dest.TOOLS,
+                        onClick = { onEvent(UiEvent.Navigate(Dest.TOOLS)) },
+                        icon = { Icon(Icons.Outlined.Build, contentDescription = null) },
+                        label = { Text("Tools") },
+                    )
+                    NavigationBarItem(
                         selected = state.destination == Dest.TRASH,
                         onClick = { onEvent(UiEvent.Navigate(Dest.TRASH)) },
                         icon = { Icon(Icons.Outlined.RestoreFromTrash, contentDescription = null) },
@@ -278,6 +293,7 @@ fun FileManagerApp(
                 Dest.FILES -> DualPane(state, onEvent)
                 Dest.SEARCH -> SearchPane(state, onEvent)
                 Dest.BOOKMARKS -> BookmarksPane(state, onEvent)
+                Dest.TOOLS -> ToolsPane(state, onEvent)
                 Dest.TRASH -> TrashPane(state, onEvent)
                 Dest.SETTINGS -> SettingsPane()
             }
