@@ -4,11 +4,16 @@
 
 # Victorious File Manager
 
-A fast, standalone Android file manager (Phase 1) with an **optional** DroidCommand AI fleet stub.
+A fast, standalone Android file manager (Phases 1–7) with an **optional** DroidCommand AI fleet stub.
 
 This app is an MT Manager–class product: **it works fully on its own**. It is not a dependent companion APK. DroidCommand AI is never required, and removing DCA does not disable any file-manager feature.
 
-## Phase 1 includes
+## Features (Phases 1–7)
+
+See also `docs/APK_TOOLS.md` and `docs/POWER_TOOLS.md`.
+
+### Phase 1 includes
+
 
 - Kotlin + Jetpack Compose + Material 3
 - Dual panes (side-by-side on wide screens, stacked on phones) with per-pane tabs
@@ -24,6 +29,14 @@ Version: `0.1.0`
 `minSdk`: **26** · `targetSdk` / `compileSdk`: **35**
 
 Debug builds use `ai.victorious.filemanager.debug`.
+
+### Later phases (merged)
+
+- **Phase 2+** — text/hex editors, archives, image/media viewers  
+- **Phase 3–4** — APK install/sign/rebuild, DEX/smali browse, resources  
+- **Phase 5** — syntax highlighting, find/replace, diff, duplicates, storage analyzer, encrypted ZIP  
+- **Phase 6** — smali assemble, ARSC strings, APKS/XAPK, v4/verify, extract installed apps  
+- **Phase 7** — Root (libsu), Shizuku, built-in terminal, app manager backup/restore (`docs/POWER_TOOLS.md`)
 
 ## Build
 

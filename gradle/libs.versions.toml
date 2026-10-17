@@ -13,6 +13,8 @@ xz = "1.10"
 apksig = "8.13.0"
 smali = "3.0.9"
 zip4j = "2.11.5"
+libsu = "6.0.0"
+shizuku = "13.1.5"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -37,6 +39,9 @@ smali-dexlib2 = { module = "com.android.tools.smali:smali-dexlib2", version.ref 
 smali-baksmali = { module = "com.android.tools.smali:smali-baksmali", version.ref = "smali" }
 smali-smali = { module = "com.android.tools.smali:smali", version.ref = "smali" }
 zip4j = { module = "net.lingala.zip4j:zip4j", version.ref = "zip4j" }
+libsu-core = { module = "com.github.topjohnwu.libsu:core", version.ref = "libsu" }
+shizuku-api = { module = "dev.rikka.shizuku:api", version.ref = "shizuku" }
+shizuku-provider = { module = "dev.rikka.shizuku:provider", version.ref = "shizuku" }
 junit = { module = "junit:junit", version.ref = "junit" }
 
 [plugins]

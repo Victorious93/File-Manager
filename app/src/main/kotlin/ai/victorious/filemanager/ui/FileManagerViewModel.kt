@@ -45,7 +45,7 @@ fun defaultMode(file: File): ViewerMode = when (FileKinds.detect(file)) {
     FileKind.BINARY -> ViewerMode.HEX
 }
 
-enum class Dest { FILES, SEARCH, BOOKMARKS, TOOLS, TRASH, SETTINGS }
+enum class Dest { FILES, SEARCH, BOOKMARKS, APPS, TOOLS, TRASH, SETTINGS }
 
 data class TabState(
     val id: String,
@@ -90,6 +90,7 @@ data class UiState(
     val rebuiltApk: String? = null,
     val verifyResult: Pair<String, ai.victorious.filemanager.core.apk.VerifyResult>? = null,
     val bundle: ai.victorious.filemanager.core.apk.ApkBundle? = null,
+    val showTerminal: Boolean = false,
 )
 
 /** Signing request from the Sign APK dialog. Passwords live only in memory for this call. */
@@ -158,6 +159,8 @@ sealed interface UiEvent {
     data object CloseBundle : UiEvent
     data class MergeBundle(val outName: String = "universal.apk") : UiEvent
     data class SaveArscEdits(val target: String, val edits: Map<Int, String>) : UiEvent
+    data object OpenTerminal : UiEvent
+    data object CloseTerminal : UiEvent
 }
 
 class FileManagerViewModel(
@@ -317,6 +320,11 @@ class FileManagerViewModel(
                     val out = File(destDir, event.outName)
                     ApkBundles.merge(b.splits.map { it.file }, out) to out
                 }) { (n, out) -> snack("Merged $n entries → ${out.name} (unsigned — Sign before install)") }
+            }
+            UiEvent.OpenTerminal -> _ui.update { it.copy(showTerminal = true) }
+            UiEvent.CloseTerminal -> {
+                app.terminals.closeAll()
+                _ui.update { it.copy(showTerminal = false) }
             }
             is UiEvent.SaveArscEdits -> background("Writing resources.arsc…", {
                 val target = File(event.target)

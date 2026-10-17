@@ -35,6 +35,8 @@ import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.InsertDriveFile
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PieChart
+import androidx.compose.material.icons.outlined.Terminal
+import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
@@ -81,6 +83,8 @@ sealed interface ToolRequest {
 
 @Composable
 fun ToolsPane(state: UiState, onEvent: (UiEvent) -> Unit) {
+    val context = LocalContext.current
+    val appCtx = context.applicationContext as FileManagerApplication
     val pane = if (state.focusedPane == 0) state.left else state.right
     val dir = pane.active.path
     val files = selectedFiles(state)
@@ -93,6 +97,11 @@ fun ToolsPane(state: UiState, onEvent: (UiEvent) -> Unit) {
                 modifier = Modifier.padding(16.dp),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+        item {
+            ToolItem(Icons.Outlined.Terminal, "Terminal", "sh / su / Shizuku shell with extra keys") {
+                onEvent(UiEvent.OpenTerminal)
+            }
         }
         item {
             ToolItem(Icons.Outlined.Compare, "Compare two files", "Select exactly 2 text files (${files.size} selected)") {
@@ -119,6 +128,18 @@ fun ToolsPane(state: UiState, onEvent: (UiEvent) -> Unit) {
         item {
             ToolItem(Icons.Outlined.Folder, "Extract installed apps", "Copy base + split APKs into this folder") {
                 onEvent(UiEvent.OpenTool(ToolRequest.ExtractApps(dir)))
+            }
+        }
+        item {
+            ToolItem(Icons.Outlined.Restore, "Restore app backup", "Select a backup folder (with manifest.json) in Files, then tap here") {
+                val folders = (if (state.focusedPane == 0) state.left else state.right).selected.map(::File).filter { it.isDirectory }
+                if (folders.size != 1) onEvent(UiEvent.ShowMessage("Select exactly one backup folder in Files"))
+                else {
+                    val svc = ai.victorious.filemanager.apps.AppBackupService(appCtx, appCtx.privilege)
+                    runCatching { svc.restoreApks(folders.first()) }
+                        .onSuccess { onEvent(UiEvent.ShowMessage(it)) }
+                        .onFailure { onEvent(UiEvent.ShowMessage(it.message ?: "Restore failed")) }
+                }
             }
         }
     }
