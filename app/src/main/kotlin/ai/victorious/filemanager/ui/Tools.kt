@@ -35,7 +35,9 @@ import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.InsertDriveFile
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PieChart
+import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.Terminal
+import androidx.compose.material.icons.outlined.Wifi
 import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -101,6 +103,16 @@ fun ToolsPane(state: UiState, onEvent: (UiEvent) -> Unit) {
         item {
             ToolItem(Icons.Outlined.Terminal, "Terminal", "sh / su / Shizuku shell with extra keys") {
                 onEvent(UiEvent.OpenTerminal)
+            }
+        }
+        item {
+            ToolItem(Icons.Outlined.Cloud, "Network connections", "FTP / FTPS / SFTP / SMB / WebDAV") {
+                onEvent(UiEvent.OpenNetwork)
+            }
+        }
+        item {
+            ToolItem(Icons.Outlined.Wifi, "Wi-Fi file transfer", "LAN web server + QR for the focused folder") {
+                onEvent(UiEvent.OpenWifiTransfer)
             }
         }
         item {

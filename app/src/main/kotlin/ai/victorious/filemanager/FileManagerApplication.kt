@@ -12,6 +12,9 @@ import ai.victorious.filemanager.fleet.FleetSettings
 import ai.victorious.filemanager.priv.EscalatingFileIo
 import ai.victorious.filemanager.priv.PrivilegeManager
 import ai.victorious.filemanager.priv.PrivilegeSettings
+import ai.victorious.filemanager.core.net.CompositeFileIo
+import ai.victorious.filemanager.net.ConnectionRepository
+import ai.victorious.filemanager.net.WifiTransferController
 import ai.victorious.filemanager.terminal.TerminalSessionManager
 import android.app.Application
 import java.io.File
@@ -42,13 +45,23 @@ class FileManagerApplication : Application() {
         private set
     lateinit var terminals: TerminalSessionManager
         private set
+    lateinit var connections: ConnectionRepository
+        private set
+    lateinit var wifiTransfer: WifiTransferController
+        private set
 
     override fun onCreate() {
         super.onCreate()
         privilegeSettings = PrivilegeSettings(this)
         privilege = PrivilegeManager(privilegeSettings)
         normalIo = NioFileIo()
-        io = EscalatingFileIo(normalIo, privilege)
+        connections = ConnectionRepository(this)
+        val escalating = EscalatingFileIo(normalIo, privilege)
+        io = CompositeFileIo(
+            local = escalating,
+            backends = { id -> connections.backendOrNull(id) },
+            listConnections = { connections.list() },
+        )
         trash = TrashStore(io, File(filesDir, "trash").absolutePath)
         bookmarks = BookmarkStore(File(filesDir, "bookmarks.json").absolutePath)
         queue = OperationQueue(io, trash)
@@ -56,6 +69,7 @@ class FileManagerApplication : Application() {
         nodeId = loadOrCreateNodeId()
         fleetSettings = FleetSettings(this)
         terminals = TerminalSessionManager(privilege)
+        wifiTransfer = WifiTransferController(io)
         bridge = BridgeExecutor(
             nodeId = nodeId,
             policy = CallerPolicy(certPins = CallerPolicy.parsePins(BuildConfig.FLEET_CALLER_CERT_PINS)),

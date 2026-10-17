@@ -118,6 +118,35 @@ fun FileManagerApp(
         }
         return
     }
+
+    if (state.showNetwork) {
+        Box(Modifier.fillMaxSize()) {
+            NetworkConnectionsScreen(
+                onOpenRemote = { path ->
+                    onEvent(UiEvent.CloseNetwork)
+                    onEvent(UiEvent.Open(state.focusedPane, path))
+                    onEvent(UiEvent.Navigate(Dest.FILES))
+                },
+                onMessage = { onEvent(UiEvent.ShowMessage(it)) },
+                onClose = { onEvent(UiEvent.CloseNetwork) },
+            )
+            SnackbarHost(snackbarHost, Modifier.align(Alignment.BottomCenter))
+        }
+        return
+    }
+
+    if (state.showWifiTransfer) {
+        val pane = if (state.focusedPane == 0) state.left else state.right
+        Box(Modifier.fillMaxSize()) {
+            WifiTransferScreen(
+                rootPath = pane.active.path,
+                onMessage = { onEvent(UiEvent.ShowMessage(it)) },
+                onClose = { onEvent(UiEvent.CloseWifiTransfer) },
+            )
+            SnackbarHost(snackbarHost, Modifier.align(Alignment.BottomCenter))
+        }
+        return
+    }
     state.tool?.let { tool ->
         Box(Modifier.fillMaxSize()) {
             ToolHost(tool, onClose = { onEvent(UiEvent.CloseTool) }, onEvent = onEvent)

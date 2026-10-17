@@ -1,0 +1,101 @@
+package ai.victorious.filemanager.core.net
+
+import kotlinx.serialization.Serializable
+
+@Serializable
+enum class RemoteProtocol {
+    FTP,
+    FTPS,
+    SFTP,
+    SMB,
+    WEBDAV,
+    ;
+
+    val defaultPort: Int
+        get() = when (this) {
+            FTP -> 21
+            FTPS -> 990
+            SFTP -> 22
+            SMB -> 445
+            WEBDAV -> 443
+        }
+}
+
+@Serializable
+enum class AuthKind { PASSWORD, PRIVATE_KEY }
+
+@Serializable
+data class SavedConnection(
+    val id: String,
+    val name: String,
+    val protocol: RemoteProtocol,
+    val host: String,
+    val port: Int,
+    val username: String = "",
+    val initialPath: String = "/",
+    val authKind: AuthKind = AuthKind.PASSWORD,
+    /** Display-only hint (e.g. key file name). Never a secret. */
+    val keyLabel: String = "",
+    /** SMB share name when protocol is SMB. */
+    val share: String = "",
+    /** Use HTTPS for WebDAV when true. */
+    val webDavHttps: Boolean = true,
+)
+
+data class ConnectionDraft(
+    val name: String,
+    val protocol: RemoteProtocol,
+    val host: String,
+    val port: Int? = null,
+    val username: String = "",
+    val password: String? = null,
+    val privateKeyPem: String? = null,
+    val initialPath: String = "/",
+    val authKind: AuthKind = AuthKind.PASSWORD,
+    val keyLabel: String = "",
+    val share: String = "",
+    val webDavHttps: Boolean = true,
+)
+
+/**
+ * Parse a connection URI like `sftp://user@host:22/path` or `ftp://host`.
+ * Password in the URI (user:pass@host) is accepted for import but callers must
+ * not log the raw URI — use [CredentialRedactor].
+ */
+object ConnectionUriParser {
+    private val URI_RE = Regex(
+        """^(?<scheme>ftp|ftps|sftp|smb|webdav|davs|dav)://(?:(?<user>[^:@/]+)(?::(?<pass>[^@/]*))?@)?(?<host>\[[^\]]+\]|[^:/]+)(?::(?<port>\d+))?(?<path>/.*)?$""",
+        RegexOption.IGNORE_CASE,
+    )
+
+    data class Parsed(
+        val protocol: RemoteProtocol,
+        val host: String,
+        val port: Int,
+        val username: String,
+        val password: String?,
+        val path: String,
+        val webDavHttps: Boolean,
+    )
+
+    fun parse(uri: String): Parsed {
+        val m = URI_RE.matchEntire(uri.trim())
+            ?: throw IllegalArgumentException("Unrecognized connection URI")
+        val scheme = m.groups["scheme"]!!.value.lowercase()
+        val (protocol, https) = when (scheme) {
+            "ftp" -> RemoteProtocol.FTP to false
+            "ftps" -> RemoteProtocol.FTPS to false
+            "sftp" -> RemoteProtocol.SFTP to false
+            "smb" -> RemoteProtocol.SMB to false
+            "webdav", "dav" -> RemoteProtocol.WEBDAV to false
+            "davs" -> RemoteProtocol.WEBDAV to true
+            else -> throw IllegalArgumentException("Unsupported scheme: $scheme")
+        }
+        val host = m.groups["host"]!!.value.trim('[', ']')
+        val port = m.groups["port"]?.value?.toIntOrNull() ?: protocol.defaultPort
+        val user = m.groups["user"]?.value.orEmpty()
+        val pass = m.groups["pass"]?.value
+        val path = m.groups["path"]?.value ?: "/"
+        return Parsed(protocol, host, port, user, pass, path, https)
+    }
+}

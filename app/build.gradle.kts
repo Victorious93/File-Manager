@@ -113,6 +113,9 @@ dependencies {
     implementation(libs.libsu.core)
     implementation(libs.shizuku.api)
     implementation(libs.shizuku.provider)
+    implementation(libs.androidx.security.crypto)
+    implementation(libs.zxing.core)
+    implementation(libs.okhttp)
     debugImplementation(libs.androidx.compose.ui.tooling)
     testImplementation(libs.junit)
 }
