@@ -22,10 +22,46 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+
+    // File-Manager-only debug key when DEBUG_KEYSTORE_* env/properties are set.
+    // Falls back to the Android default debug keystore otherwise (local without secrets).
+    // Never use /workspace/fleet-signing — that is a shared fleet key.
+    signingConfigs {
+        getByName("debug") {
+            val storePath = (
+                System.getenv("DEBUG_KEYSTORE_FILE")
+                    ?: (project.findProperty("DEBUG_KEYSTORE_FILE") as String?)
+            )?.trim().orEmpty()
+            val storePass = (
+                System.getenv("DEBUG_KEYSTORE_PASSWORD")
+                    ?: (project.findProperty("DEBUG_KEYSTORE_PASSWORD") as String?)
+            )?.trim().orEmpty()
+            val alias = (
+                System.getenv("DEBUG_KEY_ALIAS")
+                    ?: (project.findProperty("DEBUG_KEY_ALIAS") as String?)
+            )?.trim().orEmpty()
+            val keyPass = (
+                System.getenv("DEBUG_KEY_PASSWORD")
+                    ?: (project.findProperty("DEBUG_KEY_PASSWORD") as String?)
+            )?.trim().orEmpty()
+            val store = if (storePath.isNotEmpty()) file(storePath) else null
+            if (store != null && store.isFile && storePass.isNotEmpty() && alias.isNotEmpty() && keyPass.isNotEmpty()) {
+                storeFile = store
+                storePassword = storePass
+                keyAlias = alias
+                keyPassword = keyPass
+                println("signing: using File Manager debug keystore at ${store.absolutePath}")
+            } else {
+                println("signing: DEBUG_KEYSTORE_* not fully set; using Android default debug key")
+            }
+        }
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
+            signingConfig = signingConfigs.getByName("debug")
         }
         release {
             isMinifyEnabled = false

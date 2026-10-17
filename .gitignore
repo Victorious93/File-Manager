@@ -41,3 +41,10 @@ google-services.json
 *.key
 *.pem
 !app/src/main/res/**
+
+# Local debug signing (never commit; keystore lives outside the repo)
+debug-signing/
+**/debug-signing/
+passwords.env
+*.passwords
+fm-debug.jks

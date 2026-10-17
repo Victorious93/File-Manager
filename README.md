@@ -111,3 +111,4 @@ Sign APK (V1/V2/V3 via apksig, Apache-2.0), Uninstall (from APK info), Share / e
 Long-press an extracted folder: Rebuild APK (aligned, unsigned). Multi-select APKs + the Android
 bottom-bar icon installs them in sequence. Signing uses your keystore or a per-device debug key
 generated in-app — no keys in the repo. Details: [docs/APK_TOOLS.md](docs/APK_TOOLS.md).
+Debug signing setup: [docs/SIGNING.md](docs/SIGNING.md).
