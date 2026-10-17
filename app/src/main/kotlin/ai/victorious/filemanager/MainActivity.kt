@@ -22,7 +22,8 @@ class MainActivity : FragmentActivity() {
         // Listing happens in onResume (always follows onCreate), off the main thread.
         viewModel.refreshPermissions()
         setContent {
-            VictoriousTheme {
+            val themePrefs by (application as FileManagerApplication).themeSettings.state.collectAsStateWithLifecycle()
+            VictoriousTheme(themePrefs) {
                 val state by viewModel.ui.collectAsStateWithLifecycle()
                 FileManagerApp(
                     state = state,

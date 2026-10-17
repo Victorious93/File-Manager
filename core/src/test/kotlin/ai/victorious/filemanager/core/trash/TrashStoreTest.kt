@@ -78,4 +78,26 @@ class TrashStoreTest {
         trash.restore(id)
         assertTrue(File(docs, "folder/inner.txt").exists())
     }
+
+    @Test
+    fun sameVolumePayloadDirUsedAndRestorable() {
+        val volume = tmp.newFolder("volume")
+        val volTrash = File(volume, ".victorious-trash/items").absolutePath
+        val t = TrashStore(io, File(tmp.root, "idx").absolutePath, payloadDirFor = { p ->
+            if (p.startsWith(volume.absolutePath)) volTrash else null
+        })
+        val big = File(volume, "Movies/clip.mp4").apply { parentFile.mkdirs(); writeText("frames") }
+        val id = t.moveToTrash(big.absolutePath)
+        val entry = t.list().single()
+        assertTrue("payload on same volume: ${entry.trashPayloadPath}", entry.trashPayloadPath.startsWith(volTrash))
+        assertTrue(File(volume, ".victorious-trash/.nomedia").exists())
+        assertFalse(big.exists())
+        assertEquals(big.absolutePath, t.restore(id))
+        assertEquals("frames", big.readText())
+
+        // Trashing the volume trash folder (or a parent of it) falls back to the app trash root.
+        val outer = File(volume, ".victorious-trash").absolutePath
+        t.moveToTrash(outer)
+        assertTrue(t.list().single().trashPayloadPath.startsWith(File(tmp.root, "idx").absolutePath))
+    }
 }

@@ -14,6 +14,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -65,6 +66,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -84,7 +87,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -180,6 +182,9 @@ fun FileManagerApp(
         return
     }
 
+    // Window-size (not screen-size) driven, so split-screen, freeform and foldables adapt too.
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+    val wideWindow = isWideWindow(maxWidth.value)
     Scaffold(
         topBar = {
             TopAppBar(
@@ -263,58 +268,39 @@ fun FileManagerApp(
                         },
                     )
                 }
-                NavigationBar {
-                    NavigationBarItem(
-                        selected = state.destination == Dest.FILES,
-                        onClick = { onEvent(UiEvent.Navigate(Dest.FILES)) },
-                        icon = { Icon(Icons.Outlined.Storage, contentDescription = null) },
-                        label = { Text("Files") },
-                    )
-                    NavigationBarItem(
-                        selected = state.destination == Dest.SEARCH,
-                        onClick = { onEvent(UiEvent.Navigate(Dest.SEARCH)) },
-                        icon = { Icon(Icons.Outlined.Search, contentDescription = null) },
-                        label = { Text("Search") },
-                    )
-                    NavigationBarItem(
-                        selected = state.destination == Dest.BOOKMARKS,
-                        onClick = { onEvent(UiEvent.Navigate(Dest.BOOKMARKS)) },
-                        icon = { Icon(Icons.Outlined.BookmarkBorder, contentDescription = null) },
-                        label = { Text("Bookmarks") },
-                    )
-                    NavigationBarItem(
-                        selected = state.destination == Dest.APPS,
-                        onClick = { onEvent(UiEvent.Navigate(Dest.APPS)) },
-                        icon = { Icon(Icons.Outlined.Apps, contentDescription = null) },
-                        label = { Text("Apps") },
-                    )
-                    NavigationBarItem(
-                        selected = state.destination == Dest.TOOLS,
-                        onClick = { onEvent(UiEvent.Navigate(Dest.TOOLS)) },
-                        icon = { Icon(Icons.Outlined.Build, contentDescription = null) },
-                        label = { Text("Tools") },
-                    )
-                    NavigationBarItem(
-                        selected = state.destination == Dest.TRASH,
-                        onClick = { onEvent(UiEvent.Navigate(Dest.TRASH)) },
-                        icon = { Icon(Icons.Outlined.RestoreFromTrash, contentDescription = null) },
-                        label = { Text("Trash") },
-                    )
-                    NavigationBarItem(
-                        selected = state.destination == Dest.SETTINGS,
-                        onClick = { onEvent(UiEvent.Navigate(Dest.SETTINGS)) },
-                        icon = { Icon(Icons.Outlined.SettingsIcon, contentDescription = null) },
-                        label = { Text("Settings") },
-                    )
+                if (!wideWindow) {
+                    NavigationBar {
+                        for (item in NavItems) {
+                            NavigationBarItem(
+                                selected = state.destination == item.dest,
+                                onClick = { onEvent(UiEvent.Navigate(item.dest)) },
+                                icon = { Icon(item.icon, contentDescription = null) },
+                                label = { Text(item.label) },
+                            )
+                        }
+                    }
                 }
             }
         },
         snackbarHost = { SnackbarHost(snackbarHost) },
     ) { padding ->
+      Row(Modifier.fillMaxSize().padding(padding)) {
+        if (wideWindow) {
+            NavigationRail {
+                for (item in NavItems) {
+                    NavigationRailItem(
+                        selected = state.destination == item.dest,
+                        onClick = { onEvent(UiEvent.Navigate(item.dest)) },
+                        icon = { Icon(item.icon, contentDescription = null) },
+                        label = { Text(item.label) },
+                    )
+                }
+            }
+        }
         Column(
             Modifier
-                .fillMaxSize()
-                .padding(padding),
+                .weight(1f)
+                .fillMaxHeight(),
         ) {
             if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             if (!state.hasStorageAccess) {
@@ -349,6 +335,8 @@ fun FileManagerApp(
                 Dest.SETTINGS -> SettingsPane(onEvent)
             }
         }
+      }
+    }
     }
 
     if (showCreate) {
@@ -403,18 +391,19 @@ private fun PermissionBanner(onGrant: () -> Unit) {
 
 @Composable
 private fun DualPane(state: UiState, onEvent: (UiEvent) -> Unit, onCreate: () -> Unit) {
-    val wide = LocalConfiguration.current.screenWidthDp >= 700
-    if (wide) {
-        Row(Modifier.fillMaxSize()) {
-            FilePane(0, state.left, state.focusedPane == 0, onEvent, onCreate, Modifier.weight(1f))
-            VerticalDivider()
-            FilePane(1, state.right, state.focusedPane == 1, onEvent, onCreate, Modifier.weight(1f))
-        }
-    } else {
-        Column(Modifier.fillMaxSize()) {
-            FilePane(0, state.left, state.focusedPane == 0, onEvent, onCreate, Modifier.weight(1f))
-            HorizontalDivider()
-            FilePane(1, state.right, state.focusedPane == 1, onEvent, onCreate, Modifier.weight(1f))
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        if (panesSideBySide(maxWidth.value, maxHeight.value)) {
+            Row(Modifier.fillMaxSize()) {
+                FilePane(0, state.left, state.focusedPane == 0, onEvent, onCreate, Modifier.weight(1f))
+                VerticalDivider()
+                FilePane(1, state.right, state.focusedPane == 1, onEvent, onCreate, Modifier.weight(1f))
+            }
+        } else {
+            Column(Modifier.fillMaxSize()) {
+                FilePane(0, state.left, state.focusedPane == 0, onEvent, onCreate, Modifier.weight(1f))
+                HorizontalDivider()
+                FilePane(1, state.right, state.focusedPane == 1, onEvent, onCreate, Modifier.weight(1f))
+            }
         }
     }
 }
@@ -597,12 +586,13 @@ private fun SearchPane(state: UiState, onEvent: (UiEvent) -> Unit) {
             onValueChange = { onEvent(UiEvent.Search(it)) },
             modifier = Modifier.fillMaxWidth(),
             label = { Text("Search this device") },
+            supportingText = { Text("Terms are AND-ed · *.pdf filters by type · /folder matches the path") },
             singleLine = true,
             leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
         )
         Spacer(Modifier.height(12.dp))
         Text(
-            "${state.searchHits.size} results",
+            state.searchStatus ?: "${state.searchHits.size} results",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -755,6 +745,11 @@ private fun AboutDialog(state: UiState, onDismiss: () -> Unit) {
                     "Fleet class is pending owner choice (EXTERNAL_NODE vs BOUND_COMPANION). This stub is not LIVE control.",
                     style = MaterialTheme.typography.bodySmall,
                 )
+                Text(
+                    "RAR extraction uses junrar (UnRAR license, extraction only; the code may not be used to " +
+                        "develop a RAR (WinRAR) compatible archiver). Licence text: assets/licenses/junrar-UnRAR-LICENSE.txt.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
@@ -763,8 +758,11 @@ private fun AboutDialog(state: UiState, onDismiss: () -> Unit) {
 
 private fun pane(state: UiState): PaneState = if (state.focusedPane == 0) state.left else state.right
 
+private val RowDateFormat: DateFormat by lazy { DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT) }
+
 private fun meta(entry: FileEntry): String {
-    val whenStr = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(entry.modifiedEpochMs))
+    // One formatter for all rows (was one allocation per visible row per recomposition). Main thread only.
+    val whenStr = RowDateFormat.format(Date(entry.modifiedEpochMs))
     return if (entry.isDirectory) "Folder · $whenStr" else "${formatSize(entry.sizeBytes)} · $whenStr"
 }
 
@@ -776,3 +774,15 @@ private fun formatSize(bytes: Long): String {
     if (mb < 1024) return String.format(java.util.Locale.US, "%.1f MB", mb)
     return String.format(java.util.Locale.US, "%.1f GB", mb / 1024.0)
 }
+
+private class NavItem(val dest: Dest, val icon: androidx.compose.ui.graphics.vector.ImageVector, val label: String)
+
+private val NavItems = listOf(
+    NavItem(Dest.FILES, Icons.Outlined.Storage, "Files"),
+    NavItem(Dest.SEARCH, Icons.Outlined.Search, "Search"),
+    NavItem(Dest.BOOKMARKS, Icons.Outlined.BookmarkBorder, "Bookmarks"),
+    NavItem(Dest.APPS, Icons.Outlined.Apps, "Apps"),
+    NavItem(Dest.TOOLS, Icons.Outlined.Build, "Tools"),
+    NavItem(Dest.TRASH, Icons.Outlined.RestoreFromTrash, "Trash"),
+    NavItem(Dest.SETTINGS, Icons.Outlined.SettingsIcon, "Settings"),
+)

@@ -21,8 +21,9 @@ class UnsupportedArchiveException(message: String) : IOException(message)
 /**
  * Archive listing/extraction.
  * ZIP (also JAR/APK): java.util.zip. 7z: Apache Commons Compress + XZ (pure Java).
- * TAR / TAR.GZ: Commons Compress. RAR: deferred (no permissively licensed pure-Java extractor;
- * junrar uses the non-OSI UnRAR licence and lacks RAR5), so it is reported as unsupported.
+ * TAR / TAR.GZ: Commons Compress. RAR (RAR 1.5 – 7, incl. RAR5, solid, password): junrar,
+ * extraction only. junrar is distributed under the UnRAR license: the code may not be used to
+ * develop a RAR (WinRAR) compatible archiver. This app never creates RAR archives.
  */
 object Archives {
     fun format(file: File): ArchiveFormat {
@@ -49,8 +50,43 @@ object Archives {
         ArchiveFormat.TAR, ArchiveFormat.TAR_GZ -> tarStream(file).use { tar ->
             generateSequence { tar.nextEntry }.map { ArchiveItem(it.name, it.isDirectory, it.size, -1) }.toList()
         }
-        ArchiveFormat.RAR -> throw UnsupportedArchiveException("RAR is not supported yet (deferred: no Apache/MIT pure-Java extractor)")
+        ArchiveFormat.RAR -> rar(file, null) { a ->
+            if (a.hasBrokenHeaders() || (a.fileHeaders.isEmpty() && a.mainHeader == null)) throw IOException("Corrupt or truncated RAR")
+            a.fileHeaders.map { h -> ArchiveItem(rarName(h), h.isDirectory, h.fullUnpackSize, h.fullPackSize) }
+        }
         ArchiveFormat.UNKNOWN -> throw UnsupportedArchiveException("Unrecognised archive format")
+    }
+
+    class RarPasswordException(message: String) : IOException(message)
+
+    /** True when a RAR needs a password (encrypted headers or encrypted entries). */
+    fun isRarPasswordProtected(file: File): Boolean = runCatching {
+        com.github.junrar.Archive(file).use { it.isPasswordProtected || it.isEncrypted || it.fileHeaders.any { h -> h.isEncrypted } }
+    }.getOrElse { it is com.github.junrar.exception.UnsupportedRarEncryptedException || it.cause is com.github.junrar.exception.UnsupportedRarEncryptedException }
+
+    private fun rarName(h: com.github.junrar.rarfile.FileHeader) = h.fileName.replace('\\', '/')
+
+    private fun <T> rar(file: File, password: String?, block: (com.github.junrar.Archive) -> T): T = try {
+        (if (password != null) com.github.junrar.Archive(file, password) else com.github.junrar.Archive(file)).use(block)
+    } catch (e: com.github.junrar.exception.WrongPasswordException) {
+        throw RarPasswordException("Wrong password")
+    } catch (e: com.github.junrar.exception.UnsupportedRarEncryptedException) {
+        throw RarPasswordException("Password required")
+    } catch (e: com.github.junrar.exception.RarException) {
+        throw IOException("RAR: ${e.message ?: e.javaClass.simpleName}", e)
+    }
+
+    /** RAR extraction (optionally with a password). Same zip-slip guard as the other formats. */
+    fun extractRar(file: File, destDir: File, password: String? = null): Int {
+        destDir.mkdirs()
+        var count = 0
+        rar(file, password) { a ->
+            if (a.hasBrokenHeaders()) throw IOException("Corrupt or truncated RAR")
+            for (h in a.fileHeaders) {
+                if (write(destDir, rarName(h), h.isDirectory) { a.getInputStream(h) }) count++
+            }
+        }
+        return count
     }
 
     /** Extracts everything into [destDir]; returns number of files written. Guards against zip-slip. */
@@ -78,6 +114,7 @@ object Archives {
                     e = tar.nextEntry
                 }
             }
+            ArchiveFormat.RAR -> count = extractRar(file, destDir)
             else -> list(file) // throws the right message
         }
         return count

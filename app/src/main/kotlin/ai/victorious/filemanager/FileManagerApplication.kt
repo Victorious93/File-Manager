@@ -6,7 +6,9 @@ import ai.victorious.filemanager.core.fleet.CallerPolicy
 import ai.victorious.filemanager.core.fs.FileIo
 import ai.victorious.filemanager.core.fs.NioFileIo
 import ai.victorious.filemanager.core.ops.OperationQueue
+import ai.victorious.filemanager.core.search.FileIndex
 import ai.victorious.filemanager.core.search.FileSearch
+import ai.victorious.filemanager.ui.theme.ThemeSettings
 import ai.victorious.filemanager.core.trash.TrashStore
 import ai.victorious.filemanager.fleet.FleetSettings
 import ai.victorious.filemanager.priv.EscalatingFileIo
@@ -35,6 +37,10 @@ class FileManagerApplication : Application() {
     lateinit var queue: OperationQueue
         private set
     lateinit var search: FileSearch
+        private set
+    lateinit var index: FileIndex
+        private set
+    lateinit var themeSettings: ThemeSettings
         private set
     lateinit var nodeId: String
         private set
@@ -72,10 +78,20 @@ class FileManagerApplication : Application() {
             backends = { id -> connections.backendOrNull(id) },
             listConnections = { connections.list() },
         )
-        trash = TrashStore(io, File(filesDir, "trash").absolutePath)
+        // Shared storage: trash payloads stay on the same volume ($ext/.victorious-trash/items)
+        // so deleting a 4 GB video is a rename, not a copy into internal storage. The index
+        // (JSON metadata) stays in app-private filesDir.
+        val ext = android.os.Environment.getExternalStorageDirectory().absolutePath
+        trash = TrashStore(
+            io,
+            File(filesDir, "trash").absolutePath,
+            payloadDirFor = { p -> if (p == ext || p.startsWith("$ext/")) "$ext/.victorious-trash/items" else null },
+        )
         bookmarks = BookmarkStore(File(filesDir, "bookmarks.json").absolutePath)
         queue = OperationQueue(io, trash)
         search = FileSearch(io)
+        index = FileIndex(normalIo)
+        themeSettings = ThemeSettings(this)
         nodeId = loadOrCreateNodeId()
         fleetSettings = FleetSettings(this)
         terminals = TerminalSessionManager(privilege)

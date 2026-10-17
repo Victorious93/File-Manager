@@ -1,16 +1,20 @@
 package ai.victorious.filemanager.ui.theme
 
+import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 
 private val Teal = Color(0xFF2BB5A0)
-private val Blue = Color(0xFF3D7DFF)
 
-private val DarkColors = darkColorScheme(
+internal val DarkColors = darkColorScheme(
     primary = Color(0xFF7AB8FF),
     onPrimary = Color(0xFF001B3D),
     secondary = Teal,
@@ -25,8 +29,8 @@ private val DarkColors = darkColorScheme(
     outline = Color(0xFF3D4A57),
 )
 
-private val LightColors = lightColorScheme(
-    primary = Blue,
+internal val LightColors = lightColorScheme(
+    primary = Color(0xFF3D7DFF),
     onPrimary = Color.White,
     secondary = Color(0xFF0F766E),
     onSecondary = Color.White,
@@ -40,13 +44,48 @@ private val LightColors = lightColorScheme(
     outline = Color(0xFFC5D0DA),
 )
 
+/** True dark: black background/surfaces for OLED panels, keeping the dark-scheme contrast. */
+internal fun ColorScheme.amoled(): ColorScheme = copy(
+    background = Color.Black,
+    surface = Color.Black,
+    surfaceVariant = Color(0xFF101418),
+    surfaceContainer = Color(0xFF080A0C),
+    surfaceContainerLow = Color(0xFF050607),
+    surfaceContainerLowest = Color.Black,
+    surfaceContainerHigh = Color(0xFF0E1114),
+    surfaceContainerHighest = Color(0xFF15191D),
+)
+
+internal fun isDark(mode: ThemeMode, systemDark: Boolean) = when (mode) {
+    ThemeMode.SYSTEM -> systemDark
+    ThemeMode.LIGHT -> false
+    ThemeMode.DARK, ThemeMode.AMOLED -> true
+}
+
+/**
+ * Pure scheme selection (unit-tested). [dynamic] is the wallpaper scheme when the platform
+ * supports it (API 31+) and the user enabled it; otherwise the accent preset recolors primary.
+ */
+internal fun schemeFor(prefs: ThemePrefs, systemDark: Boolean, dynamic: ColorScheme?): ColorScheme {
+    val dark = isDark(prefs.mode, systemDark)
+    val base = dynamic ?: if (dark) {
+        DarkColors.copy(primary = Color(prefs.accent.dark), onPrimary = Color(0xFF0B1220))
+    } else {
+        LightColors.copy(primary = Color(prefs.accent.light), onPrimary = Color.White)
+    }
+    return if (prefs.mode == ThemeMode.AMOLED) base.amoled() else base
+}
+
 @Composable
 fun VictoriousTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    prefs: ThemePrefs = ThemePrefs(),
     content: @Composable () -> Unit,
 ) {
-    MaterialTheme(
-        colorScheme = if (darkTheme) DarkColors else LightColors,
-        content = content,
-    )
+    val systemDark = isSystemInDarkTheme()
+    val dark = isDark(prefs.mode, systemDark)
+    val dynamic = if (prefs.dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        val ctx = LocalContext.current
+        if (dark) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx)
+    } else null
+    MaterialTheme(colorScheme = schemeFor(prefs, systemDark, dynamic), content = content)
 }

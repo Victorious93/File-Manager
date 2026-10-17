@@ -114,7 +114,7 @@ GitHub Actions on every pull request:
 - **Text editor** (UTF-8, ≤4 MB): edit, save (atomic temp-file write), undo/redo, discard-changes prompt.
 - **Hex editor** (≤16 MB): 16-byte rows with offset/hex/ASCII, tap a row to overwrite bytes, undo, save writes only changed bytes.
 - **Archives**: ZIP/JAR/APK list + extract (java.util.zip); **7z** and **TAR/TAR.GZ** list + extract via Apache Commons Compress (Apache-2.0) + XZ for Java (public domain), pure Java. Extraction goes to the other pane's folder and blocks zip-slip paths.
-- **RAR: deferred.** No Apache/MIT pure-Java extractor exists (junrar uses the non-OSI UnRAR licence and doesn't support RAR5), so RAR files are detected and reported as unsupported.
+- **RAR** (added in Phase 10): list + extract RAR4/RAR5/solid/password archives via junrar, extraction only, under the UnRAR licence. See [docs/ARCHIVES.md](docs/ARCHIVES.md) for the compliance notes.
 - **Create ZIP** from selected files/folders (bottom-bar Zip button) into the current folder (`name.zip`, `name (2).zip`, …).
 - **Image preview** (PNG/JPEG/GIF/WebP/BMP/HEIF, downsampled) and **media info** for audio/video via `MediaMetadataRetriever` (no player).
 - **Integration**: tap a file to open it in the default viewer for its type (sniffed when the extension is unknown); long-press a file for *Select* / *Open in text editor / hex editor / Preview image / Media info / Open as archive*.
@@ -128,3 +128,10 @@ bottom-bar icon installs them in sequence. Signing uses your keystore or a per-d
 generated in-app — no keys in the repo. Details: [docs/APK_TOOLS.md](docs/APK_TOOLS.md).
 Debug signing setup: [docs/SIGNING.md](docs/SIGNING.md).
 - Testing: unit tests, emulator Compose smoke tests + monkey/logcat scan, and lint in CI — see [docs/TESTING.md](docs/TESTING.md)
+
+## Phase 10: gap fill
+
+Indexed search, trash on the same volume, themes (light/dark/AMOLED/dynamic/accent),
+tablet/foldable layouts (NavigationRail plus side-by-side panes), Compare two APKs, Smali
+tools (search, decryption hints, mapping.txt), RAR extraction, and big-folder listing speed.
+See [docs/PHASE10.md](docs/PHASE10.md).

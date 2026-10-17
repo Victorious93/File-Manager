@@ -87,6 +87,8 @@ sealed interface ToolRequest {
     data class Plugins(val selected: List<String>, val dir: String) : ToolRequest
     data class Scripts(val selected: List<String>, val dir: String) : ToolRequest
     data class SecureFolder(val selected: List<String>, val dir: String) : ToolRequest
+    data class CompareApks(val left: String, val right: String, val dir: String) : ToolRequest
+    data class SmaliTools(val target: String, val mapping: String?, val dir: String) : ToolRequest
 }
 
 @Composable
@@ -141,6 +143,24 @@ fun ToolsPane(state: UiState, onEvent: (UiEvent) -> Unit) {
             ToolItem(Icons.Outlined.Compare, "Compare two files", "Select exactly 2 text files (${files.size} selected)") {
                 if (files.size == 2) onEvent(UiEvent.OpenTool(ToolRequest.Compare(files[0].path, files[1].path)))
                 else onEvent(UiEvent.ShowMessage("Select exactly 2 files in Files, then come back"))
+            }
+        }
+        item {
+            val apks = files.filter { isApk(it.path) }
+            ToolItem(Icons.Outlined.Compare, "Compare two APKs", "Manifest, permissions, DEX classes, resources (${apks.size} APK selected)") {
+                if (apks.size == 2) onEvent(UiEvent.OpenTool(ToolRequest.CompareApks(apks[0].path, apks[1].path, dir)))
+                else onEvent(UiEvent.ShowMessage("Select exactly 2 .apk files in Files, then come back"))
+            }
+        }
+        item {
+            ToolItem(Icons.Outlined.Code, "Smali tools", "Search classes/methods/strings, decryption hints, apply mapping.txt") {
+                val target = files.filter { isApk(it.path) || it.extension.equals("dex", true) }
+                val mapping = files.filter { it.extension.equals("txt", true) }
+                when {
+                    target.size != 1 -> onEvent(UiEvent.ShowMessage("Select one .apk or .dex (plus optionally its mapping.txt)"))
+                    mapping.size > 1 -> onEvent(UiEvent.ShowMessage("Select at most one mapping.txt"))
+                    else -> onEvent(UiEvent.OpenTool(ToolRequest.SmaliTools(target[0].path, mapping.firstOrNull()?.path, dir)))
+                }
             }
         }
         item {
@@ -211,12 +231,14 @@ fun ToolHost(request: ToolRequest, onClose: () -> Unit, onEvent: (UiEvent) -> Un
         is ToolRequest.Plugins -> PluginsScreen(request.selected, request.dir, onClose, onEvent)
         is ToolRequest.Scripts -> ScriptsScreen(request.selected, request.dir, onClose)
         is ToolRequest.SecureFolder -> SecureFolderScreen(request.selected, request.dir, onClose, onEvent)
+        is ToolRequest.CompareApks -> ApkCompareScreen(File(request.left), File(request.right), request.dir, onClose, onEvent)
+        is ToolRequest.SmaliTools -> SmaliToolsScreen(File(request.target), request.mapping?.let(::File), request.dir, onClose, onEvent)
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ToolScaffold(title: String, onBack: () -> Unit, actions: @Composable () -> Unit = {}, content: @Composable (Modifier) -> Unit) {
+internal fun ToolScaffold(title: String, onBack: () -> Unit, actions: @Composable () -> Unit = {}, content: @Composable (Modifier) -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -229,7 +251,7 @@ private fun ToolScaffold(title: String, onBack: () -> Unit, actions: @Composable
 }
 
 @Composable
-private fun Loading(modifier: Modifier, error: String?) {
+internal fun Loading(modifier: Modifier, error: String?) {
     Box(modifier, contentAlignment = Alignment.Center) {
         if (error == null) CircularProgressIndicator() else Text(error, Modifier.padding(24.dp))
     }

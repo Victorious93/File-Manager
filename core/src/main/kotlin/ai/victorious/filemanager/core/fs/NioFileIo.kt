@@ -25,14 +25,33 @@ class NioFileIo : FileIo {
 
     override fun isFile(path: String): Boolean = p(path).isRegularFile()
 
+    /**
+     * One stat per child (readAttributes) instead of four (isDirectory/size/mtime/hidden), and a
+     * precomputed sort key so 50k-entry folders sort without re-lowercasing per comparison.
+     */
     override fun list(path: String): List<FileEntry> {
         val dir = p(path)
         if (!dir.isDirectory()) throw FileIoException("Not a directory: $path")
-        return Files.list(dir).use { stream ->
-            stream.map { child -> toEntry(child) }
-                .toList()
-                .sortedWith(compareBy<FileEntry> { !it.isDirectory }.thenBy { it.name.lowercase() })
+        val parent = dir.toAbsolutePath().toString()
+        val keyed = ArrayList<Pair<String, FileEntry>>()
+        Files.newDirectoryStream(dir).use { stream ->
+            for (child in stream) {
+                val name = child.fileName.toString()
+                val attrs = runCatching { Files.readAttributes(child, BasicFileAttributes::class.java) }.getOrNull()
+                val isDir = attrs?.isDirectory ?: false
+                val entry = FileEntry(
+                    path = if (parent == "/") "/$name" else "$parent/$name",
+                    name = name,
+                    isDirectory = isDir,
+                    sizeBytes = if (isDir || attrs == null) 0 else attrs.size(),
+                    modifiedEpochMs = attrs?.lastModifiedTime()?.toMillis() ?: 0,
+                    isHidden = name.startsWith('.'),
+                )
+                keyed += ((if (isDir) "0" else "1") + name.lowercase()) to entry
+            }
         }
+        keyed.sortWith(compareBy { it.first })
+        return keyed.map { it.second }
     }
 
     override fun mkdir(path: String) {

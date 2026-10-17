@@ -422,25 +422,53 @@ private fun ArchiveScreen(file: File, extractTo: File, onClose: () -> Unit, onMe
     var busy by remember { mutableStateOf(false) }
     var askPassword by remember { mutableStateOf(false) }
     var encrypted by remember { mutableStateOf(false) }
+    var isRar by remember { mutableStateOf(false) }
     val dest = File(extractTo, file.name.substringBefore('.').ifBlank { "extracted" })
     fun runExtract(password: CharArray?) {
         busy = true
         scope.launch {
             withContext(Dispatchers.IO) {
-                runCatching { if (encrypted) EncryptedZip.extract(file, dest, password) else Archives.extract(file, dest) }
+                runCatching {
+                    when {
+                        isRar -> Archives.extractRar(file, dest, password?.let(::String))
+                        encrypted -> EncryptedZip.extract(file, dest, password)
+                        else -> Archives.extract(file, dest)
+                    }
+                }
             }
                 .onSuccess { onMessage("Extracted $it file(s) to ${dest.path}") }
-                .onFailure { onMessage(if (it is WrongPasswordException) "Wrong password" else "Extract failed: ${it.message}") }
+                .onFailure {
+                    onMessage(
+                        when {
+                            it is WrongPasswordException -> "Wrong password"
+                            it is Archives.RarPasswordException -> it.message ?: "Wrong password"
+                            else -> "Extract failed: ${it.message}"
+                        },
+                    )
+                }
             busy = false
         }
     }
     LaunchedEffect(file) {
         // Corrupt / unknown archives must surface as an error, not crash the LaunchedEffect.
+        val format = withContext(Dispatchers.IO) { runCatching { Archives.format(file) }.getOrDefault(ArchiveFormat.UNKNOWN) }
+        isRar = format == ArchiveFormat.RAR
         encrypted = withContext(Dispatchers.IO) {
-            runCatching { Archives.format(file) == ArchiveFormat.ZIP && EncryptedZip.isEncrypted(file) }.getOrDefault(false)
+            runCatching {
+                when (format) {
+                    ArchiveFormat.ZIP -> EncryptedZip.isEncrypted(file)
+                    ArchiveFormat.RAR -> Archives.isRarPasswordProtected(file)
+                    else -> false
+                }
+            }.getOrDefault(false)
         }
         withContext(Dispatchers.IO) { runCatching { Archives.list(file) } }
-            .onSuccess { items = it }.onFailure { error = it.message ?: "Cannot read archive" }
+            .onSuccess { items = it }
+            .onFailure {
+                // RAR5 with encrypted headers cannot be listed without the password; still allow extract.
+                if (it is Archives.RarPasswordException) { items = emptyList(); encrypted = true }
+                else error = it.message ?: "Cannot read archive"
+            }
     }
     BackHandler(onBack = onClose)
     ViewerScaffold(

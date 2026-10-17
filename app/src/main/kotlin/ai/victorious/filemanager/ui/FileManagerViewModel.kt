@@ -73,6 +73,7 @@ data class UiState(
     val canUndo: Boolean = false,
     val searchQuery: String = "",
     val searchHits: List<SearchHit> = emptyList(),
+    val searchStatus: String? = null,
     val bookmarks: List<Bookmark> = emptyList(),
     val trash: List<TrashEntry> = emptyList(),
     val renameTarget: String? = null,
@@ -206,6 +207,9 @@ class FileManagerViewModel(
      * opened/closed meanwhile are not clobbered.
      */
     fun refreshAll() {
+        // Every file operation, undo, restore and app resume ends in a refresh: mark the search
+        // index stale so the next search re-walks instead of returning moved/deleted paths.
+        app.index.invalidate()
         viewModelScope.launch {
             val snapshot = _ui.value
             val listed = withContext(Dispatchers.IO) {
@@ -635,13 +639,40 @@ class FileManagerViewModel(
         }
     }
 
+    private var searchJob: kotlinx.coroutines.Job? = null
+
+    /**
+     * Debounced, cancellable search over the in-memory [ai.victorious.filemanager.core.search.FileIndex].
+     * The first query (or one after a file operation invalidated the index) rebuilds it on IO;
+     * later keystrokes are a scan of in-memory strings. Typing cancels the previous query.
+     */
     private fun search(query: String) {
         _ui.update { it.copy(searchQuery = query) }
-        viewModelScope.launch {
-            val hits = withContext(Dispatchers.IO) {
-                app.search.search(defaultRoot(), query)
+        searchJob?.cancel()
+        if (query.isBlank()) {
+            _ui.update { it.copy(searchHits = emptyList(), searchStatus = null) }
+            return
+        }
+        searchJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(SEARCH_DEBOUNCE_MS)
+            val root = defaultRoot()
+            val index = app.index
+            if (index.needsBuild(root)) {
+                _ui.update { it.copy(searchStatus = "Indexing…") }
+                val job = coroutineContext[kotlinx.coroutines.Job]
+                val built = withContext(Dispatchers.IO) {
+                    runCatching { index.build(root, isCancelled = { job?.isActive == false }) }
+                }
+                built.exceptionOrNull()?.let { if (it is InterruptedException) return@launch }
             }
-            _ui.update { it.copy(searchHits = hits) }
+            val hits = withContext(Dispatchers.Default) { index.search(query) }
+            val snap = index.current()
+            _ui.update {
+                it.copy(
+                    searchHits = hits,
+                    searchStatus = snap?.let { s -> "${hits.size} result(s) · ${s.size} files indexed in ${s.buildMs} ms" },
+                )
+            }
         }
     }
 
@@ -680,6 +711,7 @@ class FileManagerViewModel(
     }
 
     companion object {
+        const val SEARCH_DEBOUNCE_MS = 200L
         fun factory(app: FileManagerApplication) = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {

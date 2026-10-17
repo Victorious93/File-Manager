@@ -22,6 +22,12 @@ class TrashStore(
     private val trashRoot: String,
     private val ids: () -> String = { UUID.randomUUID().toString() },
     private val clock: () -> Long = { System.currentTimeMillis() },
+    /**
+     * Same-volume payload folder for [path] (e.g. `/storage/emulated/0/.victorious-trash/items`),
+     * so trashing a big file is a rename instead of a copy into app storage. Null = [trashRoot].
+     * The index always lives under [trashRoot].
+     */
+    private val payloadDirFor: (path: String) -> String? = { null },
 ) {
     private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
     private val indexPath get() = PathHelpers.join(trashRoot, "index.json")
@@ -38,7 +44,12 @@ class TrashStore(
         require(io.exists(normalized)) { "Missing: $normalized" }
         ensureLayout()
         val id = ids()
-        val payload = PathHelpers.join(itemsDir, id)
+        val dir = payloadDirFor(normalized)
+            // Never put the trash inside the item being trashed (or trash the trash itself there).
+            ?.takeIf { !PathHelpers.isSelfOrDescendant(it, normalized) && !PathHelpers.isSelfOrDescendant(normalized, it) }
+            ?: itemsDir
+        if (dir != itemsDir) ensureVolumeDir(dir)
+        val payload = PathHelpers.join(dir, id)
         io.move(normalized, payload)
         val entry = TrashEntry(
             id = id,
@@ -82,6 +93,14 @@ class TrashStore(
         val entry = entries.find { it.id == id } ?: return
         io.deleteRecursively(entry.trashPayloadPath)
         saveIndex(entries.filterNot { it.id == id })
+    }
+
+    private fun ensureVolumeDir(dir: String) {
+        if (!io.exists(dir)) io.mkdirs(dir)
+        // Keep trashed photos/videos out of gallery apps.
+        val parent = PathHelpers.parentOf(dir) ?: dir
+        val nomedia = PathHelpers.join(parent, ".nomedia")
+        if (!io.exists(nomedia)) runCatching { io.writeText(nomedia, "") }
     }
 
     private fun ensureLayout() {

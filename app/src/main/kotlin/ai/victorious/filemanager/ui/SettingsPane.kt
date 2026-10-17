@@ -44,7 +44,8 @@ fun SettingsPane(onEvent: (UiEvent) -> Unit = {}) {
         Modifier.fillMaxWidth().padding(16.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("Privilege", style = MaterialTheme.typography.titleMedium)
+        AppearanceSection()
+        Text("Privilege", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
         Text(
             "Fallback order for protected paths: Root → Shizuku → normal. Both toggles default off.",
             style = MaterialTheme.typography.bodySmall,
@@ -174,6 +175,44 @@ private fun SecureFolderSettingsSection() {
         for (s in listOf(0, 30, 60, 300)) {
             FilterChip(selected = timeout == s, onClick = { secure.timeoutSec = s; timeout = s },
                 label = { Text(if (s == 0) "Immediately" else if (s < 60) "${s}s" else "${s / 60} min") })
+        }
+    }
+}
+
+@Composable
+private fun AppearanceSection() {
+    val app = LocalContext.current.applicationContext as FileManagerApplication
+    val theme = app.themeSettings
+    val prefs by theme.state.collectAsState()
+    val dynamicSupported = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
+    Text("Appearance", style = MaterialTheme.typography.titleMedium)
+    androidx.compose.foundation.layout.FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        for (m in ai.victorious.filemanager.ui.theme.ThemeMode.entries) {
+            FilterChip(selected = prefs.mode == m, onClick = { theme.update { it.copy(mode = m) } }, label = { Text(m.label) })
+        }
+    }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("Dynamic color (Material You)", style = MaterialTheme.typography.titleSmall)
+            Text(
+                if (dynamicSupported) "Use colors from your wallpaper" else "Needs Android 12 or newer",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        Switch(
+            checked = prefs.dynamicColor && dynamicSupported,
+            enabled = dynamicSupported,
+            onCheckedChange = { on -> theme.update { it.copy(dynamicColor = on) } },
+        )
+    }
+    if (!(prefs.dynamicColor && dynamicSupported)) {
+        Text("Accent", style = MaterialTheme.typography.titleSmall)
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            for (a in ai.victorious.filemanager.ui.theme.Accent.entries) {
+                FilterChip(selected = prefs.accent == a, onClick = { theme.update { it.copy(accent = a) } }, label = { Text(a.label) })
+            }
         }
     }
 }

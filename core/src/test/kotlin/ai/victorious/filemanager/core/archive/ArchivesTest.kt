@@ -75,10 +75,53 @@ class ArchivesTest {
         assertEquals("tarred", File(dest, "t.txt").readText())
     }
 
-    @Test fun rarIsReportedUnsupported() {
+    private fun rarFixture(name: String): File {
+        val f = File(tmp.root, name)
+        javaClass.getResourceAsStream("/rar/$name")!!.use { input -> f.outputStream().use { input.copyTo(it) } }
+        return f
+    }
+
+    @Test fun rar4AndRar5ListAndExtract() {
+        for (name in listOf("rar4-solid.rar", "rar5-solid.rar")) {
+            val rar = rarFixture(name)
+            assertEquals(ArchiveFormat.RAR, Archives.format(rar))
+            val items = Archives.list(rar)
+            assertTrue("$name lists entries", items.any { !it.isDirectory })
+            val out = File(tmp.root, "out-$name")
+            val n = Archives.extract(rar, out)
+            assertEquals(items.count { !it.isDirectory }, n)
+            val written = out.walkTopDown().filter { it.isFile }.toList()
+            assertEquals(n, written.size)
+            for (item in items.filter { !it.isDirectory }) {
+                assertEquals("$name/${item.name} size", item.size, File(out, item.name).length())
+            }
+        }
+    }
+
+    @Test fun rarParentDirTraversalIsBlocked() {
+        val rar = rarFixture("parent-dir.rar")
+        val out = File(tmp.root, "trav/out").apply { mkdirs() }
+        val r = runCatching { Archives.extract(rar, out) }
+        // Either the entry is rejected or it lands inside out/ — never outside it.
+        val outside = File(tmp.root, "trav").walkTopDown().filter { it.isFile && !it.canonicalPath.startsWith(out.canonicalPath) }.toList()
+        assertTrue("files escaped: $outside (${r.exceptionOrNull()?.message})", outside.isEmpty())
+    }
+
+    @Test fun rar5PasswordRequiredWrongAndRight() {
+        val rar = rarFixture("rar5-password-junrar.rar")
+        assertTrue(Archives.isRarPasswordProtected(rar))
+        val noPw = runCatching { Archives.extractRar(rar, File(tmp.root, "pw0")) }
+        assertTrue("no password must fail: ${noPw.exceptionOrNull()}", noPw.isFailure)
+        val wrong = runCatching { Archives.extractRar(rar, File(tmp.root, "pw1"), "nope") }
+        assertTrue("wrong password must fail", wrong.isFailure)
+        val ok = Archives.extractRar(rar, File(tmp.root, "pw2"), "junrar")
+        assertTrue(ok >= 1)
+    }
+
+    @Test fun truncatedRarFailsCleanly() {
         val rar = File(tmp.root, "a.rar").apply { writeBytes("Rar!\u001A\u0007\u0000".toByteArray()) }
         assertEquals(ArchiveFormat.RAR, Archives.format(rar))
-        assertTrue(runCatching { Archives.list(rar) }.exceptionOrNull() is UnsupportedArchiveException)
+        assertTrue(runCatching { Archives.list(rar) }.exceptionOrNull() is java.io.IOException)
     }
 
     @Test fun uniqueZipName() {
