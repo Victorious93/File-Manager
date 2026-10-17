@@ -27,8 +27,9 @@ adb shell appops set "$PKG" MANAGE_EXTERNAL_STORAGE allow
 adb shell mkdir -p /sdcard/FMMonkey && adb shell 'for i in 1 2 3; do echo monkey$i > /sdcard/FMMonkey/m$i.txt; done'
 adb shell am start -W -n "$PKG/ai.victorious.filemanager.MainActivity"
 # Fixed seed so a failure is reproducible: adb shell monkey -p $PKG -s 4242 ...
+# --ignore-timeouts: system ANRs on slow runners must not abort; app ANRs are checked in logcat below.
 adb shell monkey -p "$PKG" -s 4242 --throttle 75 --pct-syskeys 0 --pct-appswitch 5 \
-  --ignore-security-exceptions -v 3000 > "$OUT/monkey.txt" 2>&1
+  --ignore-security-exceptions --ignore-timeouts -v 3000 > "$OUT/monkey.txt" 2>&1
 MONKEY_RC=$?
 tail -n 5 "$OUT/monkey.txt"
 echo "::endgroup::"

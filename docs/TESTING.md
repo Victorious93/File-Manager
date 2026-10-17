@@ -43,5 +43,20 @@ bash .github/scripts/emulator-smoke.sh   # tests + monkey + logcat scan
 
 The Grok build box cannot run the emulator. `/dev/kvm` exists, but creating a vCPU triggers
 a host kernel bug (`kernel BUG at arch/x86/kvm/x86.c:702`, in `vmx_vcpu_create`), so qemu
-hangs before the guest kernel starts. x86_64 images can't fall back to software emulation, so
-the emulator only runs in GitHub Actions.
+hangs before the guest kernel starts.
+
+Software emulation was tried too (`emulator -avd fm34 -accel off`, API 34 x86_64, 6 cores,
+3 GB RAM). It boots in about 9 minutes but is not usable for testing:
+- System processes ANR constantly (launcher, System UI, phone, media provider; guest load ~22).
+- Bluetooth keeps aborting.
+- Gradle's device probe times out ("Unknown API Level", so 0 compatible devices).
+- `am instrument` produced no output in 4 hours.
+- A fixed-seed monkey run stopped after 17 events on a *launcher* ANR.
+
+No crash, ANR or exception from this app was logged during those runs. The only app lines
+were StrictMode disk-read notices from SharedPreferences in `Application.onCreate`. So the
+emulator suite only runs in GitHub Actions, where `ubuntu-latest` has working KVM.
+
+The monkey is started with `--ignore-timeouts`, so a *system* ANR on a slow runner does not
+abort it. App ANRs are still caught by the `ANR in ai.victorious.filemanager.debug` logcat
+check, and crashes by the crash-buffer check.
