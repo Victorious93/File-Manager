@@ -56,7 +56,14 @@ fun ApkMenuItems(path: String, onEvent: (UiEvent) -> Unit, dismiss: () -> Unit) 
     })
     DropdownMenuItem(text = { Text("Extract APK") }, onClick = { dismiss(); onEvent(UiEvent.ExtractApk(path)) })
     DropdownMenuItem(text = { Text("Sign APK…") }, onClick = { dismiss(); onEvent(UiEvent.RequestSign(path)) })
+    DropdownMenuItem(text = { Text("Verify signature") }, onClick = { dismiss(); onEvent(UiEvent.VerifyApk(path)) })
     DropdownMenuItem(text = { Text("Uninstall app…") }, onClick = { dismiss(); onEvent(UiEvent.ShowApkInfo(path)) })
+}
+
+@Composable
+fun BundleMenuItems(path: String, onEvent: (UiEvent) -> Unit, dismiss: () -> Unit) {
+    HorizontalDivider()
+    DropdownMenuItem(text = { Text("Open APK bundle (splits)") }, onClick = { dismiss(); onEvent(UiEvent.OpenBundle(path)) })
 }
 
 /** Long-press items for .dex files. */
@@ -72,7 +79,7 @@ fun RebuiltSignReminder(path: String, onEvent: (UiEvent) -> Unit) {
     AlertDialog(
         onDismissRequest = { onEvent(UiEvent.DismissRebuilt) },
         title = { Text("Re-sign before installing") },
-        text = { Text("${File(path).name} was rebuilt without a signature. Android will refuse to install it until it is signed (V1/V2/V3).") },
+        text = { Text("${File(path).name} was rebuilt without a signature. Android will refuse to install it until it is signed (V1/V2/V3, optional V4).") },
         confirmButton = { TextButton(onClick = { onEvent(UiEvent.RequestSign(path)) }) { Text("Sign now…") } },
         dismissButton = { TextButton(onClick = { onEvent(UiEvent.DismissRebuilt) }) { Text("Later") } },
     )
@@ -157,6 +164,7 @@ fun SignDialog(path: String, onEvent: (UiEvent) -> Unit) {
     var v1 by remember { mutableStateOf(true) }
     var v2 by remember { mutableStateOf(true) }
     var v3 by remember { mutableStateOf(true) }
+    var v4 by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = { onEvent(UiEvent.DismissSign) },
         title = { Text("Sign ${File(path).name}") },
@@ -182,17 +190,18 @@ fun SignDialog(path: String, onEvent: (UiEvent) -> Unit) {
                     Checkbox(v1, { v1 = it }); Text("V1")
                     Checkbox(v2, { v2 = it }); Text("V2")
                     Checkbox(v3, { v3 = it }); Text("V3")
+                    Checkbox(v4, { v4 = it }); Text("V4")
                 }
                 Text(
-                    "Output is written next to the APK as *_signed.apk. Old v1 signature files are replaced.",
+                    "Output is *_signed.apk next to the input. V4 also writes *.apk.idsig (incremental installs).",
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
         },
         confirmButton = {
             TextButton(
-                enabled = (v1 || v2 || v3) && (useDebug || keystore.isNotBlank()),
-                onClick = { onEvent(UiEvent.ConfirmSign(path, SignOptions(useDebug, keystore, storePass, alias, keyPass, v1, v2, v3))) },
+                enabled = (v1 || v2 || v3 || v4) && (useDebug || keystore.isNotBlank()),
+                onClick = { onEvent(UiEvent.ConfirmSign(path, SignOptions(useDebug, keystore, storePass, alias, keyPass, v1, v2, v3, v4))) },
             ) { Text("Sign") }
         },
         dismissButton = { TextButton(onClick = { onEvent(UiEvent.DismissSign) }) { Text("Cancel") } },
@@ -210,3 +219,67 @@ fun selectedFiles(state: UiState): List<File> {
     return pane.selected.map(::File).filter { it.isFile }
 }
 
+@Composable
+fun VerifyDialog(path: String, result: ai.victorious.filemanager.core.apk.VerifyResult, onEvent: (UiEvent) -> Unit) {
+    AlertDialog(
+        onDismissRequest = { onEvent(UiEvent.DismissVerify) },
+        title = { Text("Verify ${File(path).name}") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text(if (result.verified) "Signature OK" else "NOT verified", fontWeight = FontWeight.SemiBold,
+                    color = if (result.verified) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+                InfoLine("V1 (JAR)", if (result.v1) "pass" else "—")
+                InfoLine("V2", if (result.v2) "pass" else "—")
+                InfoLine("V3", if (result.v3) "pass" else "—")
+                InfoLine("V4", if (result.v4) "pass" else "—")
+                result.signers.forEachIndexed { i, s ->
+                    Text("Signer ${i + 1}", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
+                    Text(s.subject, style = MaterialTheme.typography.bodySmall)
+                    Text("SHA-256: ${s.sha256}", style = MaterialTheme.typography.bodySmall)
+                }
+                if (result.errors.isNotEmpty()) {
+                    Text("Errors", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
+                    result.errors.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onEvent(UiEvent.DismissVerify) }) { Text("Close") } },
+    )
+}
+
+@Composable
+fun BundleDialog(bundle: ai.victorious.filemanager.core.apk.ApkBundle, onEvent: (UiEvent) -> Unit) {
+    val context = LocalContext.current
+    AlertDialog(
+        onDismissRequest = { onEvent(UiEvent.CloseBundle) },
+        title = { Text("Bundle · ${bundle.source.name}") },
+        text = {
+            Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                InfoLine("Format", bundle.format.name)
+                InfoLine("Package", bundle.packageName ?: "?")
+                InfoLine("Splits", bundle.splits.size.toString())
+                Text(
+                    "Merge builds one unsigned universal APK (first path wins; META-INF dropped). " +
+                        "Install uses one PackageInstaller multi-session. Feature modules / encrypted commercial formats are limited — see docs in code.",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(vertical = 8.dp),
+                )
+                bundle.splits.forEach { s ->
+                    Text("${s.name} · ${s.kind.name.lowercase()} · %.2f MB".format(s.size / 1_048_576.0),
+                        style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        },
+        confirmButton = {
+            Row {
+                TextButton(onClick = {
+                    apkAction(context, onEvent) {
+                        ApkInstaller.installSplits(context, bundle.splits.map { it.file })
+                    }
+                }) { Text("Install all") }
+                TextButton(onClick = { onEvent(UiEvent.MergeBundle()) }) { Text("Merge") }
+            }
+        },
+        dismissButton = { TextButton(onClick = { onEvent(UiEvent.CloseBundle) }) { Text("Close") } },
+    )
+}

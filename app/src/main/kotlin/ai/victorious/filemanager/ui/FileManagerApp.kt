@@ -310,6 +310,8 @@ fun FileManagerApp(
     state.apkInfo?.let { ApkInfoDialog(it, onEvent) }
     state.signTarget?.let { SignDialog(it, onEvent) }
     state.rebuiltApk?.let { RebuiltSignReminder(it, onEvent) }
+    state.verifyResult?.let { (path, r) -> VerifyDialog(path, r, onEvent) }
+    state.bundle?.let { BundleDialog(it, onEvent) }
     if (state.showAbout) {
         AboutDialog(state = state, onDismiss = { onEvent(UiEvent.ToggleAbout) })
     }
@@ -458,6 +460,9 @@ private fun FilePane(
                         ShareMenuItem(entry.path, onEvent, dismiss)
                         if (isApk(entry.path)) ApkMenuItems(entry.path, onEvent, dismiss)
                         if (entry.path.endsWith(".dex", ignoreCase = true)) DexMenuItems(entry.path, onEvent, dismiss)
+                        if (ai.victorious.filemanager.core.apk.ApkBundles.isBundleName(entry.name)) {
+                            BundleMenuItems(entry.path, onEvent, dismiss)
+                        }
                     },
                 )
             }

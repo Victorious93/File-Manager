@@ -11,6 +11,8 @@
     <!-- Phase 3 APK tools: install via PackageInstaller sessions (user confirms each) and uninstall via system dialog. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+    <!-- List / extract installed apps (base + splits). Declared; Play may require a use-case form. -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
 
     <queries>
         <package android:name="ai.droidcommand.app" />
