@@ -24,6 +24,7 @@ dependencies {
     implementation(libs.smali.baksmali) {
         exclude(group = "com.beust", module = "jcommander")
     }
+    implementation(libs.zip4j)
     testImplementation(libs.junit)
 }
 

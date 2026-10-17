@@ -2,6 +2,15 @@ package ai.victorious.filemanager.ui
 
 import ai.victorious.filemanager.core.archive.ArchiveItem
 import ai.victorious.filemanager.core.archive.Archives
+import ai.victorious.filemanager.core.archive.ArchiveFormat
+import ai.victorious.filemanager.core.archive.EncryptedZip
+import ai.victorious.filemanager.core.archive.WrongPasswordException
+import ai.victorious.filemanager.core.syntax.FindReplace
+import ai.victorious.filemanager.core.syntax.SyntaxHighlighter
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material.icons.outlined.FindReplace
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.TextFieldValue
 import ai.victorious.filemanager.core.hex.Hex
 import ai.victorious.filemanager.core.hex.HexDocument
 import ai.victorious.filemanager.core.text.TextFiles
@@ -124,9 +133,14 @@ private fun TextEditorScreen(file: File, onClose: () -> Unit, onMessage: (String
     var saved by remember { mutableStateOf("") }
     var version by remember { mutableIntStateOf(0) }
     var confirmClose by remember { mutableStateOf(false) }
+    var showFind by remember { mutableStateOf(false) }
+    var find by remember { mutableStateOf(FindState()) }
+    var field by remember { mutableStateOf(TextFieldValue("")) }
+    val language = remember(file) { SyntaxHighlighter.languageFor(file.name) }
+    val dark = isSystemInDarkTheme()
     LaunchedEffect(file) {
         val r = withContext(Dispatchers.IO) { runCatching { TextFiles.load(file) } }
-        r.onSuccess { history = UndoHistory(it); text = it; saved = it }.onFailure { error = it.message ?: "Cannot open" }
+        r.onSuccess { history = UndoHistory(it); text = it; saved = it; field = TextFieldValue(it) }.onFailure { error = it.message ?: "Cannot open" }
     }
     val dirty = text != saved
     val close = { if (dirty) confirmClose = true else onClose() }
@@ -137,11 +151,14 @@ private fun TextEditorScreen(file: File, onClose: () -> Unit, onMessage: (String
         actions = {
             val h = history
             if (h != null) {
+                IconButton(onClick = { showFind = !showFind }) {
+                    Icon(Icons.Outlined.FindReplace, contentDescription = "Find & replace")
+                }
                 key(version) {
-                    IconButton(onClick = { text = h.undo(); version++ }, enabled = h.canUndo) {
+                    IconButton(onClick = { text = h.undo(); field = TextFieldValue(text); version++ }, enabled = h.canUndo) {
                         Icon(Icons.AutoMirrored.Outlined.Undo, contentDescription = "Undo")
                     }
-                    IconButton(onClick = { text = h.redo(); version++ }, enabled = h.canRedo) {
+                    IconButton(onClick = { text = h.redo(); field = TextFieldValue(text); version++ }, enabled = h.canRedo) {
                         Icon(Icons.AutoMirrored.Outlined.Redo, contentDescription = "Redo")
                     }
                 }
@@ -160,11 +177,39 @@ private fun TextEditorScreen(file: File, onClose: () -> Unit, onMessage: (String
         },
     ) { modifier ->
         val h = history
-        if (h == null) Centered(modifier, error) else {
+        if (h == null) Centered(modifier, error) else Column(modifier) {
+            val (matches, findError) = remember(text, find, showFind) {
+                if (showFind) findMatches(text, find) else emptyList<IntRange>() to null
+            }
+            fun applyEdit(newText: String) {
+                if (newText != text) { text = newText; h.push(newText); field = TextFieldValue(newText); version++ }
+            }
+            if (showFind) {
+                FindReplaceBar(
+                    state = find,
+                    matchCount = matches.size,
+                    error = findError,
+                    onChange = { find = it },
+                    onReplaceNext = {
+                        runCatching { FindReplace.replaceNext(text, find.query, find.replacement, field.selection.start, find.options) }
+                            .onSuccess { applyEdit(it.text) }.onFailure { onMessage("Replace failed: ${it.message}") }
+                    },
+                    onReplaceAll = {
+                        runCatching { FindReplace.replaceAll(text, find.query, find.replacement, find.options) }
+                            .onSuccess { applyEdit(it.text); onMessage("Replaced ${it.count} occurrence(s)") }
+                            .onFailure { onMessage("Replace failed: ${it.message}") }
+                    },
+                )
+            }
+            val transformation = remember(language, dark, matches) { HighlightTransformation(language, dark, matches) }
             TextField(
-                value = text,
-                onValueChange = { text = it; h.push(it); version++ },
-                modifier = modifier,
+                value = field,
+                onValueChange = {
+                    field = it
+                    if (it.text != text) { text = it.text; h.push(it.text); version++ }
+                },
+                modifier = Modifier.fillMaxSize(),
+                visualTransformation = transformation,
                 textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
             )
         }
@@ -350,7 +395,22 @@ private fun ArchiveScreen(file: File, extractTo: File, onClose: () -> Unit, onMe
     var items by remember { mutableStateOf<List<ArchiveItem>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
+    var askPassword by remember { mutableStateOf(false) }
+    var encrypted by remember { mutableStateOf(false) }
+    val dest = File(extractTo, file.name.substringBefore('.').ifBlank { "extracted" })
+    fun runExtract(password: CharArray?) {
+        busy = true
+        scope.launch {
+            withContext(Dispatchers.IO) {
+                runCatching { if (encrypted) EncryptedZip.extract(file, dest, password) else Archives.extract(file, dest) }
+            }
+                .onSuccess { onMessage("Extracted $it file(s) to ${dest.path}") }
+                .onFailure { onMessage(if (it is WrongPasswordException) "Wrong password" else "Extract failed: ${it.message}") }
+            busy = false
+        }
+    }
     LaunchedEffect(file) {
+        encrypted = withContext(Dispatchers.IO) { Archives.format(file) == ArchiveFormat.ZIP && EncryptedZip.isEncrypted(file) }
         withContext(Dispatchers.IO) { runCatching { Archives.list(file) } }
             .onSuccess { items = it }.onFailure { error = it.message ?: "Cannot read archive" }
     }
@@ -360,21 +420,15 @@ private fun ArchiveScreen(file: File, extractTo: File, onClose: () -> Unit, onMe
         onClose = onClose,
         actions = {
             IconButton(enabled = items != null && !busy, onClick = {
-                busy = true
-                val dest = File(extractTo, file.name.substringBefore('.').ifBlank { "extracted" })
-                scope.launch {
-                    withContext(Dispatchers.IO) { runCatching { Archives.extract(file, dest) } }
-                        .onSuccess { onMessage("Extracted $it file(s) to ${dest.path}") }
-                        .onFailure { onMessage("Extract failed: ${it.message}") }
-                    busy = false
-                }
+                if (encrypted) askPassword = true else runExtract(null)
             }) { Icon(Icons.Outlined.Unarchive, contentDescription = "Extract to other pane") }
         },
     ) { modifier ->
         val list = items
         if (list == null) Centered(modifier, error) else Column(modifier) {
             Text(
-                "${list.count { !it.isDirectory }} file(s) · extract goes to ${extractTo.path}",
+                (if (encrypted) "🔒 password protected · " else "") +
+                    "${list.count { !it.isDirectory }} file(s) · extract goes to ${extractTo.path}",
                 style = MaterialTheme.typography.labelSmall,
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
             )
@@ -388,4 +442,28 @@ private fun ArchiveScreen(file: File, extractTo: File, onClose: () -> Unit, onMe
             }
         }
     }
+    if (askPassword) {
+        PasswordDialog(
+            title = "Password for ${file.name}",
+            onConfirm = { askPassword = false; runExtract(it) },
+            onDismiss = { askPassword = false },
+        )
+    }
+}
+
+@Composable
+fun PasswordDialog(title: String, confirmLabel: String = "OK", onConfirm: (CharArray) -> Unit, onDismiss: () -> Unit) {
+    var pw by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            OutlinedTextField(
+                value = pw, onValueChange = { pw = it }, singleLine = true, label = { Text("Password") },
+                visualTransformation = PasswordVisualTransformation(),
+            )
+        },
+        confirmButton = { TextButton(onClick = { onConfirm(pw.toCharArray()) }, enabled = pw.isNotEmpty()) { Text(confirmLabel) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
