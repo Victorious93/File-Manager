@@ -10,7 +10,7 @@ This app is an MT Manager–class product: **it works fully on its own**. It is 
 
 ## Features (Phases 1–7)
 
-See also `docs/APK_TOOLS.md`, `docs/POWER_TOOLS.md`, and `docs/NETWORK.md`.
+See also `docs/APK_TOOLS.md`, `docs/POWER_TOOLS.md`, `docs/NETWORK.md`, `docs/AI_ASSISTANT.md`, `docs/PLUGINS.md`, and `docs/SECURE_FOLDER.md`.
 
 ### Phase 1 includes
 
@@ -38,6 +38,7 @@ Debug builds use `ai.victorious.filemanager.debug`.
 - **Phase 6** — smali assemble, ARSC strings, APKS/XAPK, v4/verify, extract installed apps  
 - **Phase 7** — Root (libsu), Shizuku, built-in terminal, app manager backup/restore (`docs/POWER_TOOLS.md`)
 - **Phase 8** — Network connections (FTP/FTPS/SFTP/SMB/WebDAV), Wi-Fi transfer (`docs/NETWORK.md`)
+- **Phase 9** — AI assistant in the code editor with your own endpoint (`docs/AI_ASSISTANT.md`), declarative plugins + script runner (`docs/PLUGINS.md`), biometric-locked encrypted secure folder (`docs/SECURE_FOLDER.md`)
 
 ## Build
 

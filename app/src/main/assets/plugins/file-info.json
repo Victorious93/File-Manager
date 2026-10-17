@@ -1,0 +1,14 @@
+{
+  "id": "sample.file-info",
+  "name": "File info",
+  "version": "1.0",
+  "author": "Victorious File Manager (sample)",
+  "description": "Line/word/byte counts for text files and a folder listing. Read-only.",
+  "apiVersion": 1,
+  "capabilities": ["shell", "read_files"],
+  "actions": [
+    { "id": "wc", "title": "Count lines/words/bytes", "command": "wc {files}", "target": "all_files",
+      "extensions": ["txt", "md", "kt", "java", "xml", "json", "smali", "sh", "py", "csv", "log"] },
+    { "id": "ls", "title": "List folder (long)", "command": "ls -la {dir}", "target": "folder" }
+  ]
+}

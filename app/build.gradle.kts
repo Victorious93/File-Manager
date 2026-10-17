@@ -115,6 +115,8 @@ dependencies {
     implementation(libs.shizuku.provider)
     implementation(libs.androidx.security.crypto)
     implementation(libs.zxing.core)
+    implementation(libs.androidx.biometric)
+    implementation(libs.androidx.fragment.ktx)
     implementation(libs.okhttp)
     debugImplementation(libs.androidx.compose.ui.tooling)
     testImplementation(libs.junit)

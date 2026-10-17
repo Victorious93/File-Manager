@@ -16,6 +16,9 @@ import ai.victorious.filemanager.core.net.CompositeFileIo
 import ai.victorious.filemanager.net.ConnectionRepository
 import ai.victorious.filemanager.net.WifiTransferController
 import ai.victorious.filemanager.terminal.TerminalSessionManager
+import ai.victorious.filemanager.ai.AiSettings
+import ai.victorious.filemanager.plugins.PluginRepository
+import ai.victorious.filemanager.secure.SecureFolderManager
 import android.app.Application
 import java.io.File
 import java.security.SecureRandom
@@ -49,6 +52,12 @@ class FileManagerApplication : Application() {
         private set
     lateinit var wifiTransfer: WifiTransferController
         private set
+    lateinit var aiSettings: AiSettings
+        private set
+    lateinit var plugins: PluginRepository
+        private set
+    lateinit var secureFolder: SecureFolderManager
+        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -70,6 +79,9 @@ class FileManagerApplication : Application() {
         fleetSettings = FleetSettings(this)
         terminals = TerminalSessionManager(privilege)
         wifiTransfer = WifiTransferController(io)
+        aiSettings = AiSettings(this).also { runCatching { it.load() } }
+        plugins = PluginRepository(this, privilege)
+        secureFolder = SecureFolderManager(this)
         bridge = BridgeExecutor(
             nodeId = nodeId,
             policy = CallerPolicy(certPins = CallerPolicy.parsePins(BuildConfig.FLEET_CALLER_CERT_PINS)),

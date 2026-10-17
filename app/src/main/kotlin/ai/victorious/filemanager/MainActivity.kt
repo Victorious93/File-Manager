@@ -4,14 +4,14 @@ import ai.victorious.filemanager.ui.FileManagerApp
 import ai.victorious.filemanager.ui.FileManagerViewModel
 import ai.victorious.filemanager.ui.theme.VictoriousTheme
 import android.os.Bundle
-import androidx.activity.ComponentActivity
+import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     private val viewModel: FileManagerViewModel by viewModels {
         FileManagerViewModel.factory(application as FileManagerApplication)
     }
@@ -37,5 +37,16 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         viewModel.refreshPermissions()
         viewModel.refreshAll()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        (application as FileManagerApplication).secureFolder.lock.onForeground()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // Auto-lock: the secure folder re-locks once backgrounded past its timeout.
+        (application as FileManagerApplication).secureFolder.lock.onBackground()
     }
 }

@@ -1,0 +1,13 @@
+{
+  "id": "sample.checksums",
+  "name": "Checksums",
+  "version": "1.0",
+  "author": "Victorious File Manager (sample)",
+  "description": "Print MD5 / SHA-256 of the selected files. Read-only.",
+  "apiVersion": 1,
+  "capabilities": ["shell", "read_files"],
+  "actions": [
+    { "id": "sha256", "title": "SHA-256", "command": "sha256sum {file}", "target": "each_file" },
+    { "id": "md5", "title": "MD5", "command": "md5sum {file}", "target": "each_file" }
+  ]
+}

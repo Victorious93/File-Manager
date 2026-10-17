@@ -34,6 +34,7 @@ dependencies {
     implementation(libs.okhttp)
     api(libs.nanohttpd)
     testImplementation(libs.junit)
+    testImplementation(libs.okhttp.mockwebserver)
 }
 
 tasks.test {
