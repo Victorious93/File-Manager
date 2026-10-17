@@ -28,6 +28,11 @@ dependencies {
         exclude(group = "com.beust", module = "jcommander")
     }
     implementation(libs.zip4j)
+    implementation(libs.commons.net)
+    implementation(libs.jsch)
+    implementation(libs.smbj)
+    implementation(libs.okhttp)
+    api(libs.nanohttpd)
     testImplementation(libs.junit)
 }
 

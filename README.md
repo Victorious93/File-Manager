@@ -10,7 +10,7 @@ This app is an MT Manager–class product: **it works fully on its own**. It is 
 
 ## Features (Phases 1–7)
 
-See also `docs/APK_TOOLS.md` and `docs/POWER_TOOLS.md`.
+See also `docs/APK_TOOLS.md`, `docs/POWER_TOOLS.md`, and `docs/NETWORK.md`.
 
 ### Phase 1 includes
 
@@ -37,6 +37,7 @@ Debug builds use `ai.victorious.filemanager.debug`.
 - **Phase 5** — syntax highlighting, find/replace, diff, duplicates, storage analyzer, encrypted ZIP  
 - **Phase 6** — smali assemble, ARSC strings, APKS/XAPK, v4/verify, extract installed apps  
 - **Phase 7** — Root (libsu), Shizuku, built-in terminal, app manager backup/restore (`docs/POWER_TOOLS.md`)
+- **Phase 8** — Network connections (FTP/FTPS/SFTP/SMB/WebDAV), Wi-Fi transfer (`docs/NETWORK.md`)
 
 ## Build
 

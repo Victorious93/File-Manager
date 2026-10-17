@@ -91,6 +91,8 @@ data class UiState(
     val verifyResult: Pair<String, ai.victorious.filemanager.core.apk.VerifyResult>? = null,
     val bundle: ai.victorious.filemanager.core.apk.ApkBundle? = null,
     val showTerminal: Boolean = false,
+    val showNetwork: Boolean = false,
+    val showWifiTransfer: Boolean = false,
 )
 
 /** Signing request from the Sign APK dialog. Passwords live only in memory for this call. */
@@ -161,6 +163,10 @@ sealed interface UiEvent {
     data class SaveArscEdits(val target: String, val edits: Map<Int, String>) : UiEvent
     data object OpenTerminal : UiEvent
     data object CloseTerminal : UiEvent
+    data object OpenNetwork : UiEvent
+    data object CloseNetwork : UiEvent
+    data object OpenWifiTransfer : UiEvent
+    data object CloseWifiTransfer : UiEvent
 }
 
 class FileManagerViewModel(
@@ -322,6 +328,10 @@ class FileManagerViewModel(
                 }) { (n, out) -> snack("Merged $n entries → ${out.name} (unsigned — Sign before install)") }
             }
             UiEvent.OpenTerminal -> _ui.update { it.copy(showTerminal = true) }
+            UiEvent.OpenNetwork -> _ui.update { it.copy(showNetwork = true) }
+            UiEvent.CloseNetwork -> _ui.update { it.copy(showNetwork = false) }
+            UiEvent.OpenWifiTransfer -> _ui.update { it.copy(showWifiTransfer = true) }
+            UiEvent.CloseWifiTransfer -> _ui.update { it.copy(showWifiTransfer = false) }
             UiEvent.CloseTerminal -> {
                 app.terminals.closeAll()
                 _ui.update { it.copy(showTerminal = false) }
