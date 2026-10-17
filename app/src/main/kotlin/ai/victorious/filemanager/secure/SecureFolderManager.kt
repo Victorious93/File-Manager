@@ -30,7 +30,9 @@ class SecureFolderManager(private val context: Context) {
     private val prefs = context.getSharedPreferences("secure_folder", Context.MODE_PRIVATE)
     private val root = File(context.noBackupFilesDir, "secure_vault")
 
-    val lock = VaultLock(timeoutMs = { timeoutSec * 1000L })
+    // Hard cap a little under the Keystore auth window so the UI re-prompts before the key
+    // itself starts throwing UserNotAuthenticatedException mid-operation.
+    val lock = VaultLock(timeoutMs = { timeoutSec * 1000L }, maxSessionMs = { (KEY_VALIDITY_SEC - 10) * 1000L })
 
     var timeoutSec: Int
         get() = prefs.getInt("timeout_sec", 60)
@@ -75,7 +77,15 @@ class SecureFolderManager(private val context: Context) {
         lock.touch()
     }
 
-    fun list(): List<VaultEntry> { requireUnlocked(); return vault.list() }
+    /** Runs a Keystore-backed op; if the key's auth window lapsed anyway, relock with a clear message. */
+    private fun <T> keyed(block: () -> T): T = try {
+        block()
+    } catch (e: android.security.keystore.UserNotAuthenticatedException) {
+        lock.lock()
+        throw IllegalStateException("Authentication expired — unlock the secure folder again", e)
+    }
+
+    fun list(): List<VaultEntry> { requireUnlocked(); return keyed { vault.list() } }
 
     /** Move-in: encrypt then delete the original. */
     fun moveIn(paths: List<String>): Int {
@@ -84,16 +94,16 @@ class SecureFolderManager(private val context: Context) {
         for (p in paths) {
             val f = File(p)
             if (!f.isFile) continue
-            vault.add(f)
+            keyed { vault.add(f) }
             if (!f.delete()) throw IllegalStateException("Encrypted ${f.name} but could not delete the original")
             n++
         }
         return n
     }
 
-    fun moveOut(id: String, destDir: String): File { requireUnlocked(); return vault.export(id, File(destDir), remove = true) }
+    fun moveOut(id: String, destDir: String): File { requireUnlocked(); return keyed { vault.export(id, File(destDir), remove = true) } }
 
-    fun delete(id: String) { requireUnlocked(); vault.delete(id) }
+    fun delete(id: String) { requireUnlocked(); keyed { vault.delete(id) } }
 
     private fun key(): SecretKey {
         val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }

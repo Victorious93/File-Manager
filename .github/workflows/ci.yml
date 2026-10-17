@@ -112,3 +112,103 @@ jobs:
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 1
+
+  # Separate check (not required): real app on an emulator. KVM is available on
+  # ubuntu-latest GitHub-hosted runners; the Grok box's kernel KVM is not usable.
+  emulator-smoke:
+    name: Emulator smoke tests (API 34)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      API_LEVEL: "34"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Install Android packages
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          SDKMANAGER="$(find "$SDK/cmdline-tools" -name sdkmanager -type f | sort | tail -n1)"
+          yes | "$SDKMANAGER" --sdk_root="$SDK" --licenses >/dev/null || true
+          "$SDKMANAGER" --sdk_root="$SDK" "platform-tools" "build-tools;35.0.0" "platforms;android-35"
+
+      - name: Grant Gradle wrapper execute bit
+        run: chmod +x gradlew
+
+      # Built before boot so emulator time is spent testing. Default debug key here:
+      # this job never needs the File-Manager signing secrets.
+      - name: Build debug + androidTest APKs
+        run: ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest
+
+      - name: Run smoke tests, monkey and logcat scan on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          ram-size: 4096M
+          disk-size: 4096M
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot-save
+          disable-animations: true
+          script: bash .github/scripts/emulator-smoke.sh
+
+      - name: Upload emulator logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        continue-on-error: true
+        with:
+          name: emulator-smoke-logs
+          path: |
+            build/emulator-smoke/
+            app/build/reports/androidTests/
+            app/build/outputs/androidTest-results/
+          retention-days: 3
+
+  lint:
+    name: Android lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Install Android packages
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          SDKMANAGER="$(find "$SDK/cmdline-tools" -name sdkmanager -type f | sort | tail -n1)"
+          yes | "$SDKMANAGER" --sdk_root="$SDK" --licenses >/dev/null || true
+          "$SDKMANAGER" --sdk_root="$SDK" "platform-tools" "build-tools;35.0.0" "platforms;android-35"
+
+      - name: Grant Gradle wrapper execute bit
+        run: chmod +x gradlew
+
+      - name: lintDebug (fails on errors)
+        run: ./gradlew --no-daemon :app:lintDebug
+
+      - name: Lint summary
+        if: always()
+        run: tail -n 1 app/build/reports/lint-results-debug.txt || true

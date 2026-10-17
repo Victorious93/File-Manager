@@ -127,3 +127,4 @@ Long-press an extracted folder: Rebuild APK (aligned, unsigned). Multi-select AP
 bottom-bar icon installs them in sequence. Signing uses your keystore or a per-device debug key
 generated in-app — no keys in the repo. Details: [docs/APK_TOOLS.md](docs/APK_TOOLS.md).
 Debug signing setup: [docs/SIGNING.md](docs/SIGNING.md).
+- Testing: unit tests, emulator Compose smoke tests + monkey/logcat scan, and lint in CI — see [docs/TESTING.md](docs/TESTING.md)

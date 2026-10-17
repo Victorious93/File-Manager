@@ -97,6 +97,7 @@ fun ToolsPane(state: UiState, onEvent: (UiEvent) -> Unit) {
     val dir = pane.active.path
     val files = selectedFiles(state)
     var askZipPassword by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     LazyColumn(Modifier.fillMaxSize()) {
         item {
             Text(
@@ -169,9 +170,12 @@ fun ToolsPane(state: UiState, onEvent: (UiEvent) -> Unit) {
                 if (folders.size != 1) onEvent(UiEvent.ShowMessage("Select exactly one backup folder in Files"))
                 else {
                     val svc = ai.victorious.filemanager.apps.AppBackupService(appCtx, appCtx.privilege)
-                    runCatching { svc.restoreApks(folders.first()) }
-                        .onSuccess { onEvent(UiEvent.ShowMessage(it)) }
-                        .onFailure { onEvent(UiEvent.ShowMessage(it.message ?: "Restore failed")) }
+                    // PackageInstaller session writes stream whole APKs: never on the main thread.
+                    scope.launch {
+                        withContext(Dispatchers.IO) { runCatching { svc.restoreApks(folders.first()) } }
+                            .onSuccess { onEvent(UiEvent.ShowMessage(it)) }
+                            .onFailure { onEvent(UiEvent.ShowMessage(it.message ?: "Restore failed")) }
+                    }
                 }
             }
         }

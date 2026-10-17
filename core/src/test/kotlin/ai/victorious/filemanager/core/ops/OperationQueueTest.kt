@@ -145,6 +145,50 @@ class OperationQueueTest {
         assertTrue(File(left, "nested/deep.txt").exists())
     }
 
+    @Test
+    fun createFolderAndFileThenUndoMovesThemToTrash() {
+        val q = newQueue()
+        q.enqueue(OpKind.CREATE_FOLDER, listOf(right.absolutePath), newName = "made")
+        assertEquals(OpStatus.SUCCEEDED, q.processNext().status)
+        assertTrue(File(right, "made").isDirectory)
+        q.enqueue(OpKind.CREATE_FILE, listOf(right.absolutePath), newName = "note.txt")
+        assertEquals(OpStatus.SUCCEEDED, q.processNext().status)
+        assertTrue(File(right, "note.txt").isFile)
+        assertEquals("", File(right, "note.txt").readText())
+
+        assertEquals(OpStatus.UNDONE, q.undoLast().status)
+        assertFalse(File(right, "note.txt").exists())
+        assertEquals(OpStatus.UNDONE, q.undoLast().status)
+        assertFalse(File(right, "made").exists())
+        // Undo of create never hard-deletes: both items are restorable from trash.
+        assertEquals(setOf("made", "note.txt"), trash.list().map { it.originalName }.toSet())
+    }
+
+    @Test
+    fun createRejectsExistingAndInvalidNames() {
+        val q = newQueue()
+        val existing = runCatching { q.enqueue(OpKind.CREATE_FILE, listOf(left.absolutePath), newName = "alpha.txt") }
+        assertTrue(existing.isFailure)
+        val bad = runCatching { q.enqueue(OpKind.CREATE_FOLDER, listOf(left.absolutePath), newName = "a/b") }
+        assertTrue(bad.isFailure)
+    }
+
+    @Test
+    fun concurrentEnqueueAndProcessDoesNotCorruptQueue() {
+        val q = newQueue()
+        val threads = (0 until 8).map { i ->
+            Thread {
+                repeat(10) { j ->
+                    q.enqueue(OpKind.CREATE_FILE, listOf(right.absolutePath), newName = "t$i-$j.txt")
+                    q.processAll()
+                }
+            }
+        }
+        threads.forEach { it.start() }
+        threads.forEach { it.join() }
+        assertEquals(80, right.listFiles()!!.count { it.name.startsWith("t") })
+    }
+
     private fun newQueue(): OperationQueue {
         var n = 0
         return OperationQueue(io, trash, ids = { "op-${++n}" })

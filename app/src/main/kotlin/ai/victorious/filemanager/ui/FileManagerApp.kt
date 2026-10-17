@@ -37,6 +37,7 @@ import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Bookmark
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Settings as SettingsIcon
@@ -106,6 +107,7 @@ fun FileManagerApp(
         onEvent(UiEvent.DismissSnackbar)
     }
     val context = LocalContext.current
+    var showCreate by remember { mutableStateOf(false) }
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { onRefreshPermissions() }
@@ -335,7 +337,7 @@ fun FileManagerApp(
                 )
             }
             when (state.destination) {
-                Dest.FILES -> DualPane(state, onEvent)
+                Dest.FILES -> DualPane(state, onEvent, onCreate = { showCreate = true })
                 Dest.SEARCH -> SearchPane(state, onEvent)
                 Dest.BOOKMARKS -> BookmarksPane(state, onEvent)
                 Dest.APPS -> {
@@ -349,6 +351,12 @@ fun FileManagerApp(
         }
     }
 
+    if (showCreate) {
+        CreateDialog(
+            onDismiss = { showCreate = false },
+            onConfirm = { name, folder -> showCreate = false; onEvent(UiEvent.Create(name, folder)) },
+        )
+    }
     if (state.renameTarget != null) {
         RenameDialog(
             currentName = File(state.renameTarget).name,
@@ -394,19 +402,19 @@ private fun PermissionBanner(onGrant: () -> Unit) {
 }
 
 @Composable
-private fun DualPane(state: UiState, onEvent: (UiEvent) -> Unit) {
+private fun DualPane(state: UiState, onEvent: (UiEvent) -> Unit, onCreate: () -> Unit) {
     val wide = LocalConfiguration.current.screenWidthDp >= 700
     if (wide) {
         Row(Modifier.fillMaxSize()) {
-            FilePane(0, state.left, state.focusedPane == 0, onEvent, Modifier.weight(1f))
+            FilePane(0, state.left, state.focusedPane == 0, onEvent, onCreate, Modifier.weight(1f))
             VerticalDivider()
-            FilePane(1, state.right, state.focusedPane == 1, onEvent, Modifier.weight(1f))
+            FilePane(1, state.right, state.focusedPane == 1, onEvent, onCreate, Modifier.weight(1f))
         }
     } else {
         Column(Modifier.fillMaxSize()) {
-            FilePane(0, state.left, state.focusedPane == 0, onEvent, Modifier.weight(1f))
+            FilePane(0, state.left, state.focusedPane == 0, onEvent, onCreate, Modifier.weight(1f))
             HorizontalDivider()
-            FilePane(1, state.right, state.focusedPane == 1, onEvent, Modifier.weight(1f))
+            FilePane(1, state.right, state.focusedPane == 1, onEvent, onCreate, Modifier.weight(1f))
         }
     }
 }
@@ -417,6 +425,7 @@ private fun FilePane(
     pane: PaneState,
     focused: Boolean,
     onEvent: (UiEvent) -> Unit,
+    onCreate: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val border = if (focused) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
@@ -462,6 +471,9 @@ private fun FilePane(
             }
             IconButton(onClick = { onEvent(UiEvent.NewTab(index)) }) {
                 Icon(Icons.Outlined.Add, contentDescription = "New tab")
+            }
+            IconButton(onClick = { onEvent(UiEvent.FocusPane(index)); onCreate() }) {
+                Icon(Icons.Outlined.CreateNewFolder, contentDescription = "New folder or file")
             }
         }
         Text(
@@ -685,6 +697,26 @@ private fun EmptyState(title: String, body: String) {
             Text(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
+}
+
+@Composable
+private fun CreateDialog(onDismiss: () -> Unit, onConfirm: (name: String, folder: Boolean) -> Unit) {
+    var value by remember { mutableStateOf("") }
+    val ok = value.trim().isNotEmpty() && ai.victorious.filemanager.core.path.PathHelpers.isValidFileName(value.trim())
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Create in this folder") },
+        text = {
+            OutlinedTextField(value = value, onValueChange = { value = it }, singleLine = true, label = { Text("Name") })
+        },
+        confirmButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = { onConfirm(value.trim(), false) }, enabled = ok) { Text("New file") }
+                Button(onClick = { onConfirm(value.trim(), true) }, enabled = ok) { Text("New folder") }
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 @Composable

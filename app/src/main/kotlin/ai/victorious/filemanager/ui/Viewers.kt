@@ -435,7 +435,10 @@ private fun ArchiveScreen(file: File, extractTo: File, onClose: () -> Unit, onMe
         }
     }
     LaunchedEffect(file) {
-        encrypted = withContext(Dispatchers.IO) { Archives.format(file) == ArchiveFormat.ZIP && EncryptedZip.isEncrypted(file) }
+        // Corrupt / unknown archives must surface as an error, not crash the LaunchedEffect.
+        encrypted = withContext(Dispatchers.IO) {
+            runCatching { Archives.format(file) == ArchiveFormat.ZIP && EncryptedZip.isEncrypted(file) }.getOrDefault(false)
+        }
         withContext(Dispatchers.IO) { runCatching { Archives.list(file) } }
             .onSuccess { items = it }.onFailure { error = it.message ?: "Cannot read archive" }
     }

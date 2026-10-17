@@ -1,6 +1,6 @@
 package ai.victorious.filemanager.core.ops
 
-enum class OpKind { COPY, MOVE, DELETE, RENAME }
+enum class OpKind { COPY, MOVE, DELETE, RENAME, CREATE_FOLDER, CREATE_FILE }
 
 enum class OpStatus { QUEUED, RUNNING, SUCCEEDED, FAILED, UNDONE, CANCELLED }
 

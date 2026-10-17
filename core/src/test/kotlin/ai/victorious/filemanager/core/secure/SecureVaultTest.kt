@@ -82,4 +82,17 @@ class SecureVaultTest {
         lock.unlock(); assertTrue(lock.isUnlocked)
         lock.onBackground(); assertFalse(lock.isUnlocked)
     }
+
+    @Test
+    fun lockHardCapsSessionEvenWhileActive() {
+        // Regression: continuous use kept the idle timer fresh past the Keystore auth window,
+        // so the UI said "unlocked" while every operation failed with UserNotAuthenticated.
+        var now = 0L
+        val lock = VaultLock(timeoutMs = { 60_000L }, now = { now }, maxSessionMs = { 290_000L })
+        lock.unlock()
+        while (now < 280_000) { now += 20_000; lock.touch(); assertTrue(lock.isUnlocked) }
+        now = 290_000
+        assertFalse(lock.isUnlocked)
+        lock.unlock(); assertTrue(lock.isUnlocked)  // re-auth starts a fresh window
+    }
 }

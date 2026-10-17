@@ -8,6 +8,13 @@ import java.util.UUID
 /**
  * Sequential file-operation queue with undo. Copy/move/delete/rename run one at
  * a time; a successful op pushes an inverse onto the undo stack.
+ *
+ * Public methods are synchronized: the UI enqueues/undoes from IO coroutines, so two quick
+ * taps must not interleave on the deques.
+ *
+ * CREATE_FOLDER / CREATE_FILE take the parent folder as the single source and [FileOperation.newName]
+ * as the new child's name; undo moves the created item to the trash (never a hard delete,
+ * since the user may already have put files inside it).
  */
 class OperationQueue(
     private val io: FileIo,
@@ -19,6 +26,7 @@ class OperationQueue(
     private val history = mutableListOf<OpResult>()
     private var running: FileOperation? = null
 
+    @Synchronized
     fun enqueue(kind: OpKind, sources: List<String>, destinationDir: String? = null, newName: String? = null): FileOperation {
         require(sources.isNotEmpty()) { "No sources" }
         val op = FileOperation(
@@ -33,6 +41,7 @@ class OperationQueue(
         return op
     }
 
+    @Synchronized
     fun snapshot(): QueueSnapshot = QueueSnapshot(
         pending = pending.toList(),
         running = running,
@@ -40,6 +49,7 @@ class OperationQueue(
         canUndo = undoStack.isNotEmpty(),
     )
 
+    @Synchronized
     fun processAll(): List<OpResult> {
         val results = mutableListOf<OpResult>()
         while (pending.isNotEmpty()) {
@@ -48,6 +58,7 @@ class OperationQueue(
         return results
     }
 
+    @Synchronized
     fun processNext(): OpResult {
         val op = pending.removeFirstOrNull() ?: return OpResult("", OpStatus.CANCELLED, "Queue empty")
         running = op
@@ -64,6 +75,7 @@ class OperationQueue(
         return result
     }
 
+    @Synchronized
     fun undoLast(): OpResult {
         val completed = undoStack.removeLastOrNull()
             ?: return OpResult("", OpStatus.FAILED, "Nothing to undo")
@@ -78,6 +90,7 @@ class OperationQueue(
         return result
     }
 
+    @Synchronized
     fun clearUndo() {
         undoStack.clear()
     }
@@ -103,6 +116,14 @@ class OperationQueue(
                 require(PathHelpers.isValidFileName(name)) { "Invalid name: $name" }
                 if (!io.exists(op.sources.first())) throw IllegalArgumentException("Missing: ${op.sources.first()}")
             }
+            OpKind.CREATE_FOLDER, OpKind.CREATE_FILE -> {
+                require(op.sources.size == 1) { "Create takes the parent folder" }
+                val name = op.newName ?: throw IllegalArgumentException("Name required")
+                require(PathHelpers.isValidFileName(name)) { "Invalid name: $name" }
+                val parent = op.sources.first()
+                if (!io.isDirectory(parent)) throw IllegalArgumentException("Not a folder: $parent")
+                if (io.exists(PathHelpers.join(parent, name))) throw IllegalArgumentException("Already exists: $name")
+            }
         }
     }
 
@@ -111,6 +132,14 @@ class OperationQueue(
         OpKind.MOVE -> moveOp(op)
         OpKind.DELETE -> deleteOp(op)
         OpKind.RENAME -> renameOp(op)
+        OpKind.CREATE_FOLDER, OpKind.CREATE_FILE -> createOp(op)
+    }
+
+    private fun createOp(op: FileOperation): CompletedOp {
+        val dest = PathHelpers.join(op.sources.first(), op.newName!!)
+        if (io.exists(dest)) throw IllegalArgumentException("Already exists: ${op.newName}")
+        if (op.kind == OpKind.CREATE_FOLDER) io.mkdir(dest) else io.writeText(dest, "")
+        return CompletedOp(op, createdPaths = listOf(dest))
     }
 
     private fun copyOp(op: FileOperation): CompletedOp {
@@ -168,6 +197,9 @@ class OperationQueue(
                 io.move(to, dest)
             }
             OpKind.DELETE -> completed.trashIds.asReversed().forEach { trash.restore(it) }
+            OpKind.CREATE_FOLDER, OpKind.CREATE_FILE -> completed.createdPaths.forEach {
+                if (io.exists(it)) trash.moveToTrash(it)
+            }
             OpKind.RENAME -> {
                 val from = completed.renamedTo ?: return
                 val to = completed.renamedFrom ?: return
@@ -186,5 +218,7 @@ class OperationQueue(
         OpKind.MOVE -> "Moved ${completed.movedPairs.size} item(s)"
         OpKind.DELETE -> "Moved ${completed.trashIds.size} item(s) to trash"
         OpKind.RENAME -> "Renamed to ${op.newName}"
+        OpKind.CREATE_FOLDER -> "Created folder ${op.newName}"
+        OpKind.CREATE_FILE -> "Created file ${op.newName}"
     }
 }

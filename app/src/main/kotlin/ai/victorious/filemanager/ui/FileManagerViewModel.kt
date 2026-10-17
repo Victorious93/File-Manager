@@ -167,12 +167,16 @@ sealed interface UiEvent {
     data object CloseNetwork : UiEvent
     data object OpenWifiTransfer : UiEvent
     data object CloseWifiTransfer : UiEvent
+    /** Create an empty folder or file named [name] in the focused pane's folder. */
+    data class Create(val name: String, val folder: Boolean) : UiEvent
 }
 
 class FileManagerViewModel(
     private val app: FileManagerApplication,
+    /** Injectable for tests; defaults to the app's composite (local + remote) FileIo. */
+    private val ioOverride: FileIo? = null,
 ) : ViewModel() {
-    private val io: FileIo get() = app.io
+    private val io: FileIo get() = ioOverride ?: app.io
 
     private val _ui = MutableStateFlow(initialState())
     val ui: StateFlow<UiState> = _ui
@@ -184,8 +188,9 @@ class FileManagerViewModel(
 
     private fun initialState(): UiState {
         val root = defaultRoot()
-        val left = PaneState(listOf(tabFor(root)), 0)
-        val right = PaneState(listOf(tabFor(root)), 0)
+        // Entries are filled by refreshAll() on Dispatchers.IO; nothing is listed on the main thread.
+        val left = PaneState(listOf(emptyTab(root)), 0)
+        val right = PaneState(listOf(emptyTab(root)), 0)
         return UiState(left = left, right = right, nodeId = app.nodeId)
     }
 
@@ -195,16 +200,59 @@ class FileManagerViewModel(
         _ui.update { it.copy(hasStorageAccess = granted, dcaInstalled = dca) }
     }
 
+    /**
+     * Re-lists every open tab plus bookmarks/trash. All IO (local, root/Shizuku shell, or a
+     * remote backend) runs on Dispatchers.IO; the result is merged by tab id so tabs the user
+     * opened/closed meanwhile are not clobbered.
+     */
     fun refreshAll() {
-        _ui.update { state ->
-            state.copy(
-                left = reloadPane(state.left),
-                right = reloadPane(state.right),
-                bookmarks = app.bookmarks.list(),
-                trash = app.trash.list(),
-                canUndo = app.queue.snapshot().canUndo,
-            )
+        viewModelScope.launch {
+            val snapshot = _ui.value
+            val listed = withContext(Dispatchers.IO) {
+                val tabs = (snapshot.left.tabs + snapshot.right.tabs).associate { it.id to listing(it.path) }
+                val selected = (snapshot.left.selected + snapshot.right.selected)
+                    .filter { runCatching { io.exists(it) }.getOrDefault(false) }.toSet()
+                Refreshed(
+                    tabs = tabs,
+                    existingSelection = selected,
+                    bookmarks = runCatching { app.bookmarks.list() }.getOrDefault(emptyList()),
+                    trash = runCatching { app.trash.list() }.getOrDefault(emptyList()),
+                    canUndo = app.queue.snapshot().canUndo,
+                )
+            }
+            _ui.update { state ->
+                fun merge(p: PaneState) = p.copy(
+                    tabs = p.tabs.map { t ->
+                        val l = listed.tabs[t.id]
+                        if (l == null || l.path != t.path) t
+                        else t.copy(title = titleFor(t.path), entries = l.entries, error = l.error)
+                    },
+                    selected = p.selected.filter { it in listed.existingSelection || it !in snapshot.left.selected + snapshot.right.selected }.toSet(),
+                )
+                state.copy(
+                    left = merge(state.left),
+                    right = merge(state.right),
+                    bookmarks = listed.bookmarks,
+                    trash = listed.trash,
+                    canUndo = listed.canUndo,
+                )
+            }
         }
+    }
+
+    private class Listing(val path: String, val entries: List<FileEntry>, val error: String?)
+    private class Refreshed(
+        val tabs: Map<String, Listing>,
+        val existingSelection: Set<String>,
+        val bookmarks: List<Bookmark>,
+        val trash: List<TrashEntry>,
+        val canUndo: Boolean,
+    )
+
+    /** Must be called off the main thread. */
+    private fun listing(path: String): Listing {
+        val r = runCatching { io.list(path) }
+        return Listing(path, r.getOrDefault(emptyList()), r.exceptionOrNull()?.message)
     }
 
     fun onEvent(event: UiEvent) {
@@ -229,35 +277,25 @@ class FileManagerViewModel(
             is UiEvent.OpenSearchHit -> {
                 if (event.isDirectory) {
                     openPath(0, event.path)
-                    _ui.update { it.copy(destination = Dest.FILES, focusedPane = 0) }
                 } else {
-                    openPath(0, parentOrSelf(event.path))
-                    updatePane(0) { it.copy(selected = setOf(event.path)) }
-                    _ui.update { it.copy(destination = Dest.FILES, focusedPane = 0) }
+                    openPath(0, parentOrSelf(event.path), select = setOf(event.path))
                 }
+                _ui.update { it.copy(destination = Dest.FILES, focusedPane = 0) }
             }
             UiEvent.ToggleBookmark -> toggleBookmark()
             is UiEvent.OpenBookmark -> {
                 openPath(_ui.value.focusedPane, event.path)
                 _ui.update { it.copy(destination = Dest.FILES) }
             }
-            is UiEvent.RemoveBookmark -> {
-                app.bookmarks.remove(event.id)
-                _ui.update { it.copy(bookmarks = app.bookmarks.list()) }
+            is UiEvent.RemoveBookmark -> background("Remove bookmark", {
+                app.bookmarks.remove(event.id); app.bookmarks.list()
+            }) { list -> _ui.update { it.copy(bookmarks = list) } }
+            is UiEvent.RestoreTrash -> background("Restore", { app.trash.restore(event.id) }) {
+                refreshAll(); snack("Restored from trash")
             }
-            is UiEvent.RestoreTrash -> {
-                runCatching { app.trash.restore(event.id) }
-                refreshAll()
-                snack("Restored from trash")
-            }
-            is UiEvent.DeleteTrash -> {
-                app.trash.permanentlyDelete(event.id)
-                refreshAll()
-            }
-            UiEvent.EmptyTrash -> {
-                app.trash.empty()
-                refreshAll()
-                snack("Trash emptied")
+            is UiEvent.DeleteTrash -> background("Delete", { app.trash.permanentlyDelete(event.id) }) { refreshAll() }
+            UiEvent.EmptyTrash -> background("Empty trash", { app.trash.empty() }) {
+                refreshAll(); snack("Trash emptied")
             }
             UiEvent.DismissSnackbar -> _ui.update { it.copy(snackbar = null) }
             UiEvent.ToggleAbout -> _ui.update { it.copy(showAbout = !it.showAbout) }
@@ -332,6 +370,7 @@ class FileManagerViewModel(
             UiEvent.CloseNetwork -> _ui.update { it.copy(showNetwork = false) }
             UiEvent.OpenWifiTransfer -> _ui.update { it.copy(showWifiTransfer = true) }
             UiEvent.CloseWifiTransfer -> _ui.update { it.copy(showWifiTransfer = false) }
+            is UiEvent.Create -> create(event.name.trim(), event.folder)
             UiEvent.CloseTerminal -> {
                 app.terminals.closeAll()
                 _ui.update { it.copy(showTerminal = false) }
@@ -353,28 +392,11 @@ class FileManagerViewModel(
         }
     }
 
-    private fun tabFor(path: String): TabState {
-        val listed = runCatching { io.list(path) }
-        return TabState(
-            id = UUID.randomUUID().toString(),
-            title = titleFor(path),
-            path = path,
-            entries = listed.getOrDefault(emptyList()),
-            error = listed.exceptionOrNull()?.message,
-        )
-    }
-
-    private fun reloadPane(pane: PaneState): PaneState {
-        val tabs = pane.tabs.map { tab ->
-            val listed = runCatching { io.list(tab.path) }
-            tab.copy(
-                title = titleFor(tab.path),
-                entries = listed.getOrDefault(emptyList()),
-                error = listed.exceptionOrNull()?.message,
-            )
-        }
-        return pane.copy(tabs = tabs, selected = pane.selected.filter { io.exists(it) }.toSet())
-    }
+    private fun emptyTab(path: String) = TabState(
+        id = UUID.randomUUID().toString(),
+        title = titleFor(path),
+        path = path,
+    )
 
     private fun titleFor(path: String): String {
         val name = File(path).name
@@ -390,21 +412,23 @@ class FileManagerViewModel(
         }
     }
 
-    private fun openPath(pane: Int, path: String) {
-        if (!io.isDirectory(path)) return
-        updatePane(pane) { current ->
-            val tabs = current.tabs.toMutableList()
-            val active = current.active.copy(
-                path = path,
-                title = titleFor(path),
-                entries = runCatching { io.list(path) }.getOrDefault(emptyList()),
-                error = null,
-            ).let { reloaded ->
-                val listed = runCatching { io.list(path) }
-                reloaded.copy(entries = listed.getOrDefault(emptyList()), error = listed.exceptionOrNull()?.message)
+    /**
+     * Navigates the active tab of [pane] to [path]. The directory check and listing run on
+     * Dispatchers.IO: for /remote/... paths they are network calls (NetworkOnMainThreadException
+     * on the main thread), and big local folders would jank the UI.
+     */
+    private fun openPath(pane: Int, path: String, select: Set<String> = emptySet()) {
+        val tabId = pane(_ui.value, pane).active.id
+        viewModelScope.launch {
+            val listed = withContext(Dispatchers.IO) {
+                if (!runCatching { io.isDirectory(path) }.getOrDefault(false)) null else listing(path)
+            } ?: return@launch
+            updatePane(pane) { current ->
+                val idx = current.tabs.indexOfFirst { it.id == tabId }.takeIf { it >= 0 } ?: current.activeIndex
+                val tabs = current.tabs.toMutableList()
+                tabs[idx] = tabs[idx].copy(path = path, title = titleFor(path), entries = listed.entries, error = listed.error)
+                current.copy(tabs = tabs, selected = select)
             }
-            tabs[current.activeIndex] = active
-            current.copy(tabs = tabs, selected = emptySet())
         }
     }
 
@@ -436,9 +460,34 @@ class FileManagerViewModel(
 
     private fun newTab(pane: Int, path: String?) {
         val target = path ?: pane(_ui.value, pane).active.path
+        val tab = emptyTab(target)
         updatePane(pane) { current ->
-            val tabs = current.tabs + tabFor(target)
+            val tabs = current.tabs + tab
             current.copy(tabs = tabs, activeIndex = tabs.lastIndex, selected = emptySet())
+        }
+        viewModelScope.launch {
+            val listed = withContext(Dispatchers.IO) { listing(target) }
+            updatePane(pane) { current ->
+                current.copy(tabs = current.tabs.map { if (it.id == tab.id) it.copy(entries = listed.entries, error = listed.error) else it })
+            }
+        }
+    }
+
+    private fun create(name: String, folder: Boolean) {
+        val dir = pane(_ui.value, _ui.value.focusedPane).active.path
+        viewModelScope.launch {
+            _ui.update { it.copy(busy = true) }
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    app.queue.enqueue(if (folder) OpKind.CREATE_FOLDER else OpKind.CREATE_FILE, listOf(dir), newName = name)
+                    app.queue.processAll().last()
+                }
+            }
+            _ui.update { it.copy(busy = false) }
+            result.fold(
+                onSuccess = { refreshAll(); snack(it.message) },
+                onFailure = { snack(it.message ?: "Create failed") },
+            )
         }
     }
 
@@ -473,7 +522,7 @@ class FileManagerViewModel(
                     when (kind) {
                         OpKind.COPY, OpKind.MOVE -> app.queue.enqueue(kind, sources, otherPaneDir())
                         OpKind.DELETE -> app.queue.enqueue(kind, sources)
-                        OpKind.RENAME -> error("use confirmRename")
+                        OpKind.RENAME, OpKind.CREATE_FOLDER, OpKind.CREATE_FILE -> error("not a selection op")
                     }
                     app.queue.processAll().last()
                 }
@@ -598,9 +647,14 @@ class FileManagerViewModel(
 
     private fun toggleBookmark() {
         val path = pane(_ui.value, _ui.value.focusedPane).active.path
-        val existing = app.bookmarks.list().find { it.path == path }
-        if (existing != null) app.bookmarks.remove(existing.id) else app.bookmarks.add(path)
-        _ui.update { it.copy(bookmarks = app.bookmarks.list()) }
+        viewModelScope.launch {
+            val list = withContext(Dispatchers.IO) {
+                val existing = app.bookmarks.list().find { it.path == path }
+                if (existing != null) app.bookmarks.remove(existing.id) else app.bookmarks.add(path)
+                app.bookmarks.list()
+            }
+            _ui.update { it.copy(bookmarks = list) }
+        }
     }
 
     private fun snack(message: String) {
