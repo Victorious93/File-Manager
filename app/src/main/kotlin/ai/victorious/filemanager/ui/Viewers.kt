@@ -1,5 +1,8 @@
 package ai.victorious.filemanager.ui
 
+import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material.icons.outlined.AutoAwesome
 import ai.victorious.filemanager.core.archive.ArchiveItem
 import ai.victorious.filemanager.core.archive.Archives
 import ai.victorious.filemanager.core.archive.ArchiveFormat
@@ -136,6 +139,8 @@ private fun TextEditorScreen(file: File, onClose: () -> Unit, onMessage: (String
     var showFind by remember { mutableStateOf(false) }
     var find by remember { mutableStateOf(FindState()) }
     var field by remember { mutableStateOf(TextFieldValue("")) }
+    var showAi by remember { mutableStateOf(false) }
+    val aiEnabled by (LocalContext.current.applicationContext as ai.victorious.filemanager.FileManagerApplication).aiSettings.enabled.collectAsState()
     val language = remember(file) { SyntaxHighlighter.languageFor(file.name) }
     val dark = isSystemInDarkTheme()
     LaunchedEffect(file) {
@@ -153,6 +158,11 @@ private fun TextEditorScreen(file: File, onClose: () -> Unit, onMessage: (String
             if (h != null) {
                 IconButton(onClick = { showFind = !showFind }) {
                     Icon(Icons.Outlined.FindReplace, contentDescription = "Find & replace")
+                }
+                if (aiEnabled) {
+                    IconButton(onClick = { showAi = !showAi }) {
+                        Icon(Icons.Outlined.AutoAwesome, contentDescription = "AI assistant")
+                    }
                 }
                 key(version) {
                     IconButton(onClick = { text = h.undo(); field = TextFieldValue(text); version++ }, enabled = h.canUndo) {
@@ -199,6 +209,21 @@ private fun TextEditorScreen(file: File, onClose: () -> Unit, onMessage: (String
                             .onSuccess { applyEdit(it.text); onMessage("Replaced ${it.count} occurrence(s)") }
                             .onFailure { onMessage("Replace failed: ${it.message}") }
                     },
+                )
+            }
+            if (showAi) {
+                val sel = field.selection
+                AiPanel(
+                    fileName = file.name,
+                    language = language.name,
+                    fullText = text,
+                    selection = if (sel.collapsed) null else sel.min until sel.max,
+                    onApply = { replacement ->
+                        val s = field.selection
+                        applyEdit(ai.victorious.filemanager.core.ai.AiResponseParser.applyEdit(text, if (s.collapsed) null else s.min until s.max, replacement))
+                        onMessage("Applied AI edit (undo to revert)")
+                    },
+                    onClose = { showAi = false },
                 )
             }
             val transformation = remember(language, dark, matches) { HighlightTransformation(language, dark, matches) }

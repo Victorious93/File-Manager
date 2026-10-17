@@ -37,6 +37,9 @@ import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PieChart
 import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.Terminal
+import androidx.compose.material.icons.outlined.Shield
+import androidx.compose.material.icons.outlined.Code
+import androidx.compose.material.icons.outlined.Extension
 import androidx.compose.material.icons.outlined.Wifi
 import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material3.Button
@@ -81,6 +84,9 @@ sealed interface ToolRequest {
     data class Duplicates(val root: String) : ToolRequest
     data class Storage(val root: String) : ToolRequest
     data class ExtractApps(val dest: String) : ToolRequest
+    data class Plugins(val selected: List<String>, val dir: String) : ToolRequest
+    data class Scripts(val selected: List<String>, val dir: String) : ToolRequest
+    data class SecureFolder(val selected: List<String>, val dir: String) : ToolRequest
 }
 
 @Composable
@@ -103,6 +109,21 @@ fun ToolsPane(state: UiState, onEvent: (UiEvent) -> Unit) {
         item {
             ToolItem(Icons.Outlined.Terminal, "Terminal", "sh / su / Shizuku shell with extra keys") {
                 onEvent(UiEvent.OpenTerminal)
+            }
+        }
+        item {
+            ToolItem(Icons.Outlined.Extension, "Plugins", "Declarative JSON plugins with declared capabilities") {
+                onEvent(UiEvent.OpenTool(ToolRequest.Plugins(pane.selected.toList(), dir)))
+            }
+        }
+        item {
+            ToolItem(Icons.Outlined.Code, "Scripts", "Saved sh scripts on the selection, with output log") {
+                onEvent(UiEvent.OpenTool(ToolRequest.Scripts(files.map { it.absolutePath }, dir)))
+            }
+        }
+        item {
+            ToolItem(Icons.Outlined.Shield, "Secure folder", "Biometric-locked, encrypted at rest (${files.size} selected)") {
+                onEvent(UiEvent.OpenTool(ToolRequest.SecureFolder(files.map { it.absolutePath }, dir)))
             }
         }
         item {
@@ -183,6 +204,9 @@ fun ToolHost(request: ToolRequest, onClose: () -> Unit, onEvent: (UiEvent) -> Un
         is ToolRequest.Duplicates -> DuplicatesScreen(File(request.root), onClose, onEvent)
         is ToolRequest.Storage -> StorageScreen(File(request.root), onClose)
         is ToolRequest.ExtractApps -> ExtractAppsScreen(File(request.dest), onClose, onEvent)
+        is ToolRequest.Plugins -> PluginsScreen(request.selected, request.dir, onClose, onEvent)
+        is ToolRequest.Scripts -> ScriptsScreen(request.selected, request.dir, onClose)
+        is ToolRequest.SecureFolder -> SecureFolderScreen(request.selected, request.dir, onClose, onEvent)
     }
 }
 

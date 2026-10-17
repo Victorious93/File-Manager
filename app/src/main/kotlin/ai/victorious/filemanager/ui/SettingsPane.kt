@@ -10,6 +10,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -92,6 +96,9 @@ fun SettingsPane(onEvent: (UiEvent) -> Unit = {}) {
             style = MaterialTheme.typography.bodySmall,
         )
 
+        AiSettingsSection(onEvent)
+        SecureFolderSettingsSection()
+
         Text("Fleet", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -105,5 +112,68 @@ fun SettingsPane(onEvent: (UiEvent) -> Unit = {}) {
             Switch(checked = external, onCheckedChange = fleet::setExternalControlEnabled)
         }
         Text("Fleet node: ${app.nodeId} (external_node, stub)", style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
+private fun AiSettingsSection(onEvent: (UiEvent) -> Unit) {
+    val app = LocalContext.current.applicationContext as FileManagerApplication
+    val ai = app.aiSettings
+    val enabled by ai.enabled.collectAsState()
+    var baseUrl by remember { mutableStateOf(runCatching { ai.baseUrl }.getOrDefault("")) }
+    var model by remember { mutableStateOf(runCatching { ai.model }.getOrDefault("")) }
+    var key by remember { mutableStateOf("") }
+    var hasKey by remember { mutableStateOf(runCatching { ai.hasApiKey }.getOrDefault(false)) }
+
+    Text("AI assistant", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
+    Text(
+        "Explain / Suggest edit in the code editor via your own OpenAI-compatible endpoint. Off by default. " +
+            "Nothing is bundled; settings and key are stored encrypted (Android Keystore). Code is only sent after you confirm.",
+        style = MaterialTheme.typography.bodySmall,
+    )
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text("Enable AI assistant", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+        Switch(checked = enabled, onCheckedChange = { ai.setEnabled(it) })
+    }
+    OutlinedTextField(baseUrl, { baseUrl = it }, label = { Text("Base URL (e.g. https://host/v1)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(model, { model = it }, label = { Text("Model") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(
+        key, { key = it },
+        label = { Text(if (hasKey) "API key (saved — leave blank to keep)" else "API key") },
+        singleLine = true,
+        visualTransformation = PasswordVisualTransformation(),
+        modifier = Modifier.fillMaxWidth(),
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(onClick = {
+            val url = baseUrl.trim()
+            if (url.isNotEmpty() && !(url.startsWith("https://") || url.startsWith("http://"))) {
+                onEvent(UiEvent.ShowMessage("Base URL must start with https://"))
+                return@Button
+            }
+            ai.save(url, model, key.ifBlank { null })
+            key = ""
+            hasKey = ai.hasApiKey
+            onEvent(UiEvent.ShowMessage(if (url.startsWith("http://")) "Saved (warning: plain HTTP is not encrypted)" else "AI settings saved"))
+        }) { Text("Save") }
+        OutlinedButton(enabled = hasKey, onClick = { ai.clearKey(); hasKey = false; onEvent(UiEvent.ShowMessage("API key removed")) }) { Text("Remove key") }
+    }
+}
+
+@Composable
+private fun SecureFolderSettingsSection() {
+    val app = LocalContext.current.applicationContext as FileManagerApplication
+    val secure = app.secureFolder
+    var timeout by remember { mutableStateOf(secure.timeoutSec) }
+    Text("Secure folder", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
+    Text(
+        "Auto-lock after ${if (timeout == 0) "leaving the app" else "$timeout s idle or in background"}.",
+        style = MaterialTheme.typography.bodySmall,
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        for (s in listOf(0, 30, 60, 300)) {
+            FilterChip(selected = timeout == s, onClick = { secure.timeoutSec = s; timeout = s },
+                label = { Text(if (s == 0) "Immediately" else if (s < 60) "${s}s" else "${s / 60} min") })
+        }
     }
 }
