@@ -58,6 +58,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -109,6 +110,14 @@ fun FileManagerApp(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { onRefreshPermissions() }
 
+    if (state.showTerminal) {
+        val appCtx = LocalContext.current.applicationContext as ai.victorious.filemanager.FileManagerApplication
+        Box(Modifier.fillMaxSize()) {
+            TerminalScreen(appCtx.terminals, onClose = { onEvent(UiEvent.CloseTerminal) })
+            SnackbarHost(snackbarHost, Modifier.align(Alignment.BottomCenter))
+        }
+        return
+    }
     state.tool?.let { tool ->
         Box(Modifier.fillMaxSize()) {
             ToolHost(tool, onClose = { onEvent(UiEvent.CloseTool) }, onEvent = onEvent)
@@ -151,6 +160,7 @@ fun FileManagerApp(
                                 Dest.FILES -> pane(state).active.path
                                 Dest.SEARCH -> "Search"
                                 Dest.BOOKMARKS -> "Bookmarks"
+                                Dest.APPS -> "Apps"
                                 Dest.TOOLS -> "Tools"
                                 Dest.TRASH -> "Trash"
                                 Dest.SETTINGS -> "Settings"
@@ -242,6 +252,12 @@ fun FileManagerApp(
                         label = { Text("Bookmarks") },
                     )
                     NavigationBarItem(
+                        selected = state.destination == Dest.APPS,
+                        onClick = { onEvent(UiEvent.Navigate(Dest.APPS)) },
+                        icon = { Icon(Icons.Outlined.Apps, contentDescription = null) },
+                        label = { Text("Apps") },
+                    )
+                    NavigationBarItem(
                         selected = state.destination == Dest.TOOLS,
                         onClick = { onEvent(UiEvent.Navigate(Dest.TOOLS)) },
                         icon = { Icon(Icons.Outlined.Build, contentDescription = null) },
@@ -293,9 +309,13 @@ fun FileManagerApp(
                 Dest.FILES -> DualPane(state, onEvent)
                 Dest.SEARCH -> SearchPane(state, onEvent)
                 Dest.BOOKMARKS -> BookmarksPane(state, onEvent)
+                Dest.APPS -> {
+                    val dir = if (state.focusedPane == 0) state.left.active.path else state.right.active.path
+                    AppsPane(backupDir = dir, onEvent = onEvent)
+                }
                 Dest.TOOLS -> ToolsPane(state, onEvent)
                 Dest.TRASH -> TrashPane(state, onEvent)
-                Dest.SETTINGS -> SettingsPane()
+                Dest.SETTINGS -> SettingsPane(onEvent)
             }
         }
     }
