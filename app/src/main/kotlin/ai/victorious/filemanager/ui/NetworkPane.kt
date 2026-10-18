@@ -8,6 +8,8 @@ import ai.victorious.filemanager.core.net.RemotePaths
 import ai.victorious.filemanager.core.net.RemoteProtocol
 import ai.victorious.filemanager.core.net.SavedConnection
 import ai.victorious.filemanager.net.WifiTransferController
+import ai.victorious.filemanager.cloud.CloudOAuth
+import ai.victorious.filemanager.core.cloud.CloudProvider
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
@@ -19,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -58,10 +61,40 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 fun NetworkConnectionsScreen(onOpenRemote: (String) -> Unit, onMessage: (String) -> Unit, onClose: () -> Unit) {
-    val app = LocalContext.current.applicationContext as FileManagerApplication
+    val context = LocalContext.current
+    val app = context.applicationContext as FileManagerApplication
     var items by remember { mutableStateOf(app.connections.list()) }
     var editing by remember { mutableStateOf(false) }
+    var s3Editing by remember { mutableStateOf(false) }
     fun reload() { items = app.connections.list() }
+    fun protoFor(p: CloudProvider) = when (p) {
+        CloudProvider.GOOGLE_DRIVE -> RemoteProtocol.GDRIVE
+        CloudProvider.DROPBOX -> RemoteProtocol.DROPBOX
+        CloudProvider.ONEDRIVE -> RemoteProtocol.ONEDRIVE
+    }
+    fun providerFor(p: RemoteProtocol) = when (p) {
+        RemoteProtocol.GDRIVE -> CloudProvider.GOOGLE_DRIVE
+        RemoteProtocol.DROPBOX -> CloudProvider.DROPBOX
+        RemoteProtocol.ONEDRIVE -> CloudProvider.ONEDRIVE
+        else -> null
+    }
+    fun addCloud(provider: CloudProvider) {
+        if (!app.connections.isConfigured(provider)) {
+            onMessage("${provider.displayName} isn't configured yet — add its client ID (see docs/CLOUD.md).")
+            return
+        }
+        val saved = app.connections.save(ConnectionDraft(name = provider.displayName, protocol = protoFor(provider), host = ""))
+        reload()
+        if (CloudOAuth.start(context, app.connections, provider, saved.id)) {
+            onMessage("Opening browser to sign in to ${provider.displayName}…")
+        }
+    }
+    fun signIn(c: SavedConnection) {
+        val provider = providerFor(c.protocol) ?: return
+        if (CloudOAuth.start(context, app.connections, provider, c.id)) {
+            onMessage("Opening browser to sign in to ${provider.displayName}…")
+        } else onMessage("${provider.displayName} isn't configured (see docs/CLOUD.md).")
+    }
 
     Column(Modifier.fillMaxSize()) {
         Row(
@@ -76,21 +109,43 @@ fun NetworkConnectionsScreen(onOpenRemote: (String) -> Unit, onMessage: (String)
             }
         }
         Text(
-            "Credentials stay in EncryptedSharedPreferences (Android Keystore). Cloud OAuth (Drive/Dropbox) is deferred — no client IDs.",
+            "Credentials and OAuth tokens stay in EncryptedSharedPreferences (Android Keystore) and are never logged. " +
+                "Cloud sign-in uses OAuth + PKCE in your browser; providers without a client ID show as Not configured (see docs/CLOUD.md).",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 16.dp),
         )
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            CloudProvider.entries.forEach { p ->
+                val configured = app.connections.isConfigured(p)
+                TextButton(onClick = { addCloud(p) }) {
+                    Text(if (configured) "+ ${p.displayName}" else "${p.displayName} (Not configured)")
+                }
+            }
+            TextButton(onClick = { s3Editing = true }) { Text("+ S3 / R2 / MinIO") }
+        }
         LazyColumn(Modifier.weight(1f)) {
             items(items, key = { it.id }) { c ->
                 ListItem(
                     headlineContent = { Text(c.name) },
                     supportingContent = {
-                        Text("${c.protocol}://${c.username}@${c.host}:${c.port}${c.initialPath}")
+                        Text(
+                            when {
+                                c.protocol.isObjectStore -> "S3 · ${c.bucket}${if (c.endpoint.isNotBlank()) " @ ${c.endpoint}" else " (${c.region})"}"
+                                c.protocol.isCloud -> c.protocol.name
+                                else -> "${c.protocol}://${c.username}@${c.host}:${c.port}${c.initialPath}"
+                            },
+                        )
                     },
                     leadingContent = { Icon(Icons.Outlined.Cloud, null) },
                     trailingContent = {
                         Row {
+                            if (c.protocol.isCloud) {
+                                TextButton(onClick = { signIn(c) }) { Text("Sign in") }
+                            }
                             IconButton(onClick = {
                                 onOpenRemote(RemotePaths.toVirtual(c.id, c.initialPath))
                             }) { Icon(Icons.Outlined.FolderOpen, "Browse") }
@@ -112,6 +167,20 @@ fun NetworkConnectionsScreen(onOpenRemote: (String) -> Unit, onMessage: (String)
                     val saved = app.connections.save(draft)
                     reload()
                     editing = false
+                    onMessage("Saved ${saved.name}")
+                } catch (t: Throwable) {
+                    onMessage(CredentialRedactor.safeMessage(t))
+                }
+            },
+        )
+    }
+    if (s3Editing) {
+        S3ConnectionDialog(
+            onDismiss = { s3Editing = false },
+            onSave = { draft ->
+                try {
+                    val saved = app.connections.save(draft)
+                    reload(); s3Editing = false
                     onMessage("Saved ${saved.name}")
                 } catch (t: Throwable) {
                     onMessage(CredentialRedactor.safeMessage(t))
@@ -151,7 +220,7 @@ private fun EditConnectionDialog(onDismiss: () -> Unit, onSave: (ConnectionDraft
                         modifier = Modifier.menuAnchor().fillMaxWidth(),
                     )
                     ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                        RemoteProtocol.entries.forEach { p ->
+                        RemoteProtocol.entries.filter { !it.isCloud && !it.isObjectStore }.forEach { p ->
                             DropdownMenuItem(text = { Text(p.name) }, onClick = {
                                 protocol = p
                                 expanded = false
@@ -207,6 +276,58 @@ private fun EditConnectionDialog(onDismiss: () -> Unit, onSave: (ConnectionDraft
                         authKind = if (useKey) AuthKind.PRIVATE_KEY else AuthKind.PASSWORD,
                         share = share,
                         webDavHttps = protocol == RemoteProtocol.WEBDAV,
+                    ),
+                )
+            }) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun S3ConnectionDialog(onDismiss: () -> Unit, onSave: (ConnectionDraft) -> Unit) {
+    var name by remember { mutableStateOf("") }
+    var bucket by remember { mutableStateOf("") }
+    var region by remember { mutableStateOf("us-east-1") }
+    var endpoint by remember { mutableStateOf("") }
+    var accessKey by remember { mutableStateOf("") }
+    var secretKey by remember { mutableStateOf("") }
+    var pathStyle by remember { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add S3 / R2 / B2 / MinIO") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(name, { name = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(bucket, { bucket = it }, label = { Text("Bucket") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(region, { region = it }, label = { Text("Region (e.g. us-east-1, auto for R2)") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(endpoint, { endpoint = it }, label = { Text("Endpoint (blank = AWS; e.g. https://<acct>.r2.cloudflarestorage.com)") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(accessKey, { accessKey = it }, label = { Text("Access key ID") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(
+                    secretKey, { secretKey = it }, label = { Text("Secret access key") },
+                    visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(),
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Path-style addressing (MinIO)", Modifier.weight(1f))
+                    Switch(checked = pathStyle, onCheckedChange = { pathStyle = it })
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                if (bucket.isBlank() || accessKey.isBlank() || secretKey.isBlank()) return@TextButton
+                onSave(
+                    ConnectionDraft(
+                        name = name.ifBlank { bucket },
+                        protocol = RemoteProtocol.S3,
+                        host = "",
+                        username = accessKey.trim(),
+                        region = region.trim(),
+                        bucket = bucket.trim(),
+                        endpoint = endpoint.trim(),
+                        s3PathStyle = pathStyle,
+                        s3SecretKey = secretKey,
                     ),
                 )
             }) { Text("Save") }
