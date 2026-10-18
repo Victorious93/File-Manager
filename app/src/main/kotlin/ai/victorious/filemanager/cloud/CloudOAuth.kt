@@ -18,7 +18,7 @@ import ai.victorious.filemanager.core.cloud.Pkce
  */
 object CloudOAuth {
     val REDIRECT_SCHEME: String = BuildConfig.OAUTH_REDIRECT_SCHEME
-    val REDIRECT_URI: String = "$REDIRECT_SCHEME:/oauth2redirect"
+    val REDIRECT_URI: String = "$REDIRECT_SCHEME://oauth2redirect"
 
     private data class Pending(val connectionId: String, val provider: CloudProvider, val verifier: String)
 

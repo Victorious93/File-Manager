@@ -35,7 +35,7 @@ they are never part of the build.
 The app registers the custom scheme **oauthRedirectScheme** (default `ai.victorious.filemanager`),
 so the redirect URI is:
 
-    ai.victorious.filemanager:/oauth2redirect
+    ai.victorious.filemanager://oauth2redirect
 
 Override the scheme at build time with `-PoauthRedirectScheme=<scheme>` (updates both the manifest
 intent-filter and the runtime redirect URI). Dropbox and OneDrive accept this custom scheme directly.
@@ -75,20 +75,20 @@ Builds on the build box currently fall back to the standard Android debug keysto
    - Google's Android client derives its redirect from the **reversed client ID**
      (`com.googleusercontent.apps.<id>`). Build with
      `-PoauthRedirectScheme=com.googleusercontent.apps.<id>` so the redirect matches, OR create a
-     *Web application* client and add `ai.victorious.filemanager:/oauth2redirect` as an authorized
+     *Web application* client and add `ai.victorious.filemanager://oauth2redirect` as an authorized
      redirect. Put the client ID in `gdriveClientId`.
 5. First sign-in prompts for consent (we request offline access for a refresh token).
 
 ### Dropbox  (https://www.dropbox.com/developers/apps)
 1. **Create app** -> *Scoped access* -> *Full Dropbox* (or App folder) -> name it.
 2. **Permissions** tab: enable `files.metadata.read/write`, `files.content.read/write`. Submit.
-3. **Settings** tab: *OAuth 2 -> Redirect URIs* add `ai.victorious.filemanager:/oauth2redirect`.
+3. **Settings** tab: *OAuth 2 -> Redirect URIs* add `ai.victorious.filemanager://oauth2redirect`.
 4. Copy the **App key** -> `dropboxAppKey`. (PKCE; no app secret needed.)
 
 ### OneDrive / Microsoft  (https://portal.azure.com -> Azure AD -> App registrations)
 1. **New registration**: name it; choose the account types you want.
 2. **Redirect URI**: platform **Mobile and desktop applications** -> add custom URI
-   `ai.victorious.filemanager:/oauth2redirect`; under *Authentication -> Advanced*, enable
+   `ai.victorious.filemanager://oauth2redirect`; under *Authentication -> Advanced*, enable
    "Allow public client flows".
 3. **API permissions -> Microsoft Graph -> Delegated**: add `Files.ReadWrite`, `offline_access`,
    `User.Read`; grant.
