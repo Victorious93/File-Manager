@@ -47,8 +47,8 @@ class ShareReceiverActivity : ComponentActivity() {
     private fun extractUris(intent: Intent?): List<Uri> {
         intent ?: return emptyList()
         return when (intent.action) {
-            Intent.ACTION_SEND -> listOfNotNull(intent.parcelableExtra(Intent.EXTRA_STREAM))
-            Intent.ACTION_SEND_MULTIPLE -> intent.parcelableArrayListExtra(Intent.EXTRA_STREAM).orEmpty()
+            Intent.ACTION_SEND -> listOfNotNull(intent.parcelableExtra<Uri>(Intent.EXTRA_STREAM))
+            Intent.ACTION_SEND_MULTIPLE -> intent.parcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM).orEmpty()
             else -> emptyList()
         }
     }
