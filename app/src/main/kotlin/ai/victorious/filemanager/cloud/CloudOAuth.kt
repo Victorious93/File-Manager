@@ -1,5 +1,6 @@
 package ai.victorious.filemanager.cloud
 
+import ai.victorious.filemanager.BuildConfig
 import ai.victorious.filemanager.core.cloud.CloudProvider
 import ai.victorious.filemanager.core.cloud.OAuthClient
 import ai.victorious.filemanager.net.ConnectionRepository
@@ -16,8 +17,8 @@ import ai.victorious.filemanager.core.cloud.Pkce
  * through the core OAuth client; tokens are never logged.
  */
 object CloudOAuth {
-    const val REDIRECT_SCHEME = "ai.victorious.filemanager"
-    const val REDIRECT_URI = "$REDIRECT_SCHEME:/oauth2redirect"
+    val REDIRECT_SCHEME: String = BuildConfig.OAUTH_REDIRECT_SCHEME
+    val REDIRECT_URI: String = "$REDIRECT_SCHEME:/oauth2redirect"
 
     private data class Pending(val connectionId: String, val provider: CloudProvider, val verifier: String)
 

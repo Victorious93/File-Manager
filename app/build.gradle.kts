@@ -26,8 +26,12 @@ android {
         buildConfigField("String", "GDRIVE_CLIENT_ID", "\"${cfg("gdriveClientId", "gdriveClientId")}\"")
         buildConfigField("String", "DROPBOX_APP_KEY", "\"${cfg("dropboxAppKey", "dropboxAppKey")}\"")
         buildConfigField("String", "ONEDRIVE_CLIENT_ID", "\"${cfg("onedriveClientId", "onedriveClientId")}\"")
-        // Custom-scheme OAuth redirect; the scheme is the per-variant applicationId.
-        manifestPlaceholders["oauthRedirectScheme"] = "ai.victorious.filemanager"
+        // Custom-scheme OAuth redirect. Overridable (e.g. Google needs the reversed client-ID
+        // scheme: -PoauthRedirectScheme=com.googleusercontent.apps.XXXX). See docs/CLOUD.md.
+        val oauthScheme = (project.findProperty("oauthRedirectScheme") as String?)?.trim().takeUnless { it.isNullOrEmpty() }
+            ?: "ai.victorious.filemanager"
+        manifestPlaceholders["oauthRedirectScheme"] = oauthScheme
+        buildConfigField("String", "OAUTH_REDIRECT_SCHEME", "\"$oauthScheme\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
