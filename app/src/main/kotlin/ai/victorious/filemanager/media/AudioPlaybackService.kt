@@ -1,7 +1,6 @@
 package ai.victorious.filemanager.media
 
 import android.content.Intent
-import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
@@ -12,7 +11,6 @@ import androidx.media3.session.MediaSessionService
  * playback for free; the in-app [ai.victorious.filemanager.ui.AudioPlayerScreen] drives this through
  * a MediaController. Written from scratch; no MT/NP code involved.
  */
-@UnstableApi
 class AudioPlaybackService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
 

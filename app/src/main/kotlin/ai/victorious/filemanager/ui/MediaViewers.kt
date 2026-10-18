@@ -33,8 +33,8 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.NavigateBefore
-import androidx.compose.material.icons.outlined.NavigateNext
+import androidx.compose.material.icons.automirrored.outlined.NavigateBefore
+import androidx.compose.material.icons.automirrored.outlined.NavigateNext
 import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.PlayCircle
@@ -69,7 +69,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
-import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import androidx.media3.ui.PlayerView
@@ -206,7 +205,6 @@ private fun ImagePagerScreen(images: List<File>, start: File, onClose: () -> Uni
 // Video player (Media3 ExoPlayer in a PlayerView)
 // ---------------------------------------------------------------------------------------------
 
-@OptIn(UnstableApi::class)
 @Composable
 fun VideoPlayerScreen(file: File, onClose: () -> Unit) {
     val context = LocalContext.current
@@ -367,11 +365,11 @@ fun PdfViewerScreen(file: File, onClose: () -> Unit, onMessage: (String) -> Unit
             }
             Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = { page = PdfPaging.clampPage(page - 1, pageCount) }, enabled = page > 0) {
-                    Icon(Icons.Outlined.NavigateBefore, contentDescription = "Previous page")
+                    Icon(Icons.AutoMirrored.Outlined.NavigateBefore, contentDescription = "Previous page")
                 }
                 Text(PdfPaging.label(page, pageCount), style = MaterialTheme.typography.bodyMedium)
                 IconButton(onClick = { page = PdfPaging.clampPage(page + 1, pageCount) }, enabled = page < pageCount - 1) {
-                    Icon(Icons.Outlined.NavigateNext, contentDescription = "Next page")
+                    Icon(Icons.AutoMirrored.Outlined.NavigateNext, contentDescription = "Next page")
                 }
             }
         }
