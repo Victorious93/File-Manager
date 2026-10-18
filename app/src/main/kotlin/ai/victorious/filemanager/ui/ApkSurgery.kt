@@ -138,14 +138,14 @@ fun ApkSurgeryScreen(path: String, onEvent: (UiEvent) -> Unit) {
 }
 
 @Composable
-private fun Loading(text: String? = null) {
+internal fun Loading(text: String? = null) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         if (text == null) CircularProgressIndicator() else Text(text, Modifier.padding(24.dp))
     }
 }
 
 @Composable
-private fun CodeText(text: String, modifier: Modifier = Modifier) {
+internal fun CodeText(text: String, modifier: Modifier = Modifier) {
     SelectionContainer(modifier.fillMaxSize().verticalScroll(rememberScrollState()).horizontalScroll(rememberScrollState())) {
         Text(text, fontFamily = FontFamily.Monospace, fontSize = 12.sp, modifier = Modifier.padding(8.dp))
     }
