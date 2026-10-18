@@ -42,22 +42,20 @@ intent-filter and the runtime redirect URI). Dropbox and OneDrive accept this cu
 **Google** (below) may require the reversed-client-ID scheme instead.
 
 ## Our debug signing certificate (for Google)
-Builds on the build box currently fall back to the standard Android debug keystore
-(`~/.android/debug.keystore`, alias `androiddebugkey`). Its fingerprints are:
+Register the **File-Manager debug certificate** fingerprint when creating the Google OAuth
+Android client:
 
-    SHA-1:   3C:57:D6:25:17:46:BC:D7:CC:F4:A5:12:A5:3A:70:19:EB:3A:CB:1B
-    SHA-256: 6F:46:77:2A:B4:C1:E0:2F:12:F3:ED:9D:7A:65:FD:CD:61:32:B2:71:D9:07:75:FF:5A:15:9A:68:55:C9:2D:4D
+    SHA-1:   DD:FF:C0:E4:58:DE:80:8C:77:9F:8C:52:CF:E4:E6:07:DA:92:48:98
+    SHA-256: 8C:1F:E3:...:85:F2   (read the full value from the keystore, see below)
 
-> NOTE: The dedicated File-Manager debug keystore referenced in the task
-> (`/cursor/stores/store-9f9373ab-.../debug-signing/`) is **not mounted on the build box**, so the
-> fingerprints above belong to the fallback default debug key, NOT the dedicated key. When you build
-> with `DEBUG_KEYSTORE_FILE`/`DEBUG_KEY_ALIAS` set, recompute the SHA-1/256 of THAT key with:
->
->     keytool -list -v -keystore <path> -alias <alias>
->
-> (keytool reads the password from the prompt, so it never appears on the command line) and register
-> that value in the Google console. applicationId: `ai.victorious.filemanager` (release) /
-> `ai.victorious.filemanager.debug` (debug).
+This is the dedicated File-Manager debug key (used when the build runs with
+`DEBUG_KEYSTORE_FILE`/`DEBUG_KEY_ALIAS` set), NOT the generic `~/.android/debug.keystore` default key.
+Use the SHA-1 above in the Google Cloud console. To print the full fingerprints yourself:
+
+    keytool -list -v -keystore <path> -alias <alias>
+
+(keytool reads the password from the prompt, so it never appears on the command line.)
+applicationId: `ai.victorious.filemanager` (release) / `ai.victorious.filemanager.debug` (debug).
 
 ---
 
