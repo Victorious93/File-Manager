@@ -2,7 +2,7 @@ package ai.victorious.filemanager.core.viewer
 
 import java.io.File
 
-enum class FileKind { TEXT, IMAGE, AUDIO, VIDEO, ARCHIVE, BINARY }
+enum class FileKind { TEXT, IMAGE, AUDIO, VIDEO, ARCHIVE, DOCUMENT, FONT, BINARY }
 
 /** Picks a default viewer for a file from its extension, falling back to content sniffing. */
 object FileKinds {
@@ -16,6 +16,13 @@ object FileKinds {
     private val video = setOf("mp4", "m4v", "mkv", "webm", "3gp", "mov", "avi", "ts")
     val archiveExtensions = setOf("zip", "jar", "apk", "7z", "tar", "gz", "tgz", "rar")
 
+    /** Phase 12: viewers added for these kinds. */
+    val documentExtensions = setOf("pdf")
+    val fontExtensions = setOf("ttf", "otf")
+
+    /** Extensions the gallery can show as a thumbnail tile (images + videos). */
+    val thumbnailExtensions = image + video - "ts"
+
     fun extension(name: String): String {
         val lower = name.lowercase()
         if (lower.endsWith(".tar.gz")) return "tgz"
@@ -27,9 +34,14 @@ object FileKinds {
         in audio -> FileKind.AUDIO
         in video -> if (extension(name) == "ts") null else FileKind.VIDEO
         in archiveExtensions -> FileKind.ARCHIVE
+        in documentExtensions -> FileKind.DOCUMENT
+        in fontExtensions -> FileKind.FONT
         in text -> FileKind.TEXT
         else -> null
     }
+
+    /** True when the gallery grid should render a thumbnail for this file name. */
+    fun hasThumbnail(name: String): Boolean = extension(name) in thumbnailExtensions
 
     fun detect(file: File): FileKind {
         byName(file.name)?.let { return it }

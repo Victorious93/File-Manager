@@ -575,6 +575,10 @@ private fun OpenWithItems(path: String, onEvent: (UiEvent) -> Unit, dismiss: () 
         "Open in text editor" to ViewerMode.TEXT,
         "Open in hex editor" to ViewerMode.HEX,
         "Preview image" to ViewerMode.IMAGE,
+        "Play video" to ViewerMode.VIDEO,
+        "Play audio" to ViewerMode.AUDIO,
+        "View PDF" to ViewerMode.PDF,
+        "Preview font" to ViewerMode.FONT,
         "Media info" to ViewerMode.MEDIA_INFO,
         "Open as archive" to ViewerMode.ARCHIVE,
     ).forEach { (label, mode) ->

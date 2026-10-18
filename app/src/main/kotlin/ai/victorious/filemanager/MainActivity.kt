@@ -2,7 +2,12 @@ package ai.victorious.filemanager
 
 import ai.victorious.filemanager.ui.FileManagerApp
 import ai.victorious.filemanager.ui.FileManagerViewModel
+import ai.victorious.filemanager.ui.UiEvent
+import ai.victorious.filemanager.ui.Dest
+import ai.victorious.filemanager.ui.defaultMode
+import java.io.File
 import ai.victorious.filemanager.ui.theme.VictoriousTheme
+import android.content.Intent
 import android.os.Bundle
 import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.setContent
@@ -32,6 +37,31 @@ class MainActivity : FragmentActivity() {
                 )
             }
         }
+        handleIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntent(intent)
+    }
+
+    /** Routes Quick Settings tile launches (no secrets, no file side effects here). */
+    private fun handleIntent(intent: Intent?) {
+        when (intent?.getStringExtra(EXTRA_OPEN)) {
+            OPEN_WIFI_TRANSFER -> viewModel.onEvent(UiEvent.OpenWifiTransfer)
+        }
+        intent?.getStringExtra(EXTRA_OPEN_PATH)?.let { path ->
+            viewModel.onEvent(UiEvent.Navigate(Dest.FILES))
+            viewModel.onEvent(UiEvent.Open(0, path))
+        }
+        // Open-with: external ACTION_VIEW on a file:// URI opens the matching built-in viewer.
+        if (intent?.action == Intent.ACTION_VIEW) {
+            val path = intent.data?.takeIf { it.scheme == "file" }?.path
+            if (path != null && File(path).isFile) {
+                viewModel.onEvent(UiEvent.OpenFile(path, defaultMode(File(path))))
+            }
+        }
     }
 
     override fun onResume() {
@@ -49,5 +79,11 @@ class MainActivity : FragmentActivity() {
         super.onStop()
         // Auto-lock: the secure folder re-locks once backgrounded past its timeout.
         (application as FileManagerApplication).secureFolder.lock.onBackground()
+    }
+
+    companion object {
+        const val EXTRA_OPEN = "ai.victorious.filemanager.extra.OPEN"
+        const val EXTRA_OPEN_PATH = "ai.victorious.filemanager.extra.OPEN_PATH"
+        const val OPEN_WIFI_TRANSFER = "wifi_transfer"
     }
 }

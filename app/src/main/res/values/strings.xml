@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Victorious File Manager</string>
+    <string name="widget_bookmarks_label">Quick folders</string>
+    <string name="tile_open_label">File Manager</string>
+    <string name="tile_wifi_label">Wi-Fi transfer</string>
+    <string name="share_save_label">Save to File Manager</string>
 </resources>
