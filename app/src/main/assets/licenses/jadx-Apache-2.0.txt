@@ -1,0 +1,29 @@
+jadx — Dex to Java decompiler
+Copyright 2015 Skylot and jadx contributors
+Licensed under the Apache License, Version 2.0.
+https://github.com/skylot/jadx — https://www.apache.org/licenses/LICENSE-2.0
+
+Artifacts embedded for the readable-Java viewer (Phase 13):
+  io.github.skylot:jadx-core:1.5.0        Apache-2.0
+  io.github.skylot:jadx-dex-input:1.5.0   Apache-2.0
+
+Transitive runtime dependencies pulled by the above (all permissive):
+  io.github.skylot:jadx-input-api         Apache-2.0
+  io.github.skylot:jadx-zip               Apache-2.0
+  com.google.code.gson:gson               Apache-2.0
+  com.google.guava:guava                  Apache-2.0
+  org.slf4j:slf4j-api                     MIT
+  com.android.tools.smali:smali-baksmali  BSD-3-Clause (already used by the DEX browser;
+                                          see assets/licenses for the smali notice)
+
+jcommander is excluded from jadx-dex-input's smali-baksmali to match the existing
+:core exclusion and avoid a duplicate CLI arg parser.
+
+Build-time only (NOT shipped as app code, standard AGP core-library desugaring):
+  com.android.tools:desugar_jdk_libs      GPL-2.0 WITH Classpath-exception-2.0
+    The Classpath Exception explicitly permits linking/distribution with an
+    independent (incl. proprietary) application, so enabling core library
+    desugaring does not impose GPL terms on File-Manager.
+
+No MT Manager or NP Manager code is used, referenced, or decompiled anywhere.
+The decompiler only ever runs on files the user explicitly opens.

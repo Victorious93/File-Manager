@@ -75,6 +75,8 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // jadx (and its guava transitive) touch newer java.* APIs; desugaring keeps minSdk 26 safe.
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
@@ -97,6 +99,7 @@ android {
 
 dependencies {
     implementation(project(":core"))
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
     implementation(libs.apksig)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
