@@ -69,6 +69,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import androidx.media3.ui.PlayerView
@@ -205,6 +206,7 @@ private fun ImagePagerScreen(images: List<File>, start: File, onClose: () -> Uni
 // Video player (Media3 ExoPlayer in a PlayerView)
 // ---------------------------------------------------------------------------------------------
 
+@androidx.annotation.OptIn(UnstableApi::class)
 @Composable
 fun VideoPlayerScreen(file: File, onClose: () -> Unit) {
     val context = LocalContext.current

@@ -26,6 +26,7 @@ class OpenFileManagerTileService : TileService() {
         }
     }
 
+    @Suppress("StartActivityAndCollapseDeprecated")
     override fun onClick() {
         super.onClick()
         val intent = Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -64,6 +65,7 @@ class WifiTransferTileService : TileService() {
         }
     }
 
+    @Suppress("StartActivityAndCollapseDeprecated")
     override fun onClick() {
         super.onClick()
         val intent = Intent(this, MainActivity::class.java)
