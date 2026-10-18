@@ -25,6 +25,8 @@ class DefaultRemoteBackendFactory : RemoteBackendFactory {
         RemoteProtocol.SFTP -> SftpRemoteBackend(connection, secret)
         RemoteProtocol.SMB -> SmbRemoteBackend(connection, secret)
         RemoteProtocol.WEBDAV -> WebDavRemoteBackend(connection, secret)
+        RemoteProtocol.GDRIVE, RemoteProtocol.DROPBOX, RemoteProtocol.ONEDRIVE, RemoteProtocol.S3 ->
+            throw IllegalArgumentException("Cloud protocol ${connection.protocol} is handled by the cloud backend factory")
     }
 }
 
