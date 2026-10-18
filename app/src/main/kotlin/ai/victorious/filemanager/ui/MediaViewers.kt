@@ -6,6 +6,7 @@ import ai.victorious.filemanager.core.viewer.FileKind
 import ai.victorious.filemanager.core.viewer.FileKinds
 import ai.victorious.filemanager.media.AudioPlaybackService
 import android.content.ComponentName
+import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
@@ -407,6 +408,7 @@ private fun renderPdfPage(file: File, requestedPage: Int, targetWidthPx: Int): R
 // Font preview (ttf/otf)
 // ---------------------------------------------------------------------------------------------
 
+@SuppressLint("SetTextI18n")
 @Composable
 fun FontPreviewScreen(file: File, onClose: () -> Unit, onMessage: (String) -> Unit) {
     val typeface = remember(file.absolutePath) {

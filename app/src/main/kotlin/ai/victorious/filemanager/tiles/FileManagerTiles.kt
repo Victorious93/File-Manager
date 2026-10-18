@@ -7,14 +7,12 @@ import android.content.Intent
 import android.os.Build
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
-import androidx.annotation.RequiresApi
 
 /**
  * Quick Settings tiles. These require the platform-mandated BIND_QUICK_SETTINGS_TILE permission on
  * OUR OWN services (declared in the manifest) — that is standard for any QS tile and is not a fleet
  * BIND_* permission. The tile label/subtitle come from the unit-tested [Tiles] model in :core.
  */
-@RequiresApi(Build.VERSION_CODES.N)
 class OpenFileManagerTileService : TileService() {
     override fun onStartListening() {
         super.onStartListening()
@@ -49,7 +47,6 @@ class OpenFileManagerTileService : TileService() {
  * server is bound to a UI lifecycle, so the tile hands off rather than running a headless server).
  * State text reflects whether the server is currently running.
  */
-@RequiresApi(Build.VERSION_CODES.N)
 class WifiTransferTileService : TileService() {
     override fun onStartListening() {
         super.onStartListening()
