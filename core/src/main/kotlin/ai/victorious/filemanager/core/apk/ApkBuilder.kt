@@ -93,6 +93,45 @@ object ApkBuilder {
         return paths.size
     }
 
+    /**
+     * Streams [apk] into [out], replacing the bytes of the entries named in [replacements] and
+     * copying every other entry unchanged. AndroidManifest.xml stays first; resources.arsc and
+     * native libs stay STORED and aligned. Old v1 signatures are dropped so the result can be
+     * re-signed. Returns the number of entries written.
+     */
+    fun rewrite(apk: File, out: File, replacements: Map<String, ByteArray>, dropSignatures: Boolean = true): Int {
+        require(apk.canonicalPath != out.canonicalPath) { "Output must differ from input" }
+        out.absoluteFile.parentFile?.mkdirs()
+        val names = ZipFile(apk).use { z -> z.entries().asSequence().filter { !it.isDirectory }.map { it.name }.toList() }
+            .filterNot { dropSignatures && isSignatureFile(it) }
+            .sortedWith(compareBy<String> { it != "AndroidManifest.xml" }.thenBy { it })
+        val counting = CountingStream(out.outputStream().buffered())
+        ZipFile(apk).use { zip ->
+            ZipOutputStream(counting).use { zos ->
+                for (name in names) {
+                    val bytes = replacements[name] ?: zip.getInputStream(zip.getEntry(name)).use { it.readBytes() }
+                    val entry = ZipEntry(name)
+                    entry.time = FIXED_TIME
+                    if (shouldStore(name)) {
+                        entry.method = ZipEntry.STORED
+                        entry.size = bytes.size.toLong()
+                        entry.compressedSize = bytes.size.toLong()
+                        entry.crc = CRC32().apply { update(bytes) }.value
+                        entry.extra = alignExtra(counting.count, name.toByteArray(Charsets.UTF_8).size, alignmentFor(name))
+                        zos.putNextEntry(entry)
+                        zos.write(bytes)
+                    } else {
+                        entry.method = ZipEntry.DEFLATED
+                        zos.putNextEntry(entry)
+                        zos.write(bytes)
+                    }
+                    zos.closeEntry()
+                }
+            }
+        }
+        return names.size
+    }
+
     /** Builds an 0xD935 extra field so the entry data begins at a multiple of [align]. */
     fun alignExtra(headerOffset: Long, nameLen: Int, align: Int): ByteArray {
         val base = headerOffset + 30 + nameLen + 6

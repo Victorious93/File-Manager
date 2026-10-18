@@ -381,10 +381,25 @@ class FileManagerViewModel(
             }
             is UiEvent.SaveArscEdits -> background("Writing resources.arsc…", {
                 val target = File(event.target)
-                require(target.isDirectory) { "Save ARSC in an extracted folder, then Rebuild" }
-                File(target, "resources.arsc").writeBytes(Arsc.loadFromTarget(target).withEdits(event.edits))
-                event.edits.size
-            }) { n -> snack("Updated $n string(s) in resources.arsc — Rebuild APK + Sign") }
+                val arsc = Arsc.loadFromTarget(target)
+                val bytes = arsc.withEdits(event.edits)
+                if (target.isDirectory) {
+                    File(target, "resources.arsc").writeBytes(bytes)
+                    "folder:${event.edits.size}"
+                } else {
+                    // Sealed APK: rewrite the entry in place (unsigned); Sign afterwards.
+                    val out = File(target.parentFile, target.nameWithoutExtension + "_arsc.apk")
+                    ai.victorious.filemanager.core.apk.ApkBuilder.rewrite(target, out, mapOf("resources.arsc" to bytes))
+                    "apk:${event.edits.size}:${out.name}"
+                }
+            }) { tag ->
+                val n = tag.substringAfter(':').substringBefore(':')
+                snack(
+                    if (tag.startsWith("apk:")) "Updated $n string(s) → ${tag.substringAfterLast(':')} (unsigned — Sign next)"
+                    else "Updated $n string(s) in resources.arsc — Rebuild APK + Sign",
+                )
+                refreshAll()
+            }
             UiEvent.DismissRebuilt -> _ui.update { it.copy(rebuiltApk = null) }
             UiEvent.DismissSign -> _ui.update { it.copy(signTarget = null) }
             is UiEvent.ConfirmSign -> {

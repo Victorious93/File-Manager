@@ -117,7 +117,11 @@ fun FileManagerApp(
     if (state.showTerminal) {
         val appCtx = LocalContext.current.applicationContext as ai.victorious.filemanager.FileManagerApplication
         Box(Modifier.fillMaxSize()) {
-            TerminalScreen(appCtx.terminals, onClose = { onEvent(UiEvent.CloseTerminal) })
+            TerminalScreen(
+                appCtx.terminals,
+                onClose = { onEvent(UiEvent.CloseTerminal) },
+                cwd = pane(state).active.path,
+            )
             SnackbarHost(snackbarHost, Modifier.align(Alignment.BottomCenter))
         }
         return
@@ -748,6 +752,11 @@ private fun AboutDialog(state: UiState, onDismiss: () -> Unit) {
                 Text(
                     "RAR extraction uses junrar (UnRAR license, extraction only; the code may not be used to " +
                         "develop a RAR (WinRAR) compatible archiver). Licence text: assets/licenses/junrar-UnRAR-LICENSE.txt.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text(
+                    "Terminal PTY uses Termux terminal-emulator/terminal-view (Apache-2.0, jackpal). " +
+                        "Licence: assets/licenses/termux-terminal-Apache-2.0.txt. Falls back to a pipe shell if libtermux fails.",
                     style = MaterialTheme.typography.bodySmall,
                 )
             }

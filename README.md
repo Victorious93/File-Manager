@@ -135,3 +135,9 @@ Indexed search, trash on the same volume, themes (light/dark/AMOLED/dynamic/acce
 tablet/foldable layouts (NavigationRail plus side-by-side panes), Compare two APKs, Smali
 tools (search, decryption hints, mapping.txt), RAR extraction, and big-folder listing speed.
 See [docs/PHASE10.md](docs/PHASE10.md).
+
+## Phase 11: APK deep edit + PTY terminal
+
+Binary AndroidManifest editor, ARSC string edits inside a sealed APK, one-tap APK mod
+(rebuild → sign → verify → install), and a real PTY terminal (Termux/jackpal Apache-2.0
+modules, with pipe fallback). See [docs/APK_DEEP_EDIT.md](docs/APK_DEEP_EDIT.md).
