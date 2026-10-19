@@ -64,7 +64,9 @@ class PluginValidationException(val problems: List<String>) :
 object PluginManifestParser {
     const val SUPPORTED_API = 1
     private val ID = Regex("^[a-z0-9][a-z0-9._-]{1,63}$")
-    private val PLACEHOLDER = Regex("\\{([a-z]+)}")
+    // Both braces escaped: Android's ICU regex rejects a bare "}" that the JVM accepts, which made
+    // this object fail to initialise on devices (no plugin could be installed or listed).
+    private val PLACEHOLDER = Regex("\\{([a-z]+)\\}")
     val KNOWN_PLACEHOLDERS = setOf("file", "files", "name", "dir")
     private val NETWORK_HINTS = Regex("\\b(curl|wget|nc|ncat|telnet|ssh|scp|ftp)\\b")
     private val WRITE_HINTS = Regex("(>|\\b(rm|mv|cp|mkdir|touch|tee|chmod|chown|unzip|tar|dd|sed\\s+-i)\\b)")
