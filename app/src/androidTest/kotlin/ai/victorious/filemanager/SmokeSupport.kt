@@ -4,7 +4,11 @@ import ai.victorious.filemanager.ui.FileManagerViewModel
 import ai.victorious.filemanager.ui.UiEvent
 import android.os.Environment
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
@@ -70,6 +74,27 @@ object Smoke {
             .joinToString(" | ") { it.take(60) }
             .take(3_000)
     }.getOrElse { "<unavailable: ${it.message}>" }
+
+    /**
+     * Touch-clicks [node] and waits for [effect]. If the tap had no effect, fires the node's
+     * semantics OnClick to tell a broken handler apart from a tap that never reached it, and
+     * fails either way with what happened (a smoke test must prove the real touch path works).
+     */
+    fun clickAndExpect(rule: MainRule, node: SemanticsNodeInteraction, what: String, timeoutMs: Long = 10_000, effect: () -> Boolean) {
+        val bounds = runCatching { node.fetchSemanticsNode().boundsInRoot.toString() }.getOrDefault("?")
+        node.performClick()
+        val touched = runCatching { rule.waitUntil(timeoutMs) { effect() } }.isSuccess
+        if (touched) return
+        val viaSemantics = runCatching {
+            node.performSemanticsAction(SemanticsActions.OnClick)
+            rule.waitUntil(timeoutMs) { effect() }
+        }.isSuccess
+        throw AssertionError(
+            "Tap had no effect for: $what (node bounds $bounds). Semantics OnClick " +
+                (if (viaSemantics) "DID work -> the touch never reached the handler (overlap/hit-test)." else "did NOT work either -> handler/state bug.") +
+                " On screen: ${screenTexts(rule)}",
+        )
+    }
 
     /** Waits until no file operation is running in the ViewModel. */
     fun waitIdle(rule: MainRule) = waitFor(rule, "operation finished") { !vm(rule).ui.value.busy }
