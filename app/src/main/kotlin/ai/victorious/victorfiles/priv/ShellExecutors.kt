@@ -2,7 +2,7 @@ package ai.victorious.victorfiles.priv
 
 import ai.victorious.victorfiles.core.priv.PrivilegeBackend
 import ai.victorious.victorfiles.core.shell.ShellResult
-import android.content.pm.PackageManager
+import ai.victorious.victorfiles.core.priv.ShizukuState
 import com.topjohnwu.superuser.Shell
 import java.io.File
 import java.util.concurrent.TimeUnit
@@ -85,32 +85,18 @@ object ShizukuProcesses {
     }
 }
 
-class ShizukuShellExecutor : ShellExecutor {
+/**
+ * Shizuku backend. One-shot commands go through the bound [PrivilegedUserService] (official
+ * UserService path). Only the interactive terminal still uses the reflective newProcess.
+ */
+class ShizukuShellExecutor(private val controller: ShizukuController) : ShellExecutor {
     override val backend = PrivilegeBackend.SHIZUKU
 
-    private fun ready(): Boolean =
-        Shizuku.pingBinder() && Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
-
-    override fun exec(command: String, timeoutSec: Long): ShellResult {
-        if (!ready()) return ShellResult(126, "", "Shizuku not ready")
-        val proc = ShizukuProcesses.start(arrayOf("sh", "-c", command))
-            ?: return ShellResult(1, "", "Shizuku newProcess unavailable")
-        return try {
-            val out = proc.inputStream.bufferedReader().readText()
-            val err = proc.errorStream.bufferedReader().readText()
-            val code = try {
-                proc.waitFor()
-            } catch (_: Exception) {
-                -1
-            }
-            ShellResult(code, out, err)
-        } catch (e: Exception) {
-            ShellResult(1, "", e.message ?: "Shizuku exec failed")
-        }
-    }
+    override fun exec(command: String, timeoutSec: Long): ShellResult =
+        controller.exec(command, null, timeoutSec)
 
     override fun openShell(command: Array<String>): Process? {
-        if (!ready()) return null
+        if (controller.refresh() != ShizukuState.GRANTED) return null
         return ShizukuProcesses.start(command)
     }
 }

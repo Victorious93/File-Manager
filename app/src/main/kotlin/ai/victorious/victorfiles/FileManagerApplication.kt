@@ -14,6 +14,7 @@ import ai.victorious.victorfiles.fleet.FleetSettings
 import ai.victorious.victorfiles.priv.EscalatingFileIo
 import ai.victorious.victorfiles.priv.PrivilegeManager
 import ai.victorious.victorfiles.priv.PrivilegeSettings
+import ai.victorious.victorfiles.priv.ShizukuController
 import ai.victorious.victorfiles.core.net.CompositeFileIo
 import ai.victorious.victorfiles.net.ConnectionRepository
 import ai.victorious.victorfiles.net.WifiTransferController
@@ -54,6 +55,8 @@ class FileManagerApplication : Application() {
         private set
     lateinit var privilege: PrivilegeManager
         private set
+    lateinit var shizuku: ShizukuController
+        private set
     lateinit var terminals: TerminalSessionManager
         private set
     lateinit var connections: ConnectionRepository
@@ -75,7 +78,8 @@ class FileManagerApplication : Application() {
         super.onCreate()
         if (BuildConfig.DEBUG) enableDebugStrictMode()
         privilegeSettings = PrivilegeSettings(this)
-        privilege = PrivilegeManager(privilegeSettings)
+        shizuku = ShizukuController(this).also { it.start() }
+        privilege = PrivilegeManager(privilegeSettings, shizuku)
         normalIo = NioFileIo()
         connections = ConnectionRepository(this)
         val escalating = EscalatingFileIo(normalIo, privilege)

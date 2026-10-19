@@ -37,7 +37,8 @@ fun SettingsPane(onEvent: (UiEvent) -> Unit = {}) {
     val rootOn by priv.rootEnabled.collectAsState()
     val shizukuOn by priv.shizukuEnabled.collectAsState()
     var refresh by remember { mutableStateOf(0) }
-    val avail = remember(rootOn, shizukuOn, refresh) { app.privilege.availability() }
+    val shizukuState by app.shizuku.state.collectAsState()
+    val avail = remember(rootOn, shizukuOn, refresh, shizukuState) { app.privilege.availability() }
     val backend = remember(avail) { app.privilege.backend() }
 
     Column(
@@ -69,26 +70,15 @@ fun SettingsPane(onEvent: (UiEvent) -> Unit = {}) {
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("Shizuku", style = MaterialTheme.typography.titleSmall)
-                Text(
-                    when {
-                        !avail.shizukuAvailable -> "Shizuku not running"
-                        !avail.shizukuPermission -> "Running — permission needed"
-                        else -> "Ready"
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                )
+                Text("Use Shizuku / Sui", style = MaterialTheme.typography.titleSmall)
+                Text("Privileged ops go through the Shizuku UserService.", style = MaterialTheme.typography.bodySmall)
             }
             Switch(checked = shizukuOn, onCheckedChange = {
                 priv.setShizukuEnabled(it)
                 refresh++
             })
         }
-        Button(onClick = {
-            app.privilege.requestShizukuPermission()
-            refresh++
-            onEvent(UiEvent.ShowMessage("If Shizuku is running, accept the permission prompt."))
-        }) { Text("Request Shizuku permission") }
+        ShizukuStatusCard(app.shizuku, onEvent)
         Text(
             "Active backend: $backend" +
                 if (backend == PrivilegeBackend.NORMAL) {
@@ -96,6 +86,8 @@ fun SettingsPane(onEvent: (UiEvent) -> Unit = {}) {
                 } else "",
             style = MaterialTheme.typography.bodySmall,
         )
+
+        PowerOpsSection(onEvent)
 
         AiSettingsSection(onEvent)
         SecureFolderSettingsSection()
