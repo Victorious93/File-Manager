@@ -41,6 +41,22 @@ class OperationQueue(
         return op
     }
 
+    /** Enqueues one atomic batch rename; undo reverts the whole batch. */
+    @Synchronized
+    fun enqueueBatchRename(renames: List<Pair<String, String>>): FileOperation {
+        require(renames.isNotEmpty()) { "Nothing to rename" }
+        val normalized = renames.map { PathHelpers.normalize(it.first) to PathHelpers.normalize(it.second) }
+        val op = FileOperation(
+            id = ids(),
+            kind = OpKind.BATCH_RENAME,
+            sources = normalized.map { it.first },
+            renames = normalized,
+        )
+        validate(op)
+        pending.addLast(op)
+        return op
+    }
+
     @Synchronized
     fun snapshot(): QueueSnapshot = QueueSnapshot(
         pending = pending.toList(),
@@ -110,6 +126,7 @@ class OperationQueue(
             OpKind.DELETE -> op.sources.forEach {
                 if (!io.exists(it)) throw IllegalArgumentException("Missing: $it")
             }
+            OpKind.BATCH_RENAME -> validateBatchRename(op)
             OpKind.RENAME -> {
                 require(op.sources.size == 1) { "Rename takes one path" }
                 val name = op.newName ?: throw IllegalArgumentException("New name required")
@@ -127,11 +144,58 @@ class OperationQueue(
         }
     }
 
+    private fun validateBatchRename(op: FileOperation) {
+        val sources = op.renames.map { it.first }.toSet()
+        require(sources.size == op.renames.size) { "Duplicate source in batch" }
+        require(op.renames.map { it.second }.toSet().size == op.renames.size) { "Duplicate target name in batch" }
+        for ((from, to) in op.renames) {
+            val parent = PathHelpers.parentOf(from) ?: throw IllegalArgumentException("Cannot rename root")
+            require(PathHelpers.parentOf(to) == parent) { "Batch rename cannot move files: $from" }
+            require(PathHelpers.isValidFileName(PathHelpers.fileName(to))) { "Invalid name: ${PathHelpers.fileName(to)}" }
+            if (!io.exists(from)) throw IllegalArgumentException("Missing: $from")
+            if (to != from && io.exists(to) && to !in sources) throw IllegalArgumentException("Already exists: ${PathHelpers.fileName(to)}")
+        }
+    }
+
+    /**
+     * Renames via unique temporary names so swaps and chains (a→b, b→c) cannot clobber
+     * each other. On failure, everything already renamed is rolled back.
+     */
+    private fun applyRenames(pairs: List<Pair<String, String>>) {
+        val active = pairs.filter { it.first != it.second }
+        val staged = mutableListOf<Triple<String, String, String>>() // from, temp, to
+        val finished = mutableListOf<Triple<String, String, String>>()
+        try {
+            active.forEachIndexed { i, (from, to) ->
+                val parent = PathHelpers.parentOf(from)!!
+                val taken = io.childNames(parent)
+                val temp = PathHelpers.join(parent, PathHelpers.uniqueChildName(taken, ".fm-rename-$i.tmp"))
+                io.rename(from, temp)
+                staged += Triple(from, temp, to)
+            }
+            for (entry in staged) {
+                io.rename(entry.second, entry.third)
+                finished += entry
+            }
+        } catch (t: Throwable) {
+            // Undo in two phases too: finished targets back to their temp names, then temps to originals.
+            finished.asReversed().forEach { runCatching { io.rename(it.third, it.second) } }
+            staged.asReversed().forEach { runCatching { io.rename(it.second, it.first) } }
+            throw t
+        }
+    }
+
+    private fun batchRenameOp(op: FileOperation): CompletedOp {
+        applyRenames(op.renames)
+        return CompletedOp(op, movedPairs = op.renames)
+    }
+
     private fun execute(op: FileOperation): CompletedOp = when (op.kind) {
         OpKind.COPY -> copyOp(op)
         OpKind.MOVE -> moveOp(op)
         OpKind.DELETE -> deleteOp(op)
         OpKind.RENAME -> renameOp(op)
+        OpKind.BATCH_RENAME -> batchRenameOp(op)
         OpKind.CREATE_FOLDER, OpKind.CREATE_FILE -> createOp(op)
     }
 
@@ -200,6 +264,7 @@ class OperationQueue(
             OpKind.CREATE_FOLDER, OpKind.CREATE_FILE -> completed.createdPaths.forEach {
                 if (io.exists(it)) trash.moveToTrash(it)
             }
+            OpKind.BATCH_RENAME -> applyRenames(completed.movedPairs.map { it.second to it.first })
             OpKind.RENAME -> {
                 val from = completed.renamedTo ?: return
                 val to = completed.renamedFrom ?: return
@@ -220,5 +285,6 @@ class OperationQueue(
         OpKind.RENAME -> "Renamed to ${op.newName}"
         OpKind.CREATE_FOLDER -> "Created folder ${op.newName}"
         OpKind.CREATE_FILE -> "Created file ${op.newName}"
+        OpKind.BATCH_RENAME -> "Renamed ${completed.movedPairs.size} item(s)"
     }
 }
