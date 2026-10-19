@@ -31,6 +31,8 @@
         </intent>
     </queries>
 
+    <!-- largeHeap: the APK/DEX tools load whole classes*.dex files (dexlib2 needs byte arrays);
+         on a default heap, Smali tools on a multi-dex APK ran out of memory. -->
     <application
         android:name=".FileManagerApplication"
         android:allowBackup="true"
@@ -38,6 +40,7 @@
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
+        android:largeHeap="true"
         android:requestLegacyExternalStorage="true"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
