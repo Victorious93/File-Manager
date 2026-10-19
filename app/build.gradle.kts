@@ -19,6 +19,19 @@ android {
         // Empty (default) = package-name allowlist only. See docs/FLEET_BRIDGE.md.
         val pins = (project.findProperty("fleetCallerCertPins") as String?).orEmpty().replace("\"", "")
         buildConfigField("String", "FLEET_CALLER_CERT_PINS", "\"$pins\"")
+        // Cloud OAuth public client IDs. Supplied at build time via -P props or env; empty default.
+        // NEVER commit real IDs. See docs/CLOUD.md.
+        fun cfg(name: String, prop: String): String =
+            (System.getenv(prop) ?: (project.findProperty(prop) as String?)).orEmpty().replace("\"", "")
+        buildConfigField("String", "GDRIVE_CLIENT_ID", "\"${cfg("gdriveClientId", "gdriveClientId")}\"")
+        buildConfigField("String", "DROPBOX_APP_KEY", "\"${cfg("dropboxAppKey", "dropboxAppKey")}\"")
+        buildConfigField("String", "ONEDRIVE_CLIENT_ID", "\"${cfg("onedriveClientId", "onedriveClientId")}\"")
+        // Custom-scheme OAuth redirect. Overridable (e.g. Google needs the reversed client-ID
+        // scheme: -PoauthRedirectScheme=com.googleusercontent.apps.XXXX). See docs/CLOUD.md.
+        val oauthScheme = (project.findProperty("oauthRedirectScheme") as String?)?.trim().takeUnless { it.isNullOrEmpty() }
+            ?: "ai.victorious.victorfiles"
+        manifestPlaceholders["oauthRedirectScheme"] = oauthScheme
+        buildConfigField("String", "OAUTH_REDIRECT_SCHEME", "\"$oauthScheme\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

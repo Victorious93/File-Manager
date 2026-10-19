@@ -9,6 +9,10 @@ enum class RemoteProtocol {
     SFTP,
     SMB,
     WEBDAV,
+    GDRIVE,
+    DROPBOX,
+    ONEDRIVE,
+    S3,
     ;
 
     val defaultPort: Int
@@ -18,7 +22,11 @@ enum class RemoteProtocol {
             SFTP -> 22
             SMB -> 445
             WEBDAV -> 443
+            GDRIVE, DROPBOX, ONEDRIVE, S3 -> 443
         }
+
+    val isCloud: Boolean get() = this == GDRIVE || this == DROPBOX || this == ONEDRIVE
+    val isObjectStore: Boolean get() = this == S3
 }
 
 @Serializable
@@ -40,6 +48,14 @@ data class SavedConnection(
     val share: String = "",
     /** Use HTTPS for WebDAV when true. */
     val webDavHttps: Boolean = true,
+    /** S3: region (e.g. us-east-1 / auto for R2). */
+    val region: String = "",
+    /** S3: bucket name. */
+    val bucket: String = "",
+    /** S3: custom endpoint host for R2/MinIO/B2 (empty = AWS s3.<region>.amazonaws.com). */
+    val endpoint: String = "",
+    /** S3: force path-style addressing (MinIO/older endpoints). */
+    val s3PathStyle: Boolean = false,
 )
 
 data class ConnectionDraft(
@@ -55,6 +71,12 @@ data class ConnectionDraft(
     val keyLabel: String = "",
     val share: String = "",
     val webDavHttps: Boolean = true,
+    val region: String = "",
+    val bucket: String = "",
+    val endpoint: String = "",
+    val s3PathStyle: Boolean = false,
+    /** S3 secret access key (stored encrypted, never logged). */
+    val s3SecretKey: String? = null,
 )
 
 /**

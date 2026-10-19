@@ -162,5 +162,19 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".cloud.CloudAuthRedirectActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="${oauthRedirectScheme}" android:host="oauth2redirect" />
+            </intent-filter>
+        </activity>
+
     </application>
 </manifest>
