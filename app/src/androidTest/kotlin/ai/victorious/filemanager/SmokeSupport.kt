@@ -3,6 +3,7 @@ package ai.victorious.filemanager
 import ai.victorious.filemanager.ui.FileManagerViewModel
 import ai.victorious.filemanager.ui.UiEvent
 import android.os.Environment
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
@@ -49,8 +50,37 @@ object Smoke {
     }
 
     fun waitText(rule: MainRule, text: String, substring: Boolean = false, timeoutMs: Long = 15_000) {
-        rule.waitUntil(timeoutMs) {
-            rule.onAllNodesWithText(text, substring = substring, ignoreCase = substring).fetchSemanticsNodes().isNotEmpty()
+        try {
+            rule.waitUntil(timeoutMs) {
+                rule.onAllNodesWithText(text, substring = substring, ignoreCase = substring).fetchSemanticsNodes().isNotEmpty()
+            }
+        } catch (e: Throwable) {
+            throw AssertionError("Timed out waiting for text '$text'. On screen: ${screenTexts(rule)}", e)
+        }
+    }
+
+    /** Every text on screen, so a CI failure log says what was showing instead of just "timed out". */
+    fun screenTexts(rule: MainRule): String = runCatching {
+        rule.onAllNodes(SemanticsMatcher("any") { true }, useUnmergedTree = true).fetchSemanticsNodes()
+            .flatMap { n ->
+                n.config.getOrElseNullable(SemanticsProperties.Text) { null }.orEmpty().map { it.text } +
+                    n.config.getOrElseNullable(SemanticsProperties.ContentDescription) { null }.orEmpty().map { "[$it]" }
+            }
+            .filter { it.isNotBlank() }
+            .joinToString(" | ") { it.take(60) }
+            .take(3_000)
+    }.getOrElse { "<unavailable: ${it.message}>" }
+
+    /** Waits until no file operation is running in the ViewModel. */
+    fun waitIdle(rule: MainRule) = waitFor(rule, "operation finished") { !vm(rule).ui.value.busy }
+
+    /** Makes [path] the only selection in [pane], deterministically (Select toggles). */
+    fun selectOnly(rule: MainRule, pane: Int, path: String) {
+        event(rule, UiEvent.ClearSelection(pane))
+        event(rule, UiEvent.Select(pane, path, additive = true))
+        waitFor(rule, "selection == $path") {
+            val s = vm(rule).ui.value
+            (if (pane == 0) s.left else s.right).selected == setOf(path)
         }
     }
 
@@ -58,7 +88,8 @@ object Smoke {
         try {
             rule.waitUntil(timeoutMs) { cond() }
         } catch (e: Throwable) {
-            throw AssertionError("Timed out waiting for: $what", e)
+            val snack = runCatching { vm(rule).ui.value.snackbar }.getOrNull()
+            throw AssertionError("Timed out waiting for: $what (snackbar: $snack). On screen: ${screenTexts(rule)}", e)
         }
     }
 

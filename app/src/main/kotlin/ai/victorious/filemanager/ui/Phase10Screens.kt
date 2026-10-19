@@ -100,6 +100,8 @@ internal fun SmaliToolsScreen(target: File, mappingFile: File?, outDir: String, 
     var query by remember { mutableStateOf("") }
     var kinds by remember { mutableStateOf(DexHitKind.entries.toSet()) }
     var hits by remember { mutableStateOf<List<DexHit>>(emptyList()) }
+    // The query (and filters) [hits] belong to; while it lags behind, the search is still running.
+    var hitsFor by remember { mutableStateOf<Any?>(null) }
     var hints by remember { mutableStateOf<List<DecryptionHint>?>(null) }
     var busy by remember { mutableStateOf<String?>(null) }
     var exportJob by remember { mutableStateOf<Job?>(null) }
@@ -118,9 +120,10 @@ internal fun SmaliToolsScreen(target: File, mappingFile: File?, outDir: String, 
     }
     LaunchedEffect(query, kinds, dexes, mapping) {
         val d = dexes ?: return@LaunchedEffect
-        if (query.trim().length < 2) { hits = emptyList(); return@LaunchedEffect }
+        if (query.trim().length < 2) { hits = emptyList(); hitsFor = null; return@LaunchedEffect }
         delay(250) // debounce; a new keystroke cancels this effect
         hits = withContext(Dispatchers.Default) { DexSearch.search(d, query, kinds, mapping, limit = 300) }
+        hitsFor = query to kinds
     }
 
     ToolScaffold("Smali tools · ${target.name}", onBack = { exportJob?.cancel(); onClose() }) { modifier ->
@@ -176,7 +179,13 @@ internal fun SmaliToolsScreen(target: File, mappingFile: File?, outDir: String, 
                         }
                     }
                 }
-                if (query.trim().length >= 2) item { Text("${hits.size} match(es)", style = MaterialTheme.typography.titleSmall) }
+                if (query.trim().length >= 2) item {
+                    // Don't show a stale "0 match(es)" while the debounced search for this query runs.
+                    Text(
+                        if (hitsFor == (query to kinds)) "${hits.size} match(es)" else "Searching…",
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                }
                 items(hits) { h ->
                     Column(Modifier.padding(vertical = 4.dp)) {
                         Text("${h.kind.name.lowercase()} · ${h.dexName}", style = MaterialTheme.typography.labelSmall)
