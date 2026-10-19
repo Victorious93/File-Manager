@@ -6,7 +6,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 
 /**
- * Optional RootForge-style Messenger envelope. File Manager is a standalone
+ * Optional RootForge-style Messenger envelope. VictorFiles is a standalone
  * product; this protocol is a stub so a later hub PR can recognize the app.
  * Fleet class is EXTERNAL_NODE: not a BOUND_COMPANION AIDL contract, no
  * hub signature permission, and it does not require DCA.
