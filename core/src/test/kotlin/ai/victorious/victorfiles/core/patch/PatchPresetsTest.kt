@@ -31,7 +31,7 @@ class PatchPresetsTest {
     private fun gate(): PatchGate = PatchGate(File(tmp.newFolder("gate"), "auth.json"))
 
     private fun key(): SigningKey {
-        val ks = tmp.newFile("debug.p12")
+        val ks = File(tmp.newFolder(), "debug.p12")
         val pass = "test-pass".toCharArray()
         ApkSigning.generateDebugKeystore(ks, pass)
         return ApkSigning.loadKey(ks, pass, ApkSigning.DEBUG_ALIAS)
