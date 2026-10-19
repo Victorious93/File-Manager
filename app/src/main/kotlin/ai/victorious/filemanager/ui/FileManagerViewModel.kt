@@ -11,6 +11,9 @@ import ai.victorious.filemanager.core.bookmarks.Bookmark
 import ai.victorious.filemanager.core.fs.FileEntry
 import ai.victorious.filemanager.core.fs.FileIo
 import ai.victorious.filemanager.core.ops.OpKind
+import ai.victorious.filemanager.core.rename.BatchRename
+import ai.victorious.filemanager.core.rename.RenamePlan
+import ai.victorious.filemanager.core.rename.RenameSpec
 import ai.victorious.filemanager.core.search.SearchHit
 import ai.victorious.filemanager.core.trash.TrashEntry
 import ai.victorious.filemanager.core.archive.EncryptedZip
@@ -66,6 +69,13 @@ data class PaneState(
     val active: TabState get() = tabs[activeIndex.coerceIn(tabs.indices)]
 }
 
+/** Batch-rename dialog: selected paths, the current rules, and the live preview. */
+data class BatchRenameState(
+    val targets: List<String>,
+    val spec: RenameSpec = RenameSpec(),
+    val plan: RenamePlan = RenamePlan(emptyList()),
+)
+
 data class UiState(
     val destination: Dest = Dest.FILES,
     val focusedPane: Int = 0,
@@ -80,6 +90,7 @@ data class UiState(
     val bookmarks: List<Bookmark> = emptyList(),
     val trash: List<TrashEntry> = emptyList(),
     val renameTarget: String? = null,
+    val batchRename: BatchRenameState? = null,
     val showAbout: Boolean = false,
     val nodeId: String = "",
     val dcaInstalled: Boolean = false,
@@ -127,6 +138,9 @@ sealed interface UiEvent {
     data object RequestRename : UiEvent
     data class ConfirmRename(val newName: String) : UiEvent
     data object DismissRename : UiEvent
+    data class UpdateBatchRename(val spec: RenameSpec) : UiEvent
+    data object ConfirmBatchRename : UiEvent
+    data object DismissBatchRename : UiEvent
     data object Undo : UiEvent
     data class Navigate(val dest: Dest) : UiEvent
     data class Search(val query: String) : UiEvent
@@ -278,6 +292,9 @@ class FileManagerViewModel(
             UiEvent.RequestRename -> requestRename()
             is UiEvent.ConfirmRename -> confirmRename(event.newName)
             UiEvent.DismissRename -> _ui.update { it.copy(renameTarget = null) }
+            is UiEvent.UpdateBatchRename -> updateBatchRename(event.spec)
+            UiEvent.ConfirmBatchRename -> confirmBatchRename()
+            UiEvent.DismissBatchRename -> _ui.update { it.copy(batchRename = null) }
             UiEvent.Undo -> undo()
             is UiEvent.Navigate -> _ui.update { it.copy(destination = event.dest) }
             is UiEvent.Search -> search(event.query)
@@ -544,16 +561,24 @@ class FileManagerViewModel(
                     when (kind) {
                         OpKind.COPY, OpKind.MOVE -> app.queue.enqueue(kind, sources, otherPaneDir())
                         OpKind.DELETE -> app.queue.enqueue(kind, sources)
-                        OpKind.RENAME, OpKind.CREATE_FOLDER, OpKind.CREATE_FILE -> error("not a selection op")
+                        OpKind.RENAME, OpKind.BATCH_RENAME, OpKind.CREATE_FOLDER, OpKind.CREATE_FILE -> error("not a selection op")
                     }
                     app.queue.processAll().last()
                 }
             }
-            _ui.update { it.copy(busy = false) }
+            // Clear the selection in the same state update that ends `busy`: the sources are gone
+            // (move/delete) or done with (copy), and a separate update left a window where a quick
+            // next tap toggled a stale selection.
+            _ui.update { s ->
+                val cleared = if (result.isSuccess) {
+                    if (s.focusedPane == 0) s.copy(left = s.left.copy(selected = emptySet()))
+                    else s.copy(right = s.right.copy(selected = emptySet()))
+                } else s
+                cleared.copy(busy = false)
+            }
             result.fold(
                 onSuccess = {
                     refreshAll()
-                    updatePane(_ui.value.focusedPane) { pane -> pane.copy(selected = emptySet()) }
                     snack(it.message)
                 },
                 onFailure = { snack(it.message ?: "Operation failed") },
@@ -621,11 +646,47 @@ class FileManagerViewModel(
 
     private fun requestRename() {
         val sources = selectedSources()
-        if (sources.size != 1) {
-            snack("Select a single item to rename")
-            return
+        when {
+            sources.isEmpty() -> snack("Select an item to rename")
+            sources.size == 1 -> _ui.update { it.copy(renameTarget = sources.first()) }
+            else -> {
+                val sorted = sources.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { File(it).name })
+                _ui.update { it.copy(batchRename = BatchRenameState(sorted)) }
+            }
         }
-        _ui.update { it.copy(renameTarget = sources.first()) }
+    }
+
+    private fun updateBatchRename(spec: RenameSpec) {
+        val targets = _ui.value.batchRename?.targets ?: return
+        viewModelScope.launch {
+            val plan = withContext(Dispatchers.IO) {
+                BatchRename.plan(targets, spec) { dir -> runCatching { io.childNames(dir) }.getOrDefault(emptySet()) }
+            }
+            _ui.update { st -> st.batchRename?.let { st.copy(batchRename = it.copy(spec = spec, plan = plan)) } ?: st }
+        }
+    }
+
+    private fun confirmBatchRename() {
+        val plan = _ui.value.batchRename?.plan ?: return
+        if (!plan.isApplicable) return
+        viewModelScope.launch {
+            _ui.update { it.copy(batchRename = null, busy = true) }
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    app.queue.enqueueBatchRename(plan.renames)
+                    app.queue.processAll().last()
+                }
+            }
+            _ui.update { it.copy(busy = false) }
+            result.fold(
+                onSuccess = {
+                    refreshAll()
+                    updatePane(_ui.value.focusedPane) { pane -> pane.copy(selected = emptySet()) }
+                    snack(it.message)
+                },
+                onFailure = { snack(it.message ?: "Batch rename failed") },
+            )
+        }
     }
 
     private fun confirmRename(newName: String) {
@@ -638,7 +699,13 @@ class FileManagerViewModel(
                     app.queue.processAll().last()
                 }
             }
-            _ui.update { it.copy(busy = false) }
+            // The renamed path no longer exists; drop it from the selection with `busy` so a
+            // following Copy/Move cannot pick up the stale old path.
+            _ui.update { s ->
+                fun drop(p: PaneState) = p.copy(selected = p.selected - target)
+                if (result.isSuccess) s.copy(busy = false, left = drop(s.left), right = drop(s.right))
+                else s.copy(busy = false)
+            }
             result.fold(
                 onSuccess = {
                     refreshAll()

@@ -19,6 +19,25 @@ class AxmlAndModTest {
         return f
     }
 
+    /**
+     * aapt2 from the Android SDK this build uses (ANDROID_HOME / ANDROID_SDK_ROOT, newest
+     * build-tools first). On CI the SDK is always installed, so a missing aapt2 fails there;
+     * a local machine without an SDK skips only this external cross-check.
+     */
+    private fun aapt2(): File {
+        val sdk = listOfNotNull(System.getenv("ANDROID_HOME"), System.getenv("ANDROID_SDK_ROOT"))
+            .map(::File).firstOrNull { it.isDirectory }
+        val found = sdk?.let { File(it, "build-tools").listFiles() }.orEmpty()
+            .sortedByDescending { it.name }
+            .map { File(it, "aapt2") }
+            .firstOrNull { it.canExecute() }
+        if (found != null) return found
+        val why = "aapt2 not found (ANDROID_HOME=${System.getenv("ANDROID_HOME")}, ANDROID_SDK_ROOT=${System.getenv("ANDROID_SDK_ROOT")})"
+        if (System.getenv("CI") != null) throw AssertionError(why)
+        org.junit.Assume.assumeTrue(why, false)
+        error("unreachable")
+    }
+
     private fun key(): SigningKey {
         val ks = tmp.newFile("debug.p12")
         val pass = "test-pass".toCharArray()
@@ -90,7 +109,7 @@ class AxmlAndModTest {
         assertEquals(false, main.exported)
         // aapt2 still accepts the sealed APK.
         val aapt = ProcessBuilder(
-            "/home/box/android-sdk/build-tools/35.0.0/aapt2", "dump", "xmltree",
+            aapt2().absolutePath, "dump", "xmltree",
             "--file", "AndroidManifest.xml", out.absolutePath,
         ).redirectErrorStream(true).start()
         val text = aapt.inputStream.bufferedReader().readText()

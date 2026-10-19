@@ -1,5 +1,7 @@
 package ai.victorious.filemanager.core.trash
 
+import ai.victorious.filemanager.core.fs.FileIo
+import ai.victorious.filemanager.core.fs.FileIoException
 import ai.victorious.filemanager.core.fs.NioFileIo
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -100,4 +102,35 @@ class TrashStoreTest {
         t.moveToTrash(outer)
         assertTrue(t.list().single().trashPayloadPath.startsWith(File(tmp.root, "idx").absolutePath))
     }
+
+    @Test
+    fun entryIsIndexedBeforeTheOriginalDisappears() {
+        val file = File(docs, "race.txt").apply { writeText("x") }
+        var listedDuringMove = false
+        val spying = object : FileIo by io {
+            override fun move(from: String, to: String) {
+                listedDuringMove = trashOf(this).list().any { it.originalPath == file.absolutePath }
+                io.move(from, to)
+            }
+        }
+        val store = TrashStore(spying, File(tmp.root, "trash2").absolutePath)
+        holder = store
+        store.moveToTrash(file.absolutePath)
+        assertTrue("index must list the entry before the file is moved", listedDuringMove)
+    }
+
+    @Test
+    fun failedMoveLeavesIndexAndFileUntouched() {
+        val file = File(docs, "stuck.txt").apply { writeText("x") }
+        val failing = object : FileIo by io {
+            override fun move(from: String, to: String) = throw FileIoException("disk full")
+        }
+        val store = TrashStore(failing, File(tmp.root, "trash3").absolutePath)
+        assertTrue(runCatching { store.moveToTrash(file.absolutePath) }.isFailure)
+        assertTrue(file.exists())
+        assertTrue(store.list().isEmpty())
+    }
+
+    private var holder: TrashStore? = null
+    private fun trashOf(@Suppress("UNUSED_PARAMETER") io: FileIo): TrashStore = holder!!
 }

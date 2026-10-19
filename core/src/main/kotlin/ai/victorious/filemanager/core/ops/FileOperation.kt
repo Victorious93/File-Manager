@@ -1,6 +1,6 @@
 package ai.victorious.filemanager.core.ops
 
-enum class OpKind { COPY, MOVE, DELETE, RENAME, CREATE_FOLDER, CREATE_FILE }
+enum class OpKind { COPY, MOVE, DELETE, RENAME, BATCH_RENAME, CREATE_FOLDER, CREATE_FILE }
 
 enum class OpStatus { QUEUED, RUNNING, SUCCEEDED, FAILED, UNDONE, CANCELLED }
 
@@ -10,6 +10,8 @@ data class FileOperation(
     val sources: List<String>,
     val destinationDir: String? = null,
     val newName: String? = null,
+    /** BATCH_RENAME only: (old path, new path) pairs within the same directory. */
+    val renames: List<Pair<String, String>> = emptyList(),
 )
 
 data class CompletedOp(
