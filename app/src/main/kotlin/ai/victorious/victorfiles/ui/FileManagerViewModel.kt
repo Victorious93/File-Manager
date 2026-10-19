@@ -90,6 +90,8 @@ data class UiState(
     val bookmarks: List<Bookmark> = emptyList(),
     val trash: List<TrashEntry> = emptyList(),
     val renameTarget: String? = null,
+    /** File chosen for Split…; the size dialog is shown while non-null. */
+    val splitTarget: String? = null,
     val batchRename: BatchRenameState? = null,
     val showAbout: Boolean = false,
     val nodeId: String = "",
@@ -138,6 +140,11 @@ sealed interface UiEvent {
     data object RequestRename : UiEvent
     data class ConfirmRename(val newName: String) : UiEvent
     data object DismissRename : UiEvent
+    data class RequestSplit(val path: String) : UiEvent
+    data object DismissSplit : UiEvent
+    data class ConfirmSplit(val partSizeBytes: Long) : UiEvent
+    /** Join the numbered parts (name.001, name.002, …) that [path] belongs to. */
+    data class JoinParts(val path: String) : UiEvent
     data class UpdateBatchRename(val spec: RenameSpec) : UiEvent
     data object ConfirmBatchRename : UiEvent
     data object DismissBatchRename : UiEvent
@@ -299,6 +306,24 @@ class FileManagerViewModel(
             UiEvent.RequestRename -> requestRename()
             is UiEvent.ConfirmRename -> confirmRename(event.newName)
             UiEvent.DismissRename -> _ui.update { it.copy(renameTarget = null) }
+            is UiEvent.RequestSplit -> _ui.update { it.copy(splitTarget = event.path) }
+            UiEvent.DismissSplit -> _ui.update { it.copy(splitTarget = null) }
+            is UiEvent.ConfirmSplit -> {
+                val target = _ui.value.splitTarget
+                _ui.update { it.copy(splitTarget = null) }
+                if (target != null) background("Split…", {
+                    ai.victorious.victorfiles.core.ops.FileSplit.split(File(target), event.partSizeBytes)
+                }) { parts ->
+                    refreshAll()
+                    snack("Split into ${parts.size} parts (${parts.first().name} …)")
+                }
+            }
+            is UiEvent.JoinParts -> background("Join…", {
+                ai.victorious.victorfiles.core.ops.FileSplit.join(File(event.path))
+            }) { out ->
+                refreshAll()
+                snack("Joined into ${out.name}")
+            }
             is UiEvent.UpdateBatchRename -> updateBatchRename(event.spec)
             UiEvent.ConfirmBatchRename -> confirmBatchRename()
             UiEvent.DismissBatchRename -> _ui.update { it.copy(batchRename = null) }

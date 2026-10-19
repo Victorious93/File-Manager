@@ -21,7 +21,12 @@ class HexSearchTest {
         val p = HexPattern.fromText("XYZ")!!
         assertEquals(3, HexSearch.find(doc, p, 0))
         assertEquals(9, HexSearch.find(doc, p, 4))
-        assertEquals(9, HexSearch.find(doc, p, 10)) // start past the last valid position is clamped
+        // "Next" from the last match must wrap, not re-find it.
+        assertEquals(3, HexSearch.find(doc, p, 10))
+        assertEquals(-1, HexSearch.find(doc, p, 10, wrap = false))
+        // "Previous" from before the first match must wrap to the last one.
+        assertEquals(9, HexSearch.find(doc, p, -1, forward = false))
+        assertEquals(-1, HexSearch.find(doc, p, -1, forward = false, wrap = false))
         val abc = HexPattern.fromText("abc")!!
         assertEquals(-1, HexSearch.find(doc, abc, 7, forward = true, wrap = false))
         assertEquals(0, HexSearch.find(doc, abc, 7, forward = true, wrap = true))

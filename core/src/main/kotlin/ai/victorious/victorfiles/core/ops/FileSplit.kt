@@ -12,6 +12,18 @@ object FileSplit {
     private const val BUF = 64 * 1024
     private val PART_RE = Regex("""^(.+)\.(\d{3})$""")
 
+    /**
+     * Parses a part size such as "50", "50mb", "1.5 GB", "700k" (bare numbers are MB).
+     * Returns null for blank, non-positive, or unparseable input. Units are binary (1 MB = 1024*1024).
+     */
+    fun parseSize(text: String): Long? {
+        val m = Regex("""^\s*(\d+(?:\.\d+)?)\s*([kmg]?)b?\s*$""", RegexOption.IGNORE_CASE).matchEntire(text) ?: return null
+        val n = m.groupValues[1].toDoubleOrNull() ?: return null
+        val mult = when (m.groupValues[2].lowercase()) { "k" -> 1024.0; "g" -> 1024.0 * 1024 * 1024; else -> 1024.0 * 1024 }
+        val bytes = n * mult
+        return if (bytes >= 1 && bytes < Long.MAX_VALUE) bytes.toLong() else null
+    }
+
     /** Splits [source] into [outDir]; returns the parts in order. Refuses to overwrite existing parts. */
     fun split(source: File, partSize: Long, outDir: File = source.parentFile ?: File(".")): List<File> {
         require(source.isFile) { "Not a file: ${source.name}" }

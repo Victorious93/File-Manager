@@ -16,6 +16,13 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.TextFieldValue
 import ai.victorious.victorfiles.core.hex.Hex
 import ai.victorious.victorfiles.core.hex.HexDocument
+import ai.victorious.victorfiles.core.hex.HexPattern
+import ai.victorious.victorfiles.core.hex.HexSearch
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.KeyboardArrowUp
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import ai.victorious.victorfiles.core.text.TextFiles
 import ai.victorious.victorfiles.core.text.UndoHistory
 import android.graphics.BitmapFactory
@@ -258,6 +265,15 @@ private fun HexEditorScreen(file: File, onClose: () -> Unit, onMessage: (String)
     var version by remember { mutableIntStateOf(0) }
     var editRow by remember { mutableStateOf<Int?>(null) }
     var confirmClose by remember { mutableStateOf(false) }
+    // Find bar state. matchAt/matchLen mark the current hit (matchAt < 0 = none).
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    var findOpen by remember { mutableStateOf(false) }
+    var findText by remember { mutableStateOf("") }
+    var findAsText by remember { mutableStateOf(false) }
+    var findStatus by remember { mutableStateOf<String?>(null) }
+    var searching by remember { mutableStateOf(false) }
+    var matchAt by remember { mutableIntStateOf(-1) }
+    var matchLen by remember { mutableIntStateOf(0) }
     LaunchedEffect(file) {
         withContext(Dispatchers.IO) { runCatching { HexDocument.load(file) } }
             .onSuccess { doc = it }.onFailure { error = it.message ?: "Cannot open" }
@@ -265,12 +281,36 @@ private fun HexEditorScreen(file: File, onClose: () -> Unit, onMessage: (String)
     val d = doc
     val dirty = version >= 0 && d?.isDirty == true
     val close = { if (dirty) confirmClose = true else onClose() }
+    fun runFind(forward: Boolean) {
+        val doc0 = doc ?: return
+        val pattern = if (findAsText) HexPattern.fromText(findText) else HexPattern.fromHex(findText)
+        if (pattern == null) {
+            findStatus = if (findAsText) "Enter text to find" else "Invalid hex (pairs like 48 65 ?? 6C; not all ??)"
+            return
+        }
+        val from = if (matchAt < 0) (if (forward) 0 else doc0.size) else if (forward) matchAt + 1 else matchAt - 1
+        searching = true
+        scope.launch {
+            val hit = withContext(Dispatchers.IO) { HexSearch.find(doc0, pattern, from, forward, wrap = true) }
+            searching = false
+            if (hit < 0) {
+                matchAt = -1; findStatus = "Not found"
+            } else {
+                matchAt = hit; matchLen = pattern.length
+                findStatus = "Match at 0x%08X".format(hit)
+                listState.animateScrollToItem(hit / HexDocument.BYTES_PER_ROW)
+            }
+        }
+    }
     BackHandler(onBack = close)
     ViewerScaffold(
         title = (if (dirty) "• " else "") + file.name + "  (hex)",
         onClose = close,
         actions = {
             if (d != null) {
+                IconButton(onClick = { findOpen = !findOpen }) {
+                    Icon(Icons.Outlined.Search, contentDescription = "Find")
+                }
                 IconButton(onClick = { d.undo(); version++ }, enabled = version >= 0 && d.canUndo) {
                     Icon(Icons.AutoMirrored.Outlined.Undo, contentDescription = "Undo")
                 }
@@ -291,16 +331,58 @@ private fun HexEditorScreen(file: File, onClose: () -> Unit, onMessage: (String)
                     style = MaterialTheme.typography.labelSmall,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                 )
-                LazyColumn(Modifier.fillMaxSize()) {
+                if (findOpen) {
+                    Column(Modifier.padding(horizontal = 8.dp)) {
+                        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                            androidx.compose.material3.OutlinedTextField(
+                                value = findText,
+                                onValueChange = { findText = it; matchAt = -1; findStatus = null },
+                                singleLine = true,
+                                label = { Text(if (findAsText) "Text" else "Hex bytes (?? = any)") },
+                                modifier = Modifier.weight(1f),
+                            )
+                            IconButton(enabled = !searching, onClick = { runFind(forward = false) }) {
+                                Icon(Icons.Outlined.KeyboardArrowUp, contentDescription = "Previous match")
+                            }
+                            IconButton(enabled = !searching, onClick = { runFind(forward = true) }) {
+                                Icon(Icons.Outlined.KeyboardArrowDown, contentDescription = "Next match")
+                            }
+                        }
+                        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                            androidx.compose.material3.FilterChip(
+                                selected = !findAsText, onClick = { findAsText = false; matchAt = -1; findStatus = null },
+                                label = { Text("Hex") },
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            androidx.compose.material3.FilterChip(
+                                selected = findAsText, onClick = { findAsText = true; matchAt = -1; findStatus = null },
+                                label = { Text("Text") },
+                            )
+                            Text(
+                                (if (searching) "Searching…" else findStatus.orEmpty()),
+                                style = MaterialTheme.typography.labelSmall,
+                                modifier = Modifier.padding(start = 12.dp),
+                            )
+                        }
+                    }
+                }
+                LazyColumn(Modifier.fillMaxSize(), state = listState) {
                     items(d.rowCount) { index ->
                         @Suppress("UNUSED_EXPRESSION") version
                         val row = d.row(index)
                         val changed = row.values.indices.any { (row.offset + it) in d.changedOffsets }
+                        val hit = matchAt >= 0 && row.offset < matchAt + matchLen && row.offset + row.values.size > matchAt
                         Row(
                             Modifier
                                 .fillMaxWidth()
-                                .background(if (changed) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surface)
-                                .clickable { editRow = index }
+                                .background(
+                                    when {
+                                        hit -> MaterialTheme.colorScheme.secondaryContainer
+                                        changed -> MaterialTheme.colorScheme.tertiaryContainer
+                                        else -> MaterialTheme.colorScheme.surface
+                                    },
+                                )
+                                .clickable(enabled = !searching) { editRow = index }
                                 .padding(horizontal = 8.dp, vertical = 2.dp),
                         ) {
                             val style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace, fontSize = 11.sp)
@@ -429,7 +511,8 @@ private fun ArchiveScreen(file: File, extractTo: File, onClose: () -> Unit, onMe
     var encrypted by remember { mutableStateOf(false) }
     var isRar by remember { mutableStateOf(false) }
     val dest = File(extractTo, file.name.substringBefore('.').ifBlank { "extracted" })
-    fun runExtract(password: CharArray?) {
+    val savedPasswords = (LocalContext.current.applicationContext as ai.victorious.victorfiles.FileManagerApplication).archivePasswords
+    fun runExtract(password: CharArray?, remember: Boolean = false) {
         busy = true
         scope.launch {
             withContext(Dispatchers.IO) {
@@ -438,6 +521,9 @@ private fun ArchiveScreen(file: File, extractTo: File, onClose: () -> Unit, onMe
                         isRar -> Archives.extractRar(file, dest, password?.let(::String))
                         encrypted -> EncryptedZip.extract(file, dest, password)
                         else -> Archives.extract(file, dest)
+                    }.also {
+                        // Only a password that just worked is remembered. Saving is best-effort.
+                        if (remember && password != null) runCatching { savedPasswords.add(String(password)) }
                     }
                 }
             }
@@ -481,7 +567,22 @@ private fun ArchiveScreen(file: File, extractTo: File, onClose: () -> Unit, onMe
         onClose = onClose,
         actions = {
             IconButton(enabled = items != null && !busy, onClick = {
-                if (encrypted) askPassword = true else runExtract(null)
+                if (!encrypted) {
+                    runExtract(null)
+                } else if (isRar) {
+                    askPassword = true // RAR can't be verified without writing, so it is never auto-tried
+                } else {
+                    busy = true
+                    scope.launch {
+                        // Verify saved passwords without writing anything; extract only with a confirmed match.
+                        val match = withContext(Dispatchers.IO) {
+                            runCatching { savedPasswords.list().firstOrNull { EncryptedZip.verifyPassword(file, it.toCharArray()) } }
+                                .getOrNull()
+                        }
+                        busy = false
+                        if (match != null) runExtract(match.toCharArray(), remember = true) else askPassword = true
+                    }
+                }
             }) { Icon(Icons.Outlined.Unarchive, contentDescription = "Extract to other pane") }
         },
     ) { modifier ->
@@ -507,24 +608,46 @@ private fun ArchiveScreen(file: File, extractTo: File, onClose: () -> Unit, onMe
         PasswordDialog(
             title = "Password for ${file.name}",
             onConfirm = { askPassword = false; runExtract(it) },
+            onConfirmRemember = { pw, keep -> askPassword = false; runExtract(pw, keep) },
             onDismiss = { askPassword = false },
         )
     }
 }
 
 @Composable
-fun PasswordDialog(title: String, confirmLabel: String = "OK", onConfirm: (CharArray) -> Unit, onDismiss: () -> Unit) {
+fun PasswordDialog(
+    title: String,
+    confirmLabel: String = "OK",
+    onConfirm: (CharArray) -> Unit,
+    onDismiss: () -> Unit,
+    /** When set, the dialog shows a "Remember" checkbox and calls this instead of [onConfirm]. */
+    onConfirmRemember: ((CharArray, Boolean) -> Unit)? = null,
+) {
     var pw by remember { mutableStateOf("") }
+    var rememberPw by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
-            OutlinedTextField(
-                value = pw, onValueChange = { pw = it }, singleLine = true, label = { Text("Password") },
-                visualTransformation = PasswordVisualTransformation(),
-            )
+            Column {
+                OutlinedTextField(
+                    value = pw, onValueChange = { pw = it }, singleLine = true, label = { Text("Password") },
+                    visualTransformation = PasswordVisualTransformation(),
+                )
+                if (onConfirmRemember != null) {
+                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        androidx.compose.material3.Checkbox(checked = rememberPw, onCheckedChange = { rememberPw = it })
+                        Text("Remember (encrypted on this device)", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
         },
-        confirmButton = { TextButton(onClick = { onConfirm(pw.toCharArray()) }, enabled = pw.isNotEmpty()) { Text(confirmLabel) } },
+        confirmButton = {
+            TextButton(
+                onClick = { if (onConfirmRemember != null) onConfirmRemember(pw.toCharArray(), rememberPw) else onConfirm(pw.toCharArray()) },
+                enabled = pw.isNotEmpty(),
+            ) { Text(confirmLabel) }
+        },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }

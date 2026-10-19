@@ -56,4 +56,15 @@ class FileSplitTest {
     @Test fun rejectsNonPartName() {
         assertTrue(runCatching { FileSplit.join(sample(10)) }.exceptionOrNull() is IllegalArgumentException)
     }
+
+    @Test fun parseSize() {
+        assertEquals(50L * 1024 * 1024, FileSplit.parseSize("50"))
+        assertEquals(50L * 1024 * 1024, FileSplit.parseSize(" 50 MB "))
+        assertEquals((1.5 * 1024 * 1024 * 1024).toLong(), FileSplit.parseSize("1.5gb"))
+        assertEquals(700L * 1024, FileSplit.parseSize("700k"))
+        assertEquals(null, FileSplit.parseSize(""))
+        assertEquals(null, FileSplit.parseSize("abc"))
+        assertEquals(null, FileSplit.parseSize("0"))
+        assertEquals(null, FileSplit.parseSize("-5"))
+    }
 }

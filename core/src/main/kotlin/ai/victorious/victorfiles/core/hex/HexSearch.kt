@@ -47,19 +47,21 @@ class HexPattern private constructor(private val bytes: ByteArray, private val w
 
 object HexSearch {
     /**
-     * First match at or after [from] (forward) or at or before [from] (backward).
-     * With [wrap], continues from the other end once. Returns the match offset or -1.
+     * First match at or after [from] (forward) or at or before [from] (backward). A [from] past the
+     * end (forward) or before the start (backward) has no matches on that side, so with [wrap] the
+     * search continues from the other end, and without it returns -1. Returns the offset or -1.
      */
     fun find(doc: HexDocument, pattern: HexPattern, from: Int, forward: Boolean = true, wrap: Boolean = true): Int {
         val last = doc.size - pattern.length
         if (last < 0) return -1
-        val start = from.coerceIn(0, last)
         if (forward) {
-            for (o in start..last) if (pattern.matchesAt(doc, o)) return o
-            if (wrap) for (o in 0 until start) if (pattern.matchesAt(doc, o)) return o
+            val s = from.coerceAtLeast(0)
+            for (o in s..last) if (pattern.matchesAt(doc, o)) return o
+            if (wrap) for (o in 0 until minOf(s, last + 1)) if (pattern.matchesAt(doc, o)) return o
         } else {
-            for (o in start downTo 0) if (pattern.matchesAt(doc, o)) return o
-            if (wrap) for (o in last downTo start + 1) if (pattern.matchesAt(doc, o)) return o
+            val s = from.coerceAtMost(last)
+            for (o in s downTo 0) if (pattern.matchesAt(doc, o)) return o
+            if (wrap) for (o in last downTo maxOf(s + 1, 0)) if (pattern.matchesAt(doc, o)) return o
         }
         return -1
     }
