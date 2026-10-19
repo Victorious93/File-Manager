@@ -29,6 +29,7 @@ androidxTestRunner = "1.6.2"
 androidxTestRules = "1.6.1"
 espresso = "3.6.1"
 junrar = "8.1.2"
+termuxTerminal = "v0.118.3"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -70,6 +71,9 @@ androidx-fragment-ktx = { module = "androidx.fragment:fragment-ktx", version.ref
 junit = { module = "junit:junit", version.ref = "junit" }
 # UnRAR license: extraction only; may not be used to develop a RAR-compatible archiver.
 junrar = { module = "com.github.junrar:junrar", version.ref = "junrar" }
+# Apache-2.0 (jackpal Android Terminal Emulator code, redistributed by Termux). termux-app itself is GPLv3 — we only use these two modules.
+termux-terminal-emulator = { module = "com.github.termux.termux-app:terminal-emulator", version.ref = "termuxTerminal" }
+termux-terminal-view = { module = "com.github.termux.termux-app:terminal-view", version.ref = "termuxTerminal" }
 androidx-test-ext-junit = { module = "androidx.test.ext:junit", version.ref = "androidxTestExt" }
 androidx-test-runner = { module = "androidx.test:runner", version.ref = "androidxTestRunner" }
 androidx-test-rules = { module = "androidx.test:rules", version.ref = "androidxTestRules" }

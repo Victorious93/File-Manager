@@ -256,13 +256,35 @@ class SmokeTest {
     @Test
     fun terminalRunsEchoHi() {
         openTool("Terminal")
-        rule.waitUntil(15_000) { rule.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isNotEmpty() }
-        rule.onNode(hasSetTextAction()).performTextInput("echo hi; echo sum=\$((40+2))")
-        rule.onNode(Smoke.clickable("Send")).performClick()
         // sum=42 only appears if the shell really evaluated the line (not just echoed input).
-        Smoke.waitText(rule, "sum=42", substring = true, timeoutMs = 20_000)
+        val line = "echo hi; echo sum=\$((40+2))"
+        if (ai.victorious.victorfiles.terminal.PtySupport.available) {
+            // Real PTY: a native TerminalView (no Compose text field). Type into its session.
+            var view: com.termux.view.TerminalView? = null
+            Smoke.waitFor(rule, "PTY TerminalView with a running session", timeoutMs = 20_000) {
+                rule.runOnUiThread { view = findView(rule.activity.window.decorView) }
+                view?.currentSession?.let { it.pid > 0 } == true
+            }
+            val session = view!!.currentSession!!
+            val bytes = (line + "\r").toByteArray()
+            session.write(bytes, 0, bytes.size)
+            Smoke.waitFor(rule, "PTY printed sum=42", timeoutMs = 20_000) {
+                session.emulator?.screen?.transcriptText?.contains("sum=42") == true
+            }
+        } else {
+            rule.waitUntil(15_000) { rule.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isNotEmpty() }
+            rule.onNode(hasSetTextAction()).performTextInput(line)
+            rule.onNode(Smoke.clickable("Send")).performClick()
+            Smoke.waitText(rule, "sum=42", substring = true, timeoutMs = 20_000)
+        }
         rule.onNodeWithContentDescription("Close").performClick()
         Smoke.waitFor(rule, "terminal closed") { !Smoke.vm(rule).ui.value.showTerminal }
+    }
+
+    private fun findView(v: android.view.View): com.termux.view.TerminalView? = when (v) {
+        is com.termux.view.TerminalView -> v
+        is android.view.ViewGroup -> (0 until v.childCount).firstNotNullOfOrNull { findView(v.getChildAt(it)) }
+        else -> null
     }
 
     @Test

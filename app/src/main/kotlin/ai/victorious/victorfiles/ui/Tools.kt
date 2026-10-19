@@ -29,6 +29,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material.icons.outlined.Compare
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Folder
@@ -89,6 +90,7 @@ sealed interface ToolRequest {
     data class SecureFolder(val selected: List<String>, val dir: String) : ToolRequest
     data class CompareApks(val left: String, val right: String, val dir: String) : ToolRequest
     data class SmaliTools(val target: String, val mapping: String?, val dir: String) : ToolRequest
+    data class ApkMod(val path: String, val dir: String) : ToolRequest
 }
 
 @Composable
@@ -143,6 +145,13 @@ fun ToolsPane(state: UiState, onEvent: (UiEvent) -> Unit) {
             ToolItem(Icons.Outlined.Compare, "Compare two files", "Select exactly 2 text files (${files.size} selected)") {
                 if (files.size == 2) onEvent(UiEvent.OpenTool(ToolRequest.Compare(files[0].path, files[1].path)))
                 else onEvent(UiEvent.ShowMessage("Select exactly 2 files in Files, then come back"))
+            }
+        }
+        item {
+            val apks = files.filter { isApk(it.path) }
+            ToolItem(Icons.Outlined.Build, "APK mod", "Manifest / strings / smali → rebuild → sign → verify → install (${apks.size} APK)") {
+                if (apks.size == 1) onEvent(UiEvent.OpenTool(ToolRequest.ApkMod(apks[0].path, dir)))
+                else onEvent(UiEvent.ShowMessage("Select exactly 1 .apk in Files, then come back"))
             }
         }
         item {
@@ -233,6 +242,7 @@ fun ToolHost(request: ToolRequest, onClose: () -> Unit, onEvent: (UiEvent) -> Un
         is ToolRequest.SecureFolder -> SecureFolderScreen(request.selected, request.dir, onClose, onEvent)
         is ToolRequest.CompareApks -> ApkCompareScreen(File(request.left), File(request.right), request.dir, onClose, onEvent)
         is ToolRequest.SmaliTools -> SmaliToolsScreen(File(request.target), request.mapping?.let(::File), request.dir, onClose, onEvent)
+        is ToolRequest.ApkMod -> ApkModScreen(request.path, request.dir, onClose, onEvent)
     }
 }
 

@@ -57,7 +57,7 @@ private val AnsiFg = listOf(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TerminalScreen(manager: TerminalSessionManager, onClose: () -> Unit) {
+fun PipeTerminalScreen(manager: TerminalSessionManager, onClose: () -> Unit) {
     BackHandler(onBack = onClose)
     var sessions by remember { mutableStateOf(manager.all) }
     var activeId by remember { mutableStateOf(sessions.firstOrNull()?.id) }

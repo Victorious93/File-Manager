@@ -117,6 +117,9 @@ dependencies {
     implementation(libs.androidx.security.crypto)
     implementation(libs.zxing.core)
     implementation(libs.androidx.biometric)
+    // Apache-2.0 PTY + VT100 view (jackpal/Termux modules). Falls back to the pipe shell if libtermux fails to load.
+    implementation(libs.termux.terminal.emulator)
+    implementation(libs.termux.terminal.view)
     implementation(libs.androidx.fragment.ktx)
     implementation(libs.okhttp)
     debugImplementation(libs.androidx.compose.ui.tooling)

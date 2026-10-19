@@ -49,4 +49,15 @@ class ShellAndAnsiTest {
         assertEquals("OK plain ERR", AnsiParser.strip(real))
         assertFalse(AnsiParser.strip(real).contains("\u001B"))
     }
+
+    @Test fun cursorAndEraseSequencesAreStripped() {
+        val esc = "\u001B"
+        val raw = "hello" + esc + "[2J" + esc + "[Hworld" + esc + "[1;1H" + esc + "[0K!"
+        assertEquals("helloworld!", AnsiParser.strip(raw))
+        val spans = AnsiParser.parse(esc + "[1;32mOK" + esc + "[0m done")
+        assertEquals("OK", spans[0].text)
+        assertTrue(spans[0].bold)
+        assertEquals(2, spans[0].fg)
+        assertEquals(" done", spans[1].text)
+    }
 }
