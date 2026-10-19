@@ -235,7 +235,17 @@ class SecureVault(
  * Lock-state logic for the secure folder, kept pure for tests. The folder locks when the app
  * has been in the background, or idle, for longer than the timeout (0 = lock immediately).
  */
-class VaultLock(private val timeoutMs: () -> Long, private val now: () -> Long = System::currentTimeMillis) {
+/**
+ * App-side lock state. [timeoutMs] is the idle/background timeout (0 = lock as soon as the
+ * app is backgrounded). [maxSessionMs] is a hard cap since unlock, independent of activity:
+ * the Keystore key is only usable for a fixed window after authentication, so the app must
+ * not keep claiming "unlocked" past it (operations would fail with UserNotAuthenticated).
+ */
+class VaultLock(
+    private val timeoutMs: () -> Long,
+    private val now: () -> Long = System::currentTimeMillis,
+    private val maxSessionMs: () -> Long = { Long.MAX_VALUE },
+) {
     private var unlockedAt: Long? = null
     private var lastActivity: Long = 0
     private var backgroundedAt: Long? = null
@@ -273,8 +283,9 @@ class VaultLock(private val timeoutMs: () -> Long, private val now: () -> Long =
     }
 
     private fun evaluate() {
-        if (unlockedAt == null) return
+        val since = unlockedAt ?: return
         val t = now()
+        if (t - since >= maxSessionMs()) { lock(); return }
         val timeout = timeoutMs()
         val bg = backgroundedAt
         if (bg != null && t - bg >= timeout) { lock(); return }

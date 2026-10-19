@@ -61,6 +61,7 @@ class FileManagerApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        if (BuildConfig.DEBUG) enableDebugStrictMode()
         privilegeSettings = PrivilegeSettings(this)
         privilege = PrivilegeManager(privilegeSettings)
         normalIo = NioFileIo()
@@ -86,6 +87,25 @@ class FileManagerApplication : Application() {
             nodeId = nodeId,
             policy = CallerPolicy(certPins = CallerPolicy.parsePins(BuildConfig.FLEET_CALLER_CERT_PINS)),
             externalControlEnabled = fleetSettings::isExternalControlEnabled,
+        )
+    }
+
+    /**
+     * Debug builds only: log (never crash on) StrictMode violations so device/emulator runs
+     * surface main-thread disk/network IO and leaked closeables in logcat (tag StrictMode).
+     */
+    private fun enableDebugStrictMode() {
+        android.os.StrictMode.setThreadPolicy(
+            android.os.StrictMode.ThreadPolicy.Builder().detectAll().penaltyLog().build(),
+        )
+        android.os.StrictMode.setVmPolicy(
+            android.os.StrictMode.VmPolicy.Builder()
+                .detectLeakedClosableObjects()
+                .detectLeakedRegistrationObjects()
+                .detectActivityLeaks()
+                .detectFileUriExposure()
+                .penaltyLog()
+                .build(),
         )
     }
 

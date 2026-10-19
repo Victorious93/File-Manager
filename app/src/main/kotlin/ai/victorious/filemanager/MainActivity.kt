@@ -19,8 +19,8 @@ class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // Listing happens in onResume (always follows onCreate), off the main thread.
         viewModel.refreshPermissions()
-        viewModel.refreshAll()
         setContent {
             VictoriousTheme {
                 val state by viewModel.ui.collectAsStateWithLifecycle()

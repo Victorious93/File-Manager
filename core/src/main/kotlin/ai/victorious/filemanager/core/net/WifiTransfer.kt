@@ -24,6 +24,8 @@ data class WifiHttpRequest(
     val pinHeader: String?,
     val bodyBytes: ByteArray? = null,
     val bodyFileName: String? = null,
+    /** Upload already spooled to disk by the HTTP server (streamed, not held in memory). */
+    val bodyFile: java.io.File? = null,
 )
 
 data class WifiHttpResponse(
@@ -31,6 +33,8 @@ data class WifiHttpResponse(
     val mime: String,
     val body: ByteArray,
     val headers: Map<String, String> = emptyMap(),
+    /** When set, the server streams this file instead of [body] (downloads of any size). */
+    val file: java.io.File? = null,
 )
 
 /**
@@ -49,65 +53,65 @@ class WifiTransferRouter(
             }
         }
         val rel = req.path.trimStart('/').substringBefore('?')
+        // Browsers cannot send the PIN header, so links/forms carry ?pin= forward; without it
+        // every click after the QR-code landing page answered 401.
+        val q = if (!pin.isNullOrEmpty()) "?pin=" + java.net.URLEncoder.encode(pin, "UTF-8") else ""
         return when (req.method.uppercase()) {
-            "GET" -> if (rel.isEmpty() || rel == "index.html") indexHtml() else downloadOrList(rel)
+            "GET" -> if (rel.isEmpty() || rel == "index.html") downloadOrList("", q) else downloadOrList(rel, q)
             "POST" -> upload(rel, req)
             else -> text(405, "Method not allowed")
         }
     }
 
-    private fun downloadOrList(rel: String): WifiHttpResponse {
-        val path = try {
-            var cur = rootPath
-            for (part in rel.split('/').filter { it.isNotEmpty() }) {
-                if (!PathHelpers.isValidFileName(part)) return text(400, "Bad path")
-                cur = PathHelpers.join(cur, part)
-            }
-            cur
-        } catch (t: Throwable) {
-            return text(400, CredentialRedactor.safeMessage(t))
+    /** Maps a URL path under the shared root; null for anything that is not plain child names. */
+    private fun resolve(rel: String): String? {
+        var cur = rootPath
+        for (raw in rel.split('/').filter { it.isNotEmpty() }) {
+            val part = runCatching { java.net.URLDecoder.decode(raw.replace("+", "%2B"), "UTF-8") }.getOrNull() ?: return null
+            if (!PathHelpers.isValidFileName(part)) return null
+            cur = PathHelpers.join(cur, part)
         }
+        return cur
+    }
+
+    private fun downloadOrList(rel: String, q: String = ""): WifiHttpResponse {
+        val path = resolve(rel) ?: return text(400, "Bad path")
         if (!io.exists(path)) return text(404, "Not found")
         if (io.isDirectory(path)) {
             val links = io.list(path).joinToString("\n") { e ->
-                val href = (if (rel.isEmpty()) e.name else "$rel/${e.name}").replace(" ", "%20")
+                val href = (if (rel.isEmpty()) e.name else "$rel/${e.name}").split('/')
+                    .joinToString("/") { java.net.URLEncoder.encode(it, "UTF-8").replace("+", "%20") }
                 val mark = if (e.isDirectory) "/" else ""
-                """<li><a href="/$href">${escape(e.name)}$mark</a></li>"""
+                """<li><a href="/$href$q">${escape(e.name)}$mark</a></li>"""
             }
-            val html = """<!DOCTYPE html><html><body><h1>Index of /$rel</h1><ul>$links</ul>
-<form method="POST" enctype="multipart/form-data" action="/$rel">
+            val html = """<!DOCTYPE html><html><body><h1>Index of /${escape(rel)}</h1><ul>$links</ul>
+<form method="POST" enctype="multipart/form-data" action="/${escape(rel)}$q">
 <input type="file" name="file"/><button type="submit">Upload</button></form></body></html>"""
             return WifiHttpResponse(200, "text/html; charset=utf-8", html.toByteArray())
         }
-        val bytes = java.io.File(path).readBytes()
         return WifiHttpResponse(
             200,
             "application/octet-stream",
-            bytes,
-            mapOf("Content-Disposition" to "attachment; filename=\"${PathHelpers.fileName(path)}\""),
+            ByteArray(0),
+            mapOf("Content-Disposition" to "attachment; filename=\"${PathHelpers.fileName(path).replace("\"", "")}\""),
+            file = java.io.File(path),
         )
     }
 
     private fun upload(rel: String, req: WifiHttpRequest): WifiHttpResponse {
-        val dir = try {
-            var cur = rootPath
-            for (part in rel.split('/').filter { it.isNotEmpty() }) {
-                cur = PathHelpers.join(cur, part)
-            }
-            cur
-        } catch (t: Throwable) {
-            return text(400, CredentialRedactor.safeMessage(t))
-        }
+        val dir = resolve(rel) ?: return text(400, "Bad path")
         if (!io.isDirectory(dir)) return text(400, "Not a directory")
         val name = req.bodyFileName?.takeIf { PathHelpers.isValidFileName(it) }
             ?: return text(400, "Missing file name")
-        val data = req.bodyBytes ?: return text(400, "Empty body")
         val dest = PathHelpers.join(dir, PathHelpers.uniqueChildName(io.childNames(dir), name))
-        java.io.File(dest).outputStream().use { it.write(data) }
+        val spooled = req.bodyFile
+        when {
+            spooled != null -> spooled.inputStream().use { input -> java.io.File(dest).outputStream().use { input.copyTo(it) } }
+            req.bodyBytes != null -> java.io.File(dest).outputStream().use { it.write(req.bodyBytes) }
+            else -> return text(400, "Empty body")
+        }
         return text(201, "Uploaded ${PathHelpers.fileName(dest)}")
     }
-
-    private fun indexHtml(): WifiHttpResponse = downloadOrList("")
 
     private fun text(code: Int, msg: String) =
         WifiHttpResponse(code, "text/plain; charset=utf-8", msg.toByteArray())
@@ -143,13 +147,13 @@ class WifiTransferServer(
 
     override fun serve(session: IHTTPSession): Response {
         val files = HashMap<String, String>()
-        var body: ByteArray? = null
+        var bodyFile: java.io.File? = null
         var fileName: String? = null
         if (session.method == Method.POST) {
             session.parseBody(files)
             val tmp = files["file"] ?: files.values.firstOrNull()
             if (tmp != null) {
-                body = java.io.File(tmp).readBytes()
+                bodyFile = java.io.File(tmp)
                 fileName = session.parameters["file"]?.firstOrNull()
                     ?: session.headers["content-disposition"]?.let { cd ->
                         Regex("""filename="([^"]+)"""").find(cd)?.groupValues?.get(1)
@@ -161,36 +165,48 @@ class WifiTransferServer(
             path = session.uri,
             query = session.parms.mapValues { it.value ?: "" },
             pinHeader = session.headers["x-wifi-pin"] ?: session.headers["x-pin"],
-            bodyBytes = body,
             bodyFileName = fileName,
+            bodyFile = bodyFile,
         )
         val res = try {
             router.handle(req)
         } catch (t: Throwable) {
             WifiHttpResponse(500, "text/plain", CredentialRedactor.safeMessage(t).toByteArray())
         }
-        val r = newFixedLengthResponse(
-            Response.Status.lookup(res.status) ?: Response.Status.INTERNAL_ERROR,
-            res.mime,
-            ByteArrayInputStream(res.body),
-            res.body.size.toLong(),
-        )
+        val status = Response.Status.lookup(res.status) ?: Response.Status.INTERNAL_ERROR
+        val f = res.file
+        val r = if (f != null) {
+            newFixedLengthResponse(status, res.mime, java.io.FileInputStream(f), f.length())
+        } else {
+            newFixedLengthResponse(status, res.mime, ByteArrayInputStream(res.body), res.body.size.toLong())
+        }
         res.headers.forEach { (k, v) -> r.addHeader(k, v) }
         return r
     }
 
     companion object {
+        /**
+         * LAN-only bind address: a private (site-local) IPv4 on a Wi-Fi / hotspot / ethernet
+         * interface. Never a mobile-data (rmnet/ccmni), VPN (tun) or carrier-NAT address, so the
+         * server is not exposed beyond the local network. Null when not on a LAN.
+         */
         fun lanIpv4(): String? {
-            val interfaces = NetworkInterface.getNetworkInterfaces()?.toList().orEmpty()
-            for (nif in interfaces) {
-                if (!nif.isUp || nif.isLoopback) continue
-                for (addr in nif.inetAddresses) {
-                    if (addr is Inet4Address && !addr.isLoopbackAddress) {
-                        return addr.hostAddress
-                    }
-                }
+            val candidates = NetworkInterface.getNetworkInterfaces()?.toList().orEmpty()
+                .filter { runCatching { it.isUp && !it.isLoopback }.getOrDefault(false) }
+                .flatMap { nif -> nif.inetAddresses.toList().filterIsInstance<Inet4Address>().map { nif.name to it } }
+            return pickLanAddress(candidates)?.hostAddress
+        }
+
+        private val LAN_PREFIXES = listOf("wlan", "swlan", "ap", "softap", "wifi", "eth", "en", "rndis", "usb")
+        private val NON_LAN_PREFIXES = listOf("rmnet", "ccmni", "pdp", "tun", "ppp", "wwan", "clat", "v4-rmnet", "dummy", "ipsec")
+
+        fun pickLanAddress(candidates: List<Pair<String, Inet4Address>>): Inet4Address? {
+            val usable = candidates.filter { (name, addr) ->
+                val n = name.lowercase()
+                !addr.isLoopbackAddress && addr.isSiteLocalAddress && NON_LAN_PREFIXES.none { n.startsWith(it) }
             }
-            return null
+            return usable.firstOrNull { (name, _) -> LAN_PREFIXES.any { name.lowercase().startsWith(it) } }?.second
+                ?: usable.firstOrNull()?.second
         }
 
         fun randomPin(digits: Int = 4): String {

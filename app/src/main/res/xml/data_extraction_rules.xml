@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+. Same exclusions as backup_rules.xml for cloud backup and device transfer. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="fm_ai_settings.xml" />
+        <exclude domain="sharedpref" path="fm_network_secrets.xml" />
+        <exclude domain="sharedpref" path="fm_network_connections.xml" />
+        <exclude domain="sharedpref" path="apk_signing.xml" />
+        <exclude domain="sharedpref" path="fleet.xml" />
+        <exclude domain="sharedpref" path="secure_folder.xml" />
+        <exclude domain="file" path="signing/" />
+        <exclude domain="file" path="trash/" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="fm_ai_settings.xml" />
+        <exclude domain="sharedpref" path="fm_network_secrets.xml" />
+        <exclude domain="sharedpref" path="fm_network_connections.xml" />
+        <exclude domain="sharedpref" path="apk_signing.xml" />
+        <exclude domain="sharedpref" path="fleet.xml" />
+        <exclude domain="sharedpref" path="secure_folder.xml" />
+        <exclude domain="file" path="signing/" />
+        <exclude domain="file" path="trash/" />
+    </device-transfer>
+</data-extraction-rules>

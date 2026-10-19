@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Auto Backup (Android 6-11). Excluded:
+  - EncryptedSharedPreferences files: their Keystore master key never leaves the device, so a
+    restored copy cannot be decrypted and EncryptedSharedPreferences.create() throws
+    (AEADBadTagException / InvalidProtocolBufferException) on first use after restore.
+  - On-device APK debug signing key and its password, trash contents, per-device fleet node id.
+  The secure vault lives in noBackupFilesDir and is never backed up.
+-->
+<full-backup-content>
+    <exclude domain="sharedpref" path="fm_ai_settings.xml" />
+    <exclude domain="sharedpref" path="fm_network_secrets.xml" />
+    <exclude domain="sharedpref" path="fm_network_connections.xml" />
+    <exclude domain="sharedpref" path="apk_signing.xml" />
+    <exclude domain="sharedpref" path="fleet.xml" />
+    <exclude domain="sharedpref" path="secure_folder.xml" />
+    <exclude domain="file" path="signing/" />
+    <exclude domain="file" path="trash/" />
+</full-backup-content>
