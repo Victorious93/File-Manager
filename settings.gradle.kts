@@ -15,6 +15,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "VictoriousFileManager"
+rootProject.name = "VictorFiles"
 include(":core")
 include(":app")

@@ -103,7 +103,7 @@ object ApkSigning {
             .setV2SigningEnabled(schemes.v2)
             .setV3SigningEnabled(schemes.v3)
             .setV4SigningEnabled(schemes.v4)
-            .setCreatedBy("Victorious File Manager")
+            .setCreatedBy("VictorFiles")
         if (schemes.v4) builder.setV4SignatureOutputFile(File(output.path + ".idsig"))
         val minSdk = fallbackMinSdk ?: runCatching { AxmlParser.fromApk(input).minSdk }.getOrNull()
         if (minSdk == null) builder.setMinSdkVersion(DEFAULT_MIN_SDK) else builder.setMinSdkVersion(minSdk)

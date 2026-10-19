@@ -1,6 +1,6 @@
-# File Manager fleet bridge (EXTERNAL_NODE)
+# VictorFiles fleet bridge (EXTERNAL_NODE)
 
-File Manager is a standalone app. It can optionally act as an **EXTERNAL_NODE**
+VictorFiles is a standalone app. It can optionally act as an **EXTERNAL_NODE**
 for DroidCommand using the RootForge-style Messenger + JSON envelope
 (see `Victorious93/rootforge-os` `docs/DROIDCOMMAND_INTEGRATION.md`).
 It is **not** a BOUND_COMPANION: no AIDL contract, no `BIND_*` signature

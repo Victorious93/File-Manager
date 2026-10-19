@@ -48,7 +48,7 @@ jobs:
             "platforms;android-35"
 
 
-      - name: Decode File Manager debug keystore
+      - name: Decode VictorFiles debug keystore
         env:
           DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
           DEBUG_KEYSTORE_PASSWORD: ${{ secrets.DEBUG_KEYSTORE_PASSWORD }}
@@ -67,7 +67,7 @@ jobs:
               echo "DEBUG_KEY_ALIAS=$DEBUG_KEY_ALIAS"
               echo "DEBUG_KEY_PASSWORD=$DEBUG_KEY_PASSWORD"
             } >> "$GITHUB_ENV"
-            echo "signing: decoded File Manager debug keystore (secrets present)"
+            echo "signing: decoded VictorFiles debug keystore (secrets present)"
             # Do not print passwords, base64, or keytool -list output here.
           else
             echo "signing: DEBUG_KEYSTORE_* secrets missing; assembleDebug will use Android default debug key"
@@ -150,7 +150,7 @@ jobs:
         run: chmod +x gradlew
 
       # Built before boot so emulator time is spent testing. Default debug key here:
-      # this job never needs the File-Manager signing secrets.
+      # this job never needs the VictorFiles signing secrets.
       - name: Build debug + androidTest APKs
         run: ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest
 
