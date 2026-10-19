@@ -223,10 +223,14 @@ class FileManagerViewModel(
      * remote backend) runs on Dispatchers.IO; the result is merged by tab id so tabs the user
      * opened/closed meanwhile are not clobbered.
      */
+    /** Bumped per refresh; a refresh whose listing finishes after a newer one started is dropped. */
+    private var refreshGeneration = 0L
+
     fun refreshAll() {
         // Every file operation, undo, restore and app resume ends in a refresh: mark the search
         // index stale so the next search re-walks instead of returning moved/deleted paths.
         app.index.invalidate()
+        val generation = ++refreshGeneration
         viewModelScope.launch {
             val snapshot = _ui.value
             val listed = withContext(Dispatchers.IO) {
@@ -241,6 +245,9 @@ class FileManagerViewModel(
                     canUndo = app.queue.snapshot().canUndo,
                 )
             }
+            // Refreshes overlap (each op, undo and resume starts one). An older listing that lands
+            // after a newer one would roll the panes back, e.g. hide a file that was just created.
+            if (generation != refreshGeneration) return@launch
             _ui.update { state ->
                 fun merge(p: PaneState) = p.copy(
                     tabs = p.tabs.map { t ->
