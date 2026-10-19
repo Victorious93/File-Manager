@@ -816,7 +816,7 @@ private fun RenameDialog(currentName: String, onDismiss: () -> Unit, onConfirm: 
 private fun AboutDialog(state: UiState, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Victorious File Manager 0.1.0") },
+        title = { Text("VictorFiles 0.1.0") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Standalone file manager. applicationId ai.victorious.filemanager")

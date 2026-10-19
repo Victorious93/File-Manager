@@ -42,7 +42,7 @@ class BridgeExecutor(
             return fail(
                 request.requestId,
                 ErrorCategory.BAD_PARAMETERS,
-                "wrong node: this File Manager node is $nodeId",
+                "wrong node: this VictorFiles node is $nodeId",
             )
         }
         val decision = policy.evaluate(caller)
@@ -54,7 +54,7 @@ class BridgeExecutor(
             return fail(
                 request.requestId,
                 ErrorCategory.EXTERNAL_CONTROL_DISABLED,
-                "External control is off. Enable it in File Manager Settings.",
+                "External control is off. Enable it in VictorFiles Settings.",
             )
         }
         return when (request.operation) {
@@ -122,7 +122,7 @@ class BridgeExecutor(
             put(
                 "message",
                 JsonPrimitive(
-                    "Remote listing is a stub and does not expose device files. Use the File Manager UI.",
+                    "Remote listing is a stub and does not expose device files. Use the VictorFiles UI.",
                 ),
             )
         }

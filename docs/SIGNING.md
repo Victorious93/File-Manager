@@ -1,4 +1,4 @@
-# Debug signing (File Manager only)
+# Debug signing (VictorFiles only)
 
 Debug APKs for `ai.victorious.filemanager.debug` should install over previous
 debug builds. CI and this agent box share one **File-Manager-only** debug

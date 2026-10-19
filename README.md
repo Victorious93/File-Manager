@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="docs/assets/logo.png" alt="Victorious File Manager logo" width="240">
+  <img src="docs/assets/logo.png" alt="VictorFiles logo" width="240">
 </p>
 
-# Victorious File Manager
+# VictorFiles
 
 A fast, standalone Android file manager (Phases 1–7) with an **optional** DroidCommand AI fleet stub.
 
@@ -64,7 +64,7 @@ Unit tests live in `:core` so queue/undo/trash/fleet JSON are verified without a
 
 ## Fleet notes (optional, pending owner choice)
 
-File Manager is **not** registered as a hub `KnownCompanions` / `BOUND_COMPANION` member in this repo, and this PR does **not** modify [droidcommand-AI](https://github.com/Victorious93/droidcommand-AI).
+VictorFiles is **not** registered as a hub `KnownCompanions` / `BOUND_COMPANION` member in this repo, and this PR does **not** modify [droidcommand-AI](https://github.com/Victorious93/droidcommand-AI).
 
 Until Don confirms the fleet class, Phase 1 ships a **soft Messenger stub** modeled on RootForge OS (`EXTERNAL_NODE` shape), not an AIDL companion:
 
@@ -93,7 +93,7 @@ Until Don confirms the fleet class, Phase 1 ships a **soft Messenger stub** mode
 1. **EXTERNAL_NODE** (RootForge-like) — keep this Messenger bridge, pairing in this app, never DependencyGuard.
 2. **BOUND_COMPANION** — would need a hub-side signature permission, `KnownCompanions` entry, and a companion that *stops* without DCA. That would be a product change, not the default.
 
-Do not add File Manager to `TERMUX_IPC` or `HOST_PROCESS_TOOL`.
+Do not add VictorFiles to `TERMUX_IPC` or `HOST_PROCESS_TOOL`.
 
 ## CI
 
