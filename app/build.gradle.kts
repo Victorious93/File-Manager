@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "ai.victorious.filemanager"
+    namespace = "ai.victorious.victorfiles"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "ai.victorious.filemanager"
+        applicationId = "ai.victorious.victorfiles"
         minSdk = 26
         targetSdk = 35
         versionCode = 1

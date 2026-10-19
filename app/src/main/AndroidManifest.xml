@@ -96,7 +96,7 @@
             android:exported="true"
             tools:ignore="ExportedService">
             <intent-filter>
-                <action android:name="ai.victorious.filemanager.action.BRIDGE" />
+                <action android:name="ai.victorious.victorfiles.action.BRIDGE" />
             </intent-filter>
         </service>
 
