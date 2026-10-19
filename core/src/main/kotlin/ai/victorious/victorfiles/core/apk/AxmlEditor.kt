@@ -255,6 +255,10 @@ class AxmlEditor private constructor(
         const val ATTR_TARGET_SDK = 0x01010270
         const val ATTR_AUTHORITIES = 0x01010018
         const val ATTR_PERMISSION = 0x01010006
+        const val ATTR_ALLOW_BACKUP = 0x01010280
+        const val ATTR_USES_CLEARTEXT_TRAFFIC = 0x0101076a
+        const val ATTR_EXTRACT_NATIVE_LIBS = 0x010104ea
+        const val ATTR_NETWORK_SECURITY_CONFIG = 0x0101081f
 
         /** Framework attributes this editor may add when a manifest lacks them. */
         val FRAMEWORK_ATTRS: Map<Int, String> = mapOf(
@@ -267,6 +271,10 @@ class AxmlEditor private constructor(
             ATTR_VERSION_CODE to "versionCode",
             ATTR_VERSION_NAME to "versionName",
             ATTR_TARGET_SDK to "targetSdkVersion",
+            ATTR_ALLOW_BACKUP to "allowBackup",
+            ATTR_USES_CLEARTEXT_TRAFFIC to "usesCleartextTraffic",
+            ATTR_EXTRACT_NATIVE_LIBS to "extractNativeLibs",
+            ATTR_NETWORK_SECURITY_CONFIG to "networkSecurityConfig",
         )
 
         private fun le(n: Int, f: ByteBuffer.() -> Unit) = ByteBuffer.allocate(n).order(ByteOrder.LITTLE_ENDIAN).apply(f).array()
