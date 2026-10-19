@@ -118,8 +118,10 @@ class SmokeTest {
         rule.onAllNodesWithContentDescription("New tab")[0].performClick()
         Smoke.waitFor(rule, "second tab") { Smoke.vm(rule).ui.value.left.tabs.size == 2 }
         rule.onAllNodesWithContentDescription("Close tab").assertCountEquals(3)
-        rule.onAllNodesWithContentDescription("Close tab")[1].performScrollTo().performClick()
-        Smoke.waitFor(rule, "tab closed") { Smoke.vm(rule).ui.value.left.tabs.size == 1 }
+        val close = rule.onAllNodesWithContentDescription("Close tab")[1].performScrollTo()
+        Smoke.clickAndExpect(rule, close, "tab closed (left tabs=${Smoke.vm(rule).ui.value.left.tabs.size})") {
+            Smoke.vm(rule).ui.value.left.tabs.size == 1
+        }
     }
 
     @Test
@@ -309,7 +311,9 @@ class SmokeTest {
         // Not the description text: the Tools list subtitle also says "Declarative JSON plugins",
         // so that wait passed before this screen had opened.
         Smoke.waitText(rule, "Add samples")
-        rule.onNode(Smoke.clickable("Add samples")).performClick()
+        Smoke.clickAndExpect(rule, rule.onNode(Smoke.clickable("Add samples")), "samples installed") {
+            Smoke.app.plugins.list().isNotEmpty()
+        }
         Smoke.waitText(rule, "Capabilities:", substring = true)
         assertTrue(Smoke.app.plugins.list().isNotEmpty())
         assertTrue("samples start disabled", Smoke.app.plugins.list().none { it.enabled })

@@ -29,6 +29,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -56,6 +58,8 @@ import androidx.compose.material.icons.automirrored.outlined.Undo
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -366,6 +370,10 @@ fun FileManagerApp(
             onDismiss = { onEvent(UiEvent.DismissRename) },
             onConfirm = { onEvent(UiEvent.ConfirmRename(it)) },
         )
+    }
+    state.batchRename?.let { br ->
+        LaunchedEffect(br.targets) { onEvent(UiEvent.UpdateBatchRename(br.spec)) }
+        BatchRenameDialog(br, onEvent)
     }
     state.apkInfo?.let { ApkInfoDialog(it, onEvent) }
     state.signTarget?.let { SignDialog(it, onEvent) }
@@ -732,6 +740,60 @@ private fun CreateDialog(onDismiss: () -> Unit, onConfirm: (name: String, folder
             }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+@Composable
+private fun BatchRenameDialog(state: BatchRenameState, onEvent: (UiEvent) -> Unit) {
+    val spec = state.spec
+    fun update(next: ai.victorious.filemanager.core.rename.RenameSpec) = onEvent(UiEvent.UpdateBatchRename(next))
+    fun intField(text: String, fallback: Int) = text.toIntOrNull() ?: fallback
+    AlertDialog(
+        onDismissRequest = { onEvent(UiEvent.DismissBatchRename) },
+        title = { Text("Rename ${state.targets.size} items") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(spec.find, { update(spec.copy(find = it)) }, label = { Text("Find") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(spec.replace, { update(spec.copy(replace = it)) }, label = { Text("Replace with") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(spec.regex, { update(spec.copy(regex = it)) }); Text("Regex")
+                    Spacer(Modifier.width(12.dp))
+                    Checkbox(spec.caseSensitive, { update(spec.copy(caseSensitive = it)) }); Text("Match case")
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    ai.victorious.filemanager.core.rename.CaseMode.entries.forEach { mode ->
+                        FilterChip(spec.caseMode == mode, { update(spec.copy(caseMode = mode)) }, label = { Text(mode.name.lowercase().replaceFirstChar { it.uppercase() }) })
+                    }
+                }
+                OutlinedTextField(spec.template, { update(spec.copy(template = it)) }, label = { Text("Template: {name} {n} {ext}") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedTextField(spec.counterStart.toString(), { update(spec.copy(counterStart = intField(it, 0))) }, label = { Text("Start") }, singleLine = true, modifier = Modifier.weight(1f))
+                    OutlinedTextField(spec.counterStep.toString(), { update(spec.copy(counterStep = intField(it, 1))) }, label = { Text("Step") }, singleLine = true, modifier = Modifier.weight(1f))
+                    OutlinedTextField(spec.counterPad.toString(), { update(spec.copy(counterPad = intField(it, 1))) }, label = { Text("Pad") }, singleLine = true, modifier = Modifier.weight(1f))
+                }
+                OutlinedTextField(
+                    spec.newExtension.orEmpty(),
+                    { update(spec.copy(newExtension = it.ifEmpty { null })) },
+                    label = { Text("New extension (blank keeps)") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                )
+                HorizontalDivider()
+                state.plan.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                state.plan.items.forEach { item ->
+                    val bad = item.status == ai.victorious.filemanager.core.rename.PlanStatus.INVALID ||
+                        item.status == ai.victorious.filemanager.core.rename.PlanStatus.CONFLICT
+                    Text(
+                        if (item.status == ai.victorious.filemanager.core.rename.PlanStatus.UNCHANGED) item.oldName
+                        else "${item.oldName} → ${item.newName}" + (item.reason?.let { "  ($it)" } ?: ""),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (bad) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onEvent(UiEvent.ConfirmBatchRename) }, enabled = state.plan.isApplicable) { Text("Rename") }
+        },
+        dismissButton = { TextButton(onClick = { onEvent(UiEvent.DismissBatchRename) }) { Text("Cancel") } },
     )
 }
 
