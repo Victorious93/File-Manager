@@ -592,16 +592,59 @@ private fun OpenWithItems(path: String, onEvent: (UiEvent) -> Unit, dismiss: () 
 
 @Composable
 private fun SearchPane(state: UiState, onEvent: (UiEvent) -> Unit) {
+    var inContents by remember { mutableStateOf(false) }
+    var regex by remember { mutableStateOf(false) }
+    var globs by remember { mutableStateOf("") }
+    var contentHits by remember { mutableStateOf<List<ai.victorious.filemanager.core.search.ContentHit>>(emptyList()) }
+    var contentError by remember { mutableStateOf<String?>(null) }
+    val scope = pane(state).active.path
+    LaunchedEffect(inContents, regex, globs, state.searchQuery, scope) {
+        if (!inContents) { contentHits = emptyList(); contentError = null; return@LaunchedEffect }
+        kotlinx.coroutines.delay(350)
+        val q = ai.victorious.filemanager.core.search.ContentQuery(
+            text = state.searchQuery,
+            regex = regex,
+            nameGlobs = globs.split(',', ' ').filter { it.isNotBlank() },
+        )
+        val r = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val job = kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]
+            runCatching { ai.victorious.filemanager.core.search.ContentSearch.search(File(scope), q) { job?.isActive == false } }
+        }
+        r.onSuccess { contentHits = it; contentError = null }.onFailure { contentError = it.message; contentHits = emptyList() }
+    }
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         OutlinedTextField(
             value = state.searchQuery,
             onValueChange = { onEvent(UiEvent.Search(it)) },
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("Search this device") },
+            label = { Text(if (inContents) "Search inside files" else "Search this device") },
             singleLine = true,
             leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
         )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(inContents, { inContents = it }); Text("File contents")
+            Spacer(Modifier.width(8.dp))
+            Checkbox(regex, { regex = it }, enabled = inContents); Text("Regex")
+        }
+        if (inContents) {
+            OutlinedTextField(globs, { globs = it }, label = { Text("Only files (e.g. *.smali, *.xml)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            Text("Searching in $scope", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            contentError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        }
         Spacer(Modifier.height(12.dp))
+        if (inContents) {
+            Text("${contentHits.size} matches", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            LazyColumn {
+                items(contentHits) { hit ->
+                    Column(Modifier.fillMaxWidth().clickable { onEvent(UiEvent.OpenFile(hit.path)) }.padding(vertical = 6.dp)) {
+                        Text("${File(hit.path).name}:${hit.line}", fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(hit.text.trim(), style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(hit.path, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+            return@Column
+        }
         Text(
             "${state.searchHits.size} results",
             style = MaterialTheme.typography.bodySmall,
@@ -775,6 +818,22 @@ private fun PropertiesDialog(p: PropertiesState, onEvent: (UiEvent) -> Unit) {
                     } ?: Text("Hashing…")
                 }
                 p.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                val current = remember(p.path) { ai.victorious.filemanager.core.props.FileMode.read(File(p.path)) }
+                if (current != null) {
+                    HorizontalDivider()
+                    var modeText by remember(p.path) { mutableStateOf(current.octal) }
+                    var recursive by remember(p.path) { mutableStateOf(false) }
+                    var modeMsg by remember(p.path) { mutableStateOf<String?>(null) }
+                    val parsed = runCatching { ai.victorious.filemanager.core.props.FileMode.parse(modeText) }.getOrNull()
+                    Text("Permissions: ${current.symbolic} (${current.octal})")
+                    OutlinedTextField(modeText, { modeText = it }, label = { Text("Mode (e.g. 755 or rwxr-xr-x)") }, singleLine = true, isError = parsed == null, modifier = Modifier.fillMaxWidth())
+                    if (p.isDirectory) Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(recursive, { recursive = it }); Text("Apply to contents") }
+                    TextButton(enabled = parsed != null, onClick = {
+                        modeMsg = runCatching { "Changed ${ai.victorious.filemanager.core.props.FileMode.apply(File(p.path), parsed!!, recursive)} item(s)" }
+                            .getOrElse { "Failed: ${it.message}" }
+                    }) { Text("Apply mode") }
+                    modeMsg?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                }
             }
         },
         confirmButton = { TextButton(onClick = { onEvent(UiEvent.CloseProperties) }) { Text("Close") } },
