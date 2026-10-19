@@ -50,7 +50,7 @@ android {
                 storePassword = storePass
                 keyAlias = alias
                 keyPassword = keyPass
-                println("signing: using File Manager debug keystore at ${store.absolutePath}")
+                println("signing: using VictorFiles debug keystore at ${store.absolutePath}")
             } else {
                 println("signing: DEBUG_KEYSTORE_* not fully set; using Android default debug key")
             }
