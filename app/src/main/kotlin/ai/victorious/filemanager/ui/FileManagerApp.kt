@@ -360,6 +360,7 @@ fun FileManagerApp(
             onConfirm = { onEvent(UiEvent.ConfirmRename(it)) },
         )
     }
+    state.properties?.let { PropertiesDialog(it, onEvent) }
     state.batchRename?.let { br ->
         LaunchedEffect(br.targets) { onEvent(UiEvent.UpdateBatchRename(br.spec)) }
         BatchRenameDialog(br, onEvent)
@@ -406,15 +407,15 @@ private fun DualPane(state: UiState, onEvent: (UiEvent) -> Unit) {
     val wide = LocalConfiguration.current.screenWidthDp >= 700
     if (wide) {
         Row(Modifier.fillMaxSize()) {
-            FilePane(0, state.left, state.focusedPane == 0, onEvent, Modifier.weight(1f))
+            FilePane(0, state.left, state.focusedPane == 0, state.listing, onEvent, Modifier.weight(1f))
             VerticalDivider()
-            FilePane(1, state.right, state.focusedPane == 1, onEvent, Modifier.weight(1f))
+            FilePane(1, state.right, state.focusedPane == 1, state.listing, onEvent, Modifier.weight(1f))
         }
     } else {
         Column(Modifier.fillMaxSize()) {
-            FilePane(0, state.left, state.focusedPane == 0, onEvent, Modifier.weight(1f))
+            FilePane(0, state.left, state.focusedPane == 0, state.listing, onEvent, Modifier.weight(1f))
             HorizontalDivider()
-            FilePane(1, state.right, state.focusedPane == 1, onEvent, Modifier.weight(1f))
+            FilePane(1, state.right, state.focusedPane == 1, state.listing, onEvent, Modifier.weight(1f))
         }
     }
 }
@@ -424,6 +425,7 @@ private fun FilePane(
     index: Int,
     pane: PaneState,
     focused: Boolean,
+    listing: ai.victorious.filemanager.core.listing.ListingOptions,
     onEvent: (UiEvent) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -480,6 +482,7 @@ private fun FilePane(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
         )
+        ListingBar(index, listing, onEvent)
         if (pane.active.error != null) {
             Text(
                 pane.active.error!!,
@@ -488,11 +491,12 @@ private fun FilePane(
                 modifier = Modifier.padding(12.dp),
             )
         }
+        val visibleEntries = remember(pane.active.entries, listing) { listing.apply(pane.active.entries) }
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 12.dp),
         ) {
-            items(pane.active.entries, key = { it.path }) { entry ->
+            items(visibleEntries, key = { it.path }) { entry ->
                 FileRow(
                     entry = entry,
                     selected = entry.path in pane.selected,
@@ -574,6 +578,7 @@ private fun FileRow(
 
 @Composable
 private fun OpenWithItems(path: String, onEvent: (UiEvent) -> Unit, dismiss: () -> Unit) {
+    DropdownMenuItem(text = { Text("Properties / checksums") }, onClick = { dismiss(); onEvent(UiEvent.ShowProperties(path)) })
     listOf(
         "Open in text editor" to ViewerMode.TEXT,
         "Open in hex editor" to ViewerMode.HEX,
@@ -693,6 +698,87 @@ private fun EmptyState(title: String, body: String) {
             Text(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
+}
+
+@Composable
+private fun ListingBar(
+    pane: Int,
+    options: ai.victorious.filemanager.core.listing.ListingOptions,
+    onEvent: (UiEvent) -> Unit,
+) {
+    var menu by remember { mutableStateOf(false) }
+    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        OutlinedTextField(
+            options.filter,
+            { onEvent(UiEvent.SetListing(options.copy(filter = it))) },
+            placeholder = { Text("Filter") },
+            singleLine = true,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(onClick = { onEvent(UiEvent.SelectAll(pane)) }) { Text("All") }
+        Box {
+            TextButton(onClick = { menu = true }) { Text("Sort") }
+            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                ai.victorious.filemanager.core.listing.SortKey.entries.forEach { key ->
+                    DropdownMenuItem(
+                        text = { Text((if (options.sortKey == key) "● " else "") + key.name.lowercase().replaceFirstChar { it.uppercase() }) },
+                        onClick = { onEvent(UiEvent.SetListing(options.copy(sortKey = key))); menu = false },
+                    )
+                }
+                DropdownMenuItem(
+                    text = { Text(if (options.ascending) "Ascending ✓" else "Descending ✓") },
+                    onClick = { onEvent(UiEvent.SetListing(options.copy(ascending = !options.ascending))); menu = false },
+                )
+                DropdownMenuItem(
+                    text = { Text((if (options.foldersFirst) "✓ " else "") + "Folders first") },
+                    onClick = { onEvent(UiEvent.SetListing(options.copy(foldersFirst = !options.foldersFirst))); menu = false },
+                )
+                DropdownMenuItem(
+                    text = { Text((if (options.showHidden) "✓ " else "") + "Show hidden") },
+                    onClick = { onEvent(UiEvent.SetListing(options.copy(showHidden = !options.showHidden))); menu = false },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PropertiesDialog(p: PropertiesState, onEvent: (UiEvent) -> Unit) {
+    var expected by remember(p.path) { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = { onEvent(UiEvent.CloseProperties) },
+        title = { Text(File(p.path).name.ifEmpty { p.path }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(p.path, style = MaterialTheme.typography.bodySmall)
+                Text("Modified: ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date(p.modifiedEpochMs))}")
+                if (p.isDirectory) {
+                    p.stats?.let {
+                        Text("${it.files} file(s), ${it.folders} folder(s)")
+                        Text("Total ${ai.victorious.filemanager.core.storage.StorageAnalyzer.human(it.bytes)} (${it.bytes} bytes)")
+                        if (it.unreadable > 0) Text("${it.unreadable} folder(s) unreadable", color = MaterialTheme.colorScheme.error)
+                    } ?: Text("Calculating…")
+                } else {
+                    Text("Size: ${ai.victorious.filemanager.core.storage.StorageAnalyzer.human(p.sizeBytes)} (${p.sizeBytes} bytes)")
+                    p.hashes?.let { hashes ->
+                        hashes.forEach { (alg, value) ->
+                            Text("${alg.jca}: $value", style = MaterialTheme.typography.bodySmall)
+                        }
+                        OutlinedTextField(expected, { expected = it }, label = { Text("Paste a checksum to compare") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                        if (expected.isNotBlank()) {
+                            val ok = hashes.values.any { ai.victorious.filemanager.core.props.FileProperties.matches(expected, it) }
+                            Text(
+                                if (ok) "Match" else "No match",
+                                color = if (ok) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    } ?: Text("Hashing…")
+                }
+                p.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onEvent(UiEvent.CloseProperties) }) { Text("Close") } },
+    )
 }
 
 @Composable
