@@ -1,6 +1,6 @@
-# File Manager fleet bridge (EXTERNAL_NODE)
+# VictorFiles fleet bridge (EXTERNAL_NODE)
 
-File Manager is a standalone app. It can optionally act as an **EXTERNAL_NODE**
+VictorFiles is a standalone app. It can optionally act as an **EXTERNAL_NODE**
 for DroidCommand using the RootForge-style Messenger + JSON envelope
 (see `Victorious93/rootforge-os` `docs/DROIDCOMMAND_INTEGRATION.md`).
 It is **not** a BOUND_COMPANION: no AIDL contract, no `BIND_*` signature
@@ -10,9 +10,9 @@ permission, no DependencyGuard, and DroidCommand AI is never required.
 
 | Item | Value |
 |---|---|
-| Service | `ai.victorious.filemanager.fleet.FileManagerBridgeService` (exported) |
-| Bind action | `ai.victorious.filemanager.action.BRIDGE` — `onBind` returns `null` for any other (or missing) action |
-| Package | `ai.victorious.filemanager` (debug: `ai.victorious.filemanager.debug`) |
+| Service | `ai.victorious.victorfiles.fleet.FileManagerBridgeService` (exported) |
+| Bind action | `ai.victorious.victorfiles.action.BRIDGE` — `onBind` returns `null` for any other (or missing) action |
+| Package | `ai.victorious.victorfiles` (debug: `ai.victorious.victorfiles.debug`) |
 | Request | `Message.what = 1`, `data["request"]` = JSON line, `replyTo` required |
 | Response | `Message.what = 2`, `data["response"]` = JSON line |
 

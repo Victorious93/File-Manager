@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "ai.victorious.filemanager"
+    namespace = "ai.victorious.victorfiles"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "ai.victorious.filemanager"
+        applicationId = "ai.victorious.victorfiles"
         minSdk = 26
         targetSdk = 35
         versionCode = 1
@@ -50,7 +50,7 @@ android {
                 storePassword = storePass
                 keyAlias = alias
                 keyPassword = keyPass
-                println("signing: using File Manager debug keystore at ${store.absolutePath}")
+                println("signing: using VictorFiles debug keystore at ${store.absolutePath}")
             } else {
                 println("signing: DEBUG_KEYSTORE_* not fully set; using Android default debug key")
             }

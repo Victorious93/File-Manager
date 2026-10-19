@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="docs/assets/logo.png" alt="Victorious File Manager logo" width="240">
+  <img src="docs/assets/logo.png" alt="VictorFiles logo" width="240">
 </p>
 
-# Victorious File Manager
+# VictorFiles
 
 A fast, standalone Android file manager (Phases 1–7) with an **optional** DroidCommand AI fleet stub.
 
@@ -24,11 +24,11 @@ See also `docs/BATCH_RENAME.md`, `docs/APK_TOOLS.md`, `docs/POWER_TOOLS.md`, `do
 - Trash (soft-delete into the app trash store; restore / empty / permanent delete)
 - Optional RootForge-style **Messenger** fleet stub (not LIVE control)
 
-`applicationId`: `ai.victorious.filemanager`  
+`applicationId`: `ai.victorious.victorfiles`  
 Version: `0.1.0`  
 `minSdk`: **26** · `targetSdk` / `compileSdk`: **35**
 
-Debug builds use `ai.victorious.filemanager.debug`.
+Debug builds use `ai.victorious.victorfiles.debug`.
 
 ### Later phases (merged)
 
@@ -64,7 +64,7 @@ Unit tests live in `:core` so queue/undo/trash/fleet JSON are verified without a
 
 ## Fleet notes (optional, pending owner choice)
 
-File Manager is **not** registered as a hub `KnownCompanions` / `BOUND_COMPANION` member in this repo, and this PR does **not** modify [droidcommand-AI](https://github.com/Victorious93/droidcommand-AI).
+VictorFiles is **not** registered as a hub `KnownCompanions` / `BOUND_COMPANION` member in this repo, and this PR does **not** modify [droidcommand-AI](https://github.com/Victorious93/droidcommand-AI).
 
 Until Don confirms the fleet class, Phase 1 ships a **soft Messenger stub** modeled on RootForge OS (`EXTERNAL_NODE` shape), not an AIDL companion:
 
@@ -73,7 +73,7 @@ Until Don confirms the fleet class, Phase 1 ships a **soft Messenger stub** mode
 | Works without DCA | **Yes** | No (`DependencyGuard`) |
 | Shared signing key required | **No** | Yes |
 | Transport | Bound **Messenger** + JSON envelope | AIDL `ICompanionService` / domain AIDL |
-| Action | `ai.victorious.filemanager.action.BRIDGE` | `ai.droidcommand.companion.ICompanionService` |
+| Action | `ai.victorious.victorfiles.action.BRIDGE` | `ai.droidcommand.companion.ICompanionService` |
 | LIVE control | **No** — stubs only | Companion-specific |
 
 ### Messenger stub
@@ -93,7 +93,7 @@ Until Don confirms the fleet class, Phase 1 ships a **soft Messenger stub** mode
 1. **EXTERNAL_NODE** (RootForge-like) — keep this Messenger bridge, pairing in this app, never DependencyGuard.
 2. **BOUND_COMPANION** — would need a hub-side signature permission, `KnownCompanions` entry, and a companion that *stops* without DCA. That would be a product change, not the default.
 
-Do not add File Manager to `TERMUX_IPC` or `HOST_PROCESS_TOOL`.
+Do not add VictorFiles to `TERMUX_IPC` or `HOST_PROCESS_TOOL`.
 
 ## CI
 
@@ -114,7 +114,7 @@ GitHub Actions on every pull request:
 - **Text editor** (UTF-8, ≤4 MB): edit, save (atomic temp-file write), undo/redo, discard-changes prompt.
 - **Hex editor** (≤16 MB): 16-byte rows with offset/hex/ASCII, tap a row to overwrite bytes, undo, save writes only changed bytes.
 - **Archives**: ZIP/JAR/APK list + extract (java.util.zip); **7z** and **TAR/TAR.GZ** list + extract via Apache Commons Compress (Apache-2.0) + XZ for Java (public domain), pure Java. Extraction goes to the other pane's folder and blocks zip-slip paths.
-- **RAR: deferred.** No Apache/MIT pure-Java extractor exists (junrar uses the non-OSI UnRAR licence and doesn't support RAR5), so RAR files are detected and reported as unsupported.
+- **RAR** (added in Phase 10): list + extract RAR4/RAR5/solid/password archives via junrar, extraction only, under the UnRAR licence. See [docs/ARCHIVES.md](docs/ARCHIVES.md) for the compliance notes.
 - **Create ZIP** from selected files/folders (bottom-bar Zip button) into the current folder (`name.zip`, `name (2).zip`, …).
 - **Image preview** (PNG/JPEG/GIF/WebP/BMP/HEIF, downsampled) and **media info** for audio/video via `MediaMetadataRetriever` (no player).
 - **Integration**: tap a file to open it in the default viewer for its type (sniffed when the extension is unknown); long-press a file for *Select* / *Open in text editor / hex editor / Preview image / Media info / Open as archive*.
@@ -128,3 +128,10 @@ bottom-bar icon installs them in sequence. Signing uses your keystore or a per-d
 generated in-app — no keys in the repo. Details: [docs/APK_TOOLS.md](docs/APK_TOOLS.md).
 Debug signing setup: [docs/SIGNING.md](docs/SIGNING.md).
 - Testing: unit tests, emulator Compose smoke tests + monkey/logcat scan, and lint in CI — see [docs/TESTING.md](docs/TESTING.md)
+
+## Phase 10: gap fill
+
+Indexed search, trash on the same volume, themes (light/dark/AMOLED/dynamic/accent),
+tablet/foldable layouts (NavigationRail plus side-by-side panes), Compare two APKs, Smali
+tools (search, decryption hints, mapping.txt), RAR extraction, and big-folder listing speed.
+See [docs/PHASE10.md](docs/PHASE10.md).

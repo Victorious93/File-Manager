@@ -33,6 +33,8 @@ dependencies {
     implementation(libs.smbj)
     implementation(libs.okhttp)
     api(libs.nanohttpd)
+    // RAR extraction only (UnRAR license; see docs/ARCHIVES.md). Never used to create RAR archives.
+    implementation(libs.junrar)
     testImplementation(libs.junit)
     testImplementation(libs.okhttp.mockwebserver)
 }

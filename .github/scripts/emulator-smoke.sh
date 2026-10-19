@@ -3,7 +3,7 @@
 # 1) instrumented Compose smoke tests, 2) monkey with a fixed seed, 3) logcat scan for
 # crashes / ANRs / StrictMode. Fails on test failures, crashes or ANRs; StrictMode is reported.
 set -uo pipefail
-PKG=ai.victorious.filemanager.debug
+PKG=ai.victorious.victorfiles.debug
 OUT=build/emulator-smoke
 mkdir -p "$OUT"
 SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/stdout}"
@@ -25,7 +25,7 @@ echo "::group::monkey"
 adb install -r -g app/build/outputs/apk/debug/app-debug.apk
 adb shell appops set "$PKG" MANAGE_EXTERNAL_STORAGE allow
 adb shell mkdir -p /sdcard/FMMonkey && adb shell 'for i in 1 2 3; do echo monkey$i > /sdcard/FMMonkey/m$i.txt; done'
-adb shell am start -W -n "$PKG/ai.victorious.filemanager.MainActivity"
+adb shell am start -W -n "$PKG/ai.victorious.victorfiles.MainActivity"
 # Fixed seed so a failure is reproducible: adb shell monkey -p $PKG -s 4242 ...
 # --ignore-timeouts: system ANRs on slow runners must not abort; app ANRs are checked in logcat below.
 adb shell monkey -p "$PKG" -s 4242 --throttle 75 --pct-syskeys 0 --pct-appswitch 5 \
