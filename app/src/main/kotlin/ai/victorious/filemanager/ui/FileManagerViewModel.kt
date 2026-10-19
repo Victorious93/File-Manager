@@ -527,11 +527,19 @@ class FileManagerViewModel(
                     app.queue.processAll().last()
                 }
             }
-            _ui.update { it.copy(busy = false) }
+            // Clear the selection in the same state update that ends `busy`: the sources are gone
+            // (move/delete) or done with (copy), and a separate update left a window where a quick
+            // next tap toggled a stale selection.
+            _ui.update { s ->
+                val cleared = if (result.isSuccess) {
+                    if (s.focusedPane == 0) s.copy(left = s.left.copy(selected = emptySet()))
+                    else s.copy(right = s.right.copy(selected = emptySet()))
+                } else s
+                cleared.copy(busy = false)
+            }
             result.fold(
                 onSuccess = {
                     refreshAll()
-                    updatePane(_ui.value.focusedPane) { pane -> pane.copy(selected = emptySet()) }
                     snack(it.message)
                 },
                 onFailure = { snack(it.message ?: "Operation failed") },
@@ -616,7 +624,13 @@ class FileManagerViewModel(
                     app.queue.processAll().last()
                 }
             }
-            _ui.update { it.copy(busy = false) }
+            // The renamed path no longer exists; drop it from the selection with `busy` so a
+            // following Copy/Move cannot pick up the stale old path.
+            _ui.update { s ->
+                fun drop(p: PaneState) = p.copy(selected = p.selected - target)
+                if (result.isSuccess) s.copy(busy = false, left = drop(s.left), right = drop(s.right))
+                else s.copy(busy = false)
+            }
             result.fold(
                 onSuccess = {
                     refreshAll()

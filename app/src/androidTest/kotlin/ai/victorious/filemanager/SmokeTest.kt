@@ -13,6 +13,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
@@ -117,7 +118,7 @@ class SmokeTest {
         rule.onAllNodesWithContentDescription("New tab")[0].performClick()
         Smoke.waitFor(rule, "second tab") { Smoke.vm(rule).ui.value.left.tabs.size == 2 }
         rule.onAllNodesWithContentDescription("Close tab").assertCountEquals(3)
-        rule.onAllNodesWithContentDescription("Close tab")[1].performClick()
+        rule.onAllNodesWithContentDescription("Close tab")[1].performScrollTo().performClick()
         Smoke.waitFor(rule, "tab closed") { Smoke.vm(rule).ui.value.left.tabs.size == 1 }
     }
 
@@ -151,25 +152,29 @@ class SmokeTest {
         rule.onNode(hasSetTextAction()).performTextInput("renamed.txt")
         rule.onNode(Smoke.clickable("Save")).performClick()
         Smoke.waitFor(rule, "renamed") { File(a, "renamed.txt").isFile && !File(a, "note.txt").exists() }
+        Smoke.waitIdle(rule)
 
         // Copy to other pane
         val renamed = File(a, "renamed.txt").absolutePath
-        Smoke.event(rule, UiEvent.Select(0, renamed, additive = true))
+        Smoke.selectOnly(rule, 0, renamed)
         rule.onNodeWithContentDescription("Copy").performClick()
         Smoke.waitFor(rule, "copied") { File(b, "renamed.txt").isFile && File(a, "renamed.txt").isFile }
+        Smoke.waitIdle(rule)
 
         // Move to other pane, then undo
-        Smoke.event(rule, UiEvent.Select(0, renamed, additive = true))
+        Smoke.selectOnly(rule, 0, renamed)
         rule.onNodeWithContentDescription("Move").performClick()
         Smoke.waitFor(rule, "moved") { !File(a, "renamed.txt").exists() && File(b, "renamed (1).txt").isFile }
+        Smoke.waitIdle(rule)
         rule.onNodeWithContentDescription("Undo").performClick()
         Smoke.waitFor(rule, "move undone") { File(a, "renamed.txt").isFile && !File(b, "renamed (1).txt").exists() }
 
         // Delete (to trash), then undo
         Smoke.event(rule, UiEvent.Refresh)
-        Smoke.event(rule, UiEvent.Select(0, renamed, additive = true))
+        Smoke.selectOnly(rule, 0, renamed)
         rule.onNodeWithContentDescription("Delete").performClick()
         Smoke.waitFor(rule, "deleted") { !File(a, "renamed.txt").exists() }
+        Smoke.waitIdle(rule)
         Smoke.waitFor(rule, "in trash") { Smoke.app.trash.list().any { it.originalPath == renamed } }
         rule.onNodeWithContentDescription("Undo").performClick()
         Smoke.waitFor(rule, "delete undone") { File(a, "renamed.txt").isFile }
@@ -301,7 +306,9 @@ class SmokeTest {
     @Test
     fun pluginsScreenOpensAndInstallsSamples() {
         openTool("Plugins")
-        Smoke.waitText(rule, "Declarative JSON plugins", substring = true)
+        // Not the description text: the Tools list subtitle also says "Declarative JSON plugins",
+        // so that wait passed before this screen had opened.
+        Smoke.waitText(rule, "Add samples")
         rule.onNode(Smoke.clickable("Add samples")).performClick()
         Smoke.waitText(rule, "Capabilities:", substring = true)
         assertTrue(Smoke.app.plugins.list().isNotEmpty())

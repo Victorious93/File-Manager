@@ -12,6 +12,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,6 +27,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -445,26 +448,39 @@ private fun FilePane(
             IconButton(onClick = { onEvent(UiEvent.GoUp(index)) }) {
                 Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Up")
             }
-            pane.tabs.forEachIndexed { tabIndex, tab ->
-                val selected = tabIndex == pane.activeIndex
-                Surface(
-                    color = if (selected) MaterialTheme.colorScheme.primaryContainer
-                    else MaterialTheme.colorScheme.surfaceVariant,
-                    shape = RoundedCornerShape(20.dp),
-                    modifier = Modifier
-                        .padding(end = 4.dp)
-                        .clickable { onEvent(UiEvent.SwitchTab(index, tabIndex)) },
-                ) {
-                    Row(
-                        Modifier.padding(start = 10.dp, end = 2.dp, top = 4.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+            // Tabs scroll on their own so long folder names never push the close buttons or the
+            // New tab / New folder actions off a phone-width screen.
+            Row(
+                Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                pane.tabs.forEachIndexed { tabIndex, tab ->
+                    val selected = tabIndex == pane.activeIndex
+                    Surface(
+                        color = if (selected) MaterialTheme.colorScheme.primaryContainer
+                        else MaterialTheme.colorScheme.surfaceVariant,
+                        shape = RoundedCornerShape(20.dp),
+                        modifier = Modifier
+                            .padding(end = 4.dp)
+                            .clickable { onEvent(UiEvent.SwitchTab(index, tabIndex)) },
                     ) {
-                        Text(tab.title, style = MaterialTheme.typography.labelMedium, maxLines = 1)
-                        IconButton(
-                            onClick = { onEvent(UiEvent.CloseTab(index, tabIndex)) },
-                            modifier = Modifier.size(24.dp),
+                        Row(
+                            Modifier.padding(start = 10.dp, end = 2.dp, top = 4.dp, bottom = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Icon(Icons.Outlined.Close, contentDescription = "Close tab", modifier = Modifier.size(14.dp))
+                            Text(
+                                tab.title,
+                                style = MaterialTheme.typography.labelMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.widthIn(max = 120.dp),
+                            )
+                            IconButton(
+                                onClick = { onEvent(UiEvent.CloseTab(index, tabIndex)) },
+                                modifier = Modifier.size(24.dp),
+                            ) {
+                                Icon(Icons.Outlined.Close, contentDescription = "Close tab", modifier = Modifier.size(14.dp))
+                            }
                         }
                     }
                 }

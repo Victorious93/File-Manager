@@ -39,16 +39,24 @@ class TrashStore(
         ensureLayout()
         val id = ids()
         val payload = PathHelpers.join(itemsDir, id)
-        io.move(normalized, payload)
         val entry = TrashEntry(
             id = id,
             originalPath = normalized,
             trashPayloadPath = payload,
             originalName = PathHelpers.fileName(normalized),
-            isDirectory = io.isDirectory(payload),
+            isDirectory = io.isDirectory(normalized),
             deletedAtEpochMs = clock(),
         )
-        saveIndex(loadIndex() + entry)
+        // Index first, then move: once the original is gone it is already listed in the trash,
+        // and a crash between the two steps leaves the file in place rather than orphaned.
+        val before = loadIndex()
+        saveIndex(before + entry)
+        try {
+            io.move(normalized, payload)
+        } catch (t: Throwable) {
+            saveIndex(before)
+            throw t
+        }
         return id
     }
 
