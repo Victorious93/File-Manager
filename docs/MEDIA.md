@@ -54,12 +54,12 @@ opens the app at that folder (`MainActivity` `EXTRA_OPEN_PATH`). Standard `AppWi
 (`BookmarksWidgetReceiver`) + `res/xml/bookmarks_widget_info.xml`.
 
 ## Quick Settings tiles
-`tiles/FileManagerTiles.kt` — **Open File Manager** and **Wi-Fi transfer** tiles. The tile
+`tiles/FileManagerTiles.kt` — **Open VictorFiles** and **Wi-Fi transfer** tiles. The tile
 label/subtitle/active model is pure logic in `core/tiles/TileState.kt` and unit-tested.
 > QS tiles require the platform **`BIND_QUICK_SETTINGS_TILE`** permission declared on our own tile
 > services. That is mandatory for any QS tile on Android and is **not** a fleet `BIND_*` permission.
 
-## Share to File Manager + open-with
+## Share to VictorFiles + open-with
 - `share/ShareReceiverActivity.kt` accepts `ACTION_SEND` / `ACTION_SEND_MULTIPLE`, asks for a
   destination folder (Storage Access Framework tree), and copies each item in with a sanitised,
   collision-free name. The sanitising (path-traversal stripping) and de-duplication

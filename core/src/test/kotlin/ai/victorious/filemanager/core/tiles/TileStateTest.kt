@@ -21,6 +21,6 @@ class TileStateTest {
     @Test fun openTileIsAction() {
         val t = Tiles.openFileManager()
         assertEquals(TileStatus.INACTIVE, t.status)
-        assertEquals("File Manager", t.label)
+        assertEquals("VictorFiles", t.label)
     }
 }
