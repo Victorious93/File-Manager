@@ -13,6 +13,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -446,7 +448,13 @@ private fun FilePane(
                 Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Up")
             }
             // Tabs scroll on their own so long folder names never push the close buttons or the
-            // New tab / New folder actions off a phone-width screen.
+            // New tab / New folder actions off a phone-width screen. The active tab (e.g. one just
+            // opened at the end of the strip) is scrolled into view.
+            val tabRequesters = remember(pane.tabs.size) { List(pane.tabs.size) { BringIntoViewRequester() } }
+            LaunchedEffect(pane.activeIndex, pane.tabs.size) {
+                androidx.compose.runtime.withFrameNanos { } // after layout, so the chip has coordinates
+                tabRequesters.getOrNull(pane.activeIndex)?.bringIntoView()
+            }
             Row(
                 Modifier.weight(1f).horizontalScroll(rememberScrollState()),
                 verticalAlignment = Alignment.CenterVertically,
@@ -458,6 +466,7 @@ private fun FilePane(
                         else MaterialTheme.colorScheme.surfaceVariant,
                         shape = RoundedCornerShape(20.dp),
                         modifier = Modifier
+                            .bringIntoViewRequester(tabRequesters[tabIndex])
                             .padding(end = 4.dp)
                             .clickable { onEvent(UiEvent.SwitchTab(index, tabIndex)) },
                     ) {
