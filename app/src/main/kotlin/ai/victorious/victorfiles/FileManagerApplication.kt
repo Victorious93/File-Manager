@@ -21,6 +21,7 @@ import ai.victorious.victorfiles.terminal.TerminalSessionManager
 import ai.victorious.victorfiles.ai.AiSettings
 import ai.victorious.victorfiles.plugins.PluginRepository
 import ai.victorious.victorfiles.secure.SecureFolderManager
+import ai.victorious.victorfiles.media.ThumbnailLoader
 import android.app.Application
 import java.io.File
 import java.security.SecureRandom
@@ -64,6 +65,8 @@ class FileManagerApplication : Application() {
         private set
     lateinit var secureFolder: SecureFolderManager
         private set
+    lateinit var thumbnails: ThumbnailLoader
+        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -99,6 +102,7 @@ class FileManagerApplication : Application() {
         aiSettings = AiSettings(this).also { runCatching { it.load() } }
         plugins = PluginRepository(this, privilege)
         secureFolder = SecureFolderManager(this)
+        thumbnails = ThumbnailLoader(cacheDir)
         bridge = BridgeExecutor(
             nodeId = nodeId,
             policy = CallerPolicy(certPins = CallerPolicy.parsePins(BuildConfig.FLEET_CALLER_CERT_PINS)),

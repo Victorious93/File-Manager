@@ -102,6 +102,7 @@ fun ShareMenuItem(path: String, onEvent: (UiEvent) -> Unit, dismiss: () -> Unit)
 /** Long-press items for folders: rebuild an extracted APK folder. */
 @Composable
 fun FolderMenuItems(path: String, onEvent: (UiEvent) -> Unit, dismiss: () -> Unit) {
+    DropdownMenuItem(text = { Text("View as gallery") }, onClick = { dismiss(); onEvent(UiEvent.OpenFile(path, ViewerMode.GALLERY)) })
     val hasManifest = remember(path) { File(path, "AndroidManifest.xml").isFile }
     val surgery = remember(path) { runCatching { isSurgeryTarget(path) }.getOrDefault(false) }
     if (surgery) {

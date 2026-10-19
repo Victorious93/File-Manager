@@ -43,8 +43,11 @@ import kotlinx.coroutines.withContext
 fun defaultMode(file: File): ViewerMode = when (FileKinds.detect(file)) {
     FileKind.TEXT -> ViewerMode.TEXT
     FileKind.IMAGE -> ViewerMode.IMAGE
-    FileKind.AUDIO, FileKind.VIDEO -> ViewerMode.MEDIA_INFO
+    FileKind.VIDEO -> ViewerMode.VIDEO
+    FileKind.AUDIO -> ViewerMode.AUDIO
     FileKind.ARCHIVE -> ViewerMode.ARCHIVE
+    FileKind.DOCUMENT -> ViewerMode.PDF
+    FileKind.FONT -> ViewerMode.FONT
     FileKind.BINARY -> ViewerMode.HEX
 }
 

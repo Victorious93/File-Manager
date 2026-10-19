@@ -73,7 +73,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-enum class ViewerMode { TEXT, HEX, IMAGE, MEDIA_INFO, ARCHIVE }
+enum class ViewerMode { TEXT, HEX, IMAGE, MEDIA_INFO, ARCHIVE, GALLERY, VIDEO, AUDIO, PDF, FONT }
 
 data class ViewerRequest(val path: String, val mode: ViewerMode)
 
@@ -85,6 +85,11 @@ fun ViewerHost(request: ViewerRequest, extractDir: String, onClose: () -> Unit, 
         ViewerMode.IMAGE -> ImagePreviewScreen(File(request.path), onClose)
         ViewerMode.MEDIA_INFO -> MediaInfoScreen(File(request.path), onClose)
         ViewerMode.ARCHIVE -> ArchiveScreen(File(request.path), File(extractDir), onClose, onMessage)
+        ViewerMode.GALLERY -> GalleryScreen(File(request.path), onClose, onMessage)
+        ViewerMode.VIDEO -> VideoPlayerScreen(File(request.path), onClose)
+        ViewerMode.AUDIO -> AudioPlayerScreen(File(request.path), onClose)
+        ViewerMode.PDF -> PdfViewerScreen(File(request.path), onClose, onMessage)
+        ViewerMode.FONT -> FontPreviewScreen(File(request.path), onClose, onMessage)
     }
 }
 
