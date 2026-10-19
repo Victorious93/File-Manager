@@ -24,7 +24,7 @@
      main thread (regression for remote paths throwing `NetworkOnMainThreadException`).
    - Tests use real storage under `/sdcard/FMSmoke/` and grant all-files access with
      `appops set <pkg> MANAGE_EXTERNAL_STORAGE allow`.
-2. `monkey` with a fixed seed: `adb shell monkey -p ai.victorious.filemanager.debug -s 4242 --throttle 75 -v 3000`.
+2. `monkey` with a fixed seed: `adb shell monkey -p ai.victorious.victorfiles.debug -s 4242 --throttle 75 -v 3000`.
 3. A logcat scan. The job fails on any app crash (crash buffer / `// CRASH`), any ANR, or a
    monkey run that didn't finish. StrictMode lines are counted and summarised in the job
    summary (debug builds install a log-only StrictMode policy in `FileManagerApplication`).
@@ -58,5 +58,5 @@ were StrictMode disk-read notices from SharedPreferences in `Application.onCreat
 emulator suite only runs in GitHub Actions, where `ubuntu-latest` has working KVM.
 
 The monkey is started with `--ignore-timeouts`, so a *system* ANR on a slow runner does not
-abort it. App ANRs are still caught by the `ANR in ai.victorious.filemanager.debug` logcat
+abort it. App ANRs are still caught by the `ANR in ai.victorious.victorfiles.debug` logcat
 check, and crashes by the crash-buffer check.
