@@ -9,6 +9,7 @@ import ai.victorious.victorfiles.core.apk.DexTools
 import ai.victorious.victorfiles.core.apk.ResEntry
 import ai.victorious.victorfiles.core.apk.ResKind
 import ai.victorious.victorfiles.core.apk.SmaliText
+import ai.victorious.victorfiles.core.javadec.JavaExport
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -79,6 +80,8 @@ private sealed interface DexNav {
     data class Classes(val source: DexSource) : DexNav
     data class ClassView(val source: DexSource, val cls: DexClassInfo) : DexNav
     data class MethodView(val source: DexSource, val cls: DexClassInfo, val signature: String) : DexNav
+    data class StringsView(val source: DexSource) : DexNav
+    data class CompareView(val a: DexSource, val b: DexSource) : DexNav
 }
 
 /**
@@ -99,6 +102,8 @@ fun ApkSurgeryScreen(path: String, onEvent: (UiEvent) -> Unit) {
             is DexNav.Classes -> if (isDexOnly) { close(); n } else DexNav.Files
             is DexNav.ClassView -> DexNav.Classes(n.source)
             is DexNav.MethodView -> DexNav.ClassView(n.source, n.cls)
+            is DexNav.StringsView -> DexNav.Classes(n.source)
+            is DexNav.CompareView -> DexNav.Files
         }
     }
     Scaffold(topBar = {
@@ -133,14 +138,14 @@ fun ApkSurgeryScreen(path: String, onEvent: (UiEvent) -> Unit) {
 }
 
 @Composable
-private fun Loading(text: String? = null) {
+internal fun Loading(text: String? = null) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         if (text == null) CircularProgressIndicator() else Text(text, Modifier.padding(24.dp))
     }
 }
 
 @Composable
-private fun CodeText(text: String, modifier: Modifier = Modifier) {
+internal fun CodeText(text: String, modifier: Modifier = Modifier) {
     SelectionContainer(modifier.fillMaxSize().verticalScroll(rememberScrollState()).horizontalScroll(rememberScrollState())) {
         Text(text, fontFamily = FontFamily.Monospace, fontSize = 12.sp, modifier = Modifier.padding(8.dp))
     }
@@ -166,6 +171,7 @@ private suspend fun exportAndOpen(file: File, text: String, onEvent: (UiEvent) -
 
 @Composable
 private fun DexPane(target: File, isDexOnly: Boolean, nav: DexNav, setNav: (DexNav) -> Unit, onEvent: (UiEvent) -> Unit) {
+    val app = LocalContext.current.applicationContext as ai.victorious.victorfiles.FileManagerApplication
     val scope = rememberCoroutineScope()
     var sources by remember(target) { mutableStateOf<List<DexSource>?>(null) }
     var error by remember(target) { mutableStateOf<String?>(null) }
@@ -184,6 +190,8 @@ private fun DexPane(target: File, isDexOnly: Boolean, nav: DexNav, setNav: (DexN
         is DexNav.Classes -> nav.source
         is DexNav.ClassView -> nav.source
         is DexNav.MethodView -> nav.source
+        is DexNav.StringsView -> nav.source
+        is DexNav.CompareView -> null
         DexNav.Files -> null
     }
     LaunchedEffect(source) {
@@ -209,6 +217,11 @@ private fun DexPane(target: File, isDexOnly: Boolean, nav: DexNav, setNav: (DexN
             val s = sources ?: return Loading()
             if (s.isEmpty()) return Loading("No classes*.dex found")
             LazyColumn(Modifier.fillMaxSize()) {
+                if (s.size >= 2) item("cmp") {
+                    Row2("Compare ${s[0].displayName} ↔ ${s[1].displayName}", "class lists + method signatures") {
+                        setNav(DexNav.CompareView(s[0], s[1]))
+                    }
+                }
                 items(s, key = { it.displayName }) { src ->
                     Row2(src.displayName, if (src.entryName != null) "inside ${src.container.name}" else src.container.parent) {
                         setNav(DexNav.Classes(src))
@@ -222,6 +235,30 @@ private fun DexPane(target: File, isDexOnly: Boolean, nav: DexNav, setNav: (DexN
             Column(Modifier.fillMaxSize()) {
                 OutlinedTextField(filter, { filter = it }, label = { Text("Filter ${c.size} classes in ${nav.source.displayName}") },
                     singleLine = true, modifier = Modifier.fillMaxWidth().padding(8.dp))
+                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+                    TextButton(onClick = { setNav(DexNav.StringsView(nav.source)) }) { Text("String constants") }
+                    TextButton(onClick = {
+                        val src = nav.source
+                        val list = c
+                        scope.launch {
+                            onEvent(UiEvent.ShowMessage("Exporting ${list.size} classes to Java…"))
+                            val outRoot = javaExportRoot(target)
+                            val r = withContext(Dispatchers.Default) {
+                                runCatching {
+                                    var n = 0
+                                    for (ci in list) {
+                                        val code = app.decompiler.decompile(src.container, ci.javaName).code
+                                        val f = JavaExport.fileIn(outRoot, ci.javaName)
+                                        f.parentFile?.mkdirs(); f.writeText(code); n++
+                                    }
+                                    n
+                                }
+                            }
+                            r.onSuccess { onEvent(UiEvent.ShowMessage("Exported $it .java → ${outRoot.absolutePath}")) }
+                                .onFailure { onEvent(UiEvent.ShowMessage(it.message ?: "Export failed")) }
+                        }
+                    }) { Text("Export all .java") }
+                }
                 LazyColumn(Modifier.fillMaxSize()) {
                     items(shown.take(2000), key = { it.descriptor }) { cls ->
                         Row2(cls.javaName, "${cls.methodCount} methods · ${cls.fieldCount} fields") { setNav(DexNav.ClassView(nav.source, cls)) }
@@ -250,10 +287,17 @@ private fun DexPane(target: File, isDexOnly: Boolean, nav: DexNav, setNav: (DexN
                         }) { Text("Assemble") }
                     }
                 }
+                var javaView by remember(nav.cls) { mutableStateOf(false) }
                 var showWhole by remember(nav.cls) { mutableStateOf(false) }
-                TextButton(onClick = { showWhole = !showWhole }) { Text(if (showWhole) "Show method list" else "Show whole class smali") }
-                if (showWhole) CodeText(smali)
-                else LazyColumn(Modifier.fillMaxSize()) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+                    TextButton(onClick = { javaView = !javaView }) { Text(if (javaView) "Show smali" else "Decompile to Java") }
+                    if (!javaView) TextButton(onClick = { showWhole = !showWhole }) { Text(if (showWhole) "Method list" else "Whole class smali") }
+                }
+                if (javaView) {
+                    JavaClassView(target, nav.source, nav.cls, onEvent)
+                } else if (showWhole) {
+                    CodeText(smali)
+                } else LazyColumn(Modifier.fillMaxSize()) {
                     items(blocks, key = { it.signature + it.header.hashCode() }) { b ->
                         Row2(b.signature, b.header.removePrefix(".method ").substringBeforeLast(' ').ifBlank { null }) {
                             setNav(DexNav.MethodView(nav.source, nav.cls, b.signature))
@@ -277,6 +321,8 @@ private fun DexPane(target: File, isDexOnly: Boolean, nav: DexNav, setNav: (DexN
                 CodeText(text)
             }
         }
+        is DexNav.StringsView -> DexStringsView(nav.source)
+        is DexNav.CompareView -> DexCompareView(nav.a, nav.b)
     }
 }
 

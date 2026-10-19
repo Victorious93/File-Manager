@@ -33,6 +33,8 @@ termuxTerminal = "v0.118.3"
 media3 = "1.4.1"
 glance = "1.1.1"
 documentfile = "1.0.1"
+jadx = "1.5.0"
+desugar = "2.1.2"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -93,6 +95,10 @@ androidx-test-rules = { module = "androidx.test:rules", version.ref = "androidxT
 androidx-test-espresso-core = { module = "androidx.test.espresso:espresso-core", version.ref = "espresso" }
 androidx-compose-ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4" }
 androidx-compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
+
+jadx-core = { module = "io.github.skylot:jadx-core", version.ref = "jadx" }
+jadx-dex-input = { module = "io.github.skylot:jadx-dex-input", version.ref = "jadx" }
+desugar-jdk-libs = { module = "com.android.tools:desugar_jdk_libs", version.ref = "desugar" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

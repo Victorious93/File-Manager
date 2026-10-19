@@ -22,6 +22,7 @@ import ai.victorious.victorfiles.ai.AiSettings
 import ai.victorious.victorfiles.plugins.PluginRepository
 import ai.victorious.victorfiles.secure.SecureFolderManager
 import ai.victorious.victorfiles.media.ThumbnailLoader
+import ai.victorious.victorfiles.core.javadec.DecompileService
 import android.app.Application
 import java.io.File
 import java.security.SecureRandom
@@ -67,6 +68,8 @@ class FileManagerApplication : Application() {
         private set
     lateinit var thumbnails: ThumbnailLoader
         private set
+    lateinit var decompiler: DecompileService
+        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -103,6 +106,7 @@ class FileManagerApplication : Application() {
         plugins = PluginRepository(this, privilege)
         secureFolder = SecureFolderManager(this)
         thumbnails = ThumbnailLoader(cacheDir)
+        decompiler = DecompileService(File(cacheDir, "javacache"))
         bridge = BridgeExecutor(
             nodeId = nodeId,
             policy = CallerPolicy(certPins = CallerPolicy.parsePins(BuildConfig.FLEET_CALLER_CERT_PINS)),
