@@ -1,7 +1,7 @@
 package ai.victorious.filemanager.core.share
 
 /**
- * Pure logic for "Share to File Manager": turning an incoming item's suggested display name into a
+ * Pure logic for "Share to VictorFiles": turning an incoming item's suggested display name into a
  * safe, collision-free file name inside a chosen folder. The Android content resolution and byte
  * copying live in :app; the sanitising and de-duplication are here so they can be unit-tested.
  */

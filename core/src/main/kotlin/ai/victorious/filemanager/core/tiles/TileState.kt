@@ -17,7 +17,7 @@ object Tiles {
         subtitle = if (running) (url ?: "On") else "Off",
     )
 
-    /** "Open File Manager" is a launch action, not a toggle, so it is always inactive/available. */
+    /** "Open VictorFiles" is a launch action, not a toggle, so it is always inactive/available. */
     fun openFileManager(): TilePresentation =
-        TilePresentation(label = "File Manager", status = TileStatus.INACTIVE, subtitle = null)
+        TilePresentation(label = "VictorFiles", status = TileStatus.INACTIVE, subtitle = null)
 }
