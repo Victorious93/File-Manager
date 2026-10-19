@@ -17,7 +17,7 @@ import kotlinx.coroutines.withContext
 import androidx.lifecycle.lifecycleScope
 
 /**
- * "Share to File Manager": accepts ACTION_SEND / ACTION_SEND_MULTIPLE, asks the user to pick a
+ * "Share to VictorFiles": accepts ACTION_SEND / ACTION_SEND_MULTIPLE, asks the user to pick a
  * destination folder (Storage Access Framework tree), then copies each shared item into it with a
  * sanitised, collision-free name (the naming logic is the unit-tested [ShareIntake] in :core).
  * No UI of its own beyond the system folder picker and a result toast.

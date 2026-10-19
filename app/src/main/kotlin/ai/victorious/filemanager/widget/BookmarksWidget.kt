@@ -51,7 +51,7 @@ class BookmarksWidget : GlanceAppWidget() {
                     )
                     if (bookmarks.isEmpty()) {
                         Text(
-                            "No bookmarks yet — star a folder in File Manager.",
+                            "No bookmarks yet — star a folder in VictorFiles.",
                             style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant),
                         )
                     } else {
