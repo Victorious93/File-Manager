@@ -652,10 +652,36 @@ private fun SearchPane(state: UiState, onEvent: (UiEvent) -> Unit) {
             onValueChange = { onEvent(UiEvent.Search(it)) },
             modifier = Modifier.fillMaxWidth(),
             label = { Text(if (inContents) "Search inside files" else "Search this device") },
-            supportingText = { Text("Terms are AND-ed · *.pdf filters by type · /folder matches the path") },
+            supportingText = { Text("Terms are AND-ed · *.pdf · /folder · type:image · size>10mb · newer:7d") },
             singleLine = true,
             leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
         )
+        if (!inContents) {
+            // Library-style quick filters: each chip swaps its own token into the query.
+            fun withToken(prefix: String, token: String): String {
+                val kept = state.searchQuery.split(' ').filter { it.isNotBlank() && !it.startsWith(prefix) }
+                return (kept + token).joinToString(" ")
+            }
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                ai.victorious.victorfiles.core.search.FileCategory.entries.forEach { c ->
+                    FilterChip(
+                        selected = "type:${c.token}" in state.searchQuery.split(' '),
+                        onClick = { onEvent(UiEvent.Search(withToken("type:", "type:${c.token}"))) },
+                        label = { Text(c.label) },
+                    )
+                }
+                FilterChip(
+                    selected = "newer:7d" in state.searchQuery.split(' '),
+                    onClick = { onEvent(UiEvent.Search(withToken("newer:", "newer:7d"))) },
+                    label = { Text("Recent") },
+                )
+                FilterChip(
+                    selected = "size>100mb" in state.searchQuery.split(' '),
+                    onClick = { onEvent(UiEvent.Search(withToken("size>", "size>100mb"))) },
+                    label = { Text("Large") },
+                )
+            }
+        }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Checkbox(inContents, { inContents = it }); Text("File contents")
             Spacer(Modifier.width(8.dp))
