@@ -33,6 +33,13 @@ dependencies {
     implementation(libs.smbj)
     implementation(libs.okhttp)
     api(libs.nanohttpd)
+    // jadx: dex -> readable Java decompiler (Apache-2.0). See docs/JAVA_VIEW.md.
+    implementation(libs.jadx.core)
+    implementation(libs.jadx.dex.input) {
+        exclude(group = "com.beust", module = "jcommander")
+    }
+    // RAR extraction only (UnRAR license; see docs/ARCHIVES.md). Never used to create RAR archives.
+    implementation(libs.junrar)
     testImplementation(libs.junit)
     testImplementation(libs.okhttp.mockwebserver)
 }

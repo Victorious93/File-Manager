@@ -1,0 +1,16 @@
+Phase 14 (Cloud & remote) - third-party components
+
+No new dependencies were introduced for cloud support. The following existing, already-licensed
+libraries are reused:
+
+  com.squareup.okhttp3:okhttp                       Apache-2.0  (REST calls to all providers)
+  org.jetbrains.kotlinx:kotlinx-serialization-json  Apache-2.0  (JSON parsing)
+  androidx.security:security-crypto                 Apache-2.0  (EncryptedSharedPreferences)
+
+Implemented from scratch in this project (no external code):
+  - AWS Signature Version 4 signer (SigV4.kt), verified against AWS published test vectors.
+  - OAuth 2.0 authorization-code + PKCE flow (Pkce.kt, OAuthClient.kt, CloudOAuth.kt).
+
+No AWS SDK, no AppAuth, no Google/Dropbox/Microsoft SDKs are bundled.
+No client IDs or secrets are committed; they are supplied at build time (OAuth) or entered and
+encrypted at runtime (S3).

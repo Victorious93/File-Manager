@@ -1,0 +1,18 @@
+Terminal Emulator for Android (jackpal) — Apache License 2.0
+============================================================
+
+The `terminal-emulator` and `terminal-view` libraries used by this app come from the
+Termux project (https://github.com/termux/termux-app), which redistributes the
+Android Terminal Emulator code originally by jackpal under the Apache License 2.0.
+
+The rest of the termux-app repository is GPLv3 and is NOT used by this app.
+
+Full Apache License 2.0 text: https://www.apache.org/licenses/LICENSE-2.0
+
+Copyright for the jackpal / Termux terminal libraries: see the upstream NOTICE /
+source headers in the terminal-emulator and terminal-view modules of
+https://github.com/termux/termux-app (tag v0.118.3).
+
+This app loads the native library `libtermux.so` (forkpty / PTY resize) from the
+terminal-emulator AAR. If that library fails to load, the app falls back to its
+own pipe-based shell (no PTY, limited ANSI).

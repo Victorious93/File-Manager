@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "ai.victorious.filemanager"
+    namespace = "ai.victorious.victorfiles"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "ai.victorious.filemanager"
+        applicationId = "ai.victorious.victorfiles"
         minSdk = 26
         targetSdk = 35
         versionCode = 1
@@ -19,6 +19,19 @@ android {
         // Empty (default) = package-name allowlist only. See docs/FLEET_BRIDGE.md.
         val pins = (project.findProperty("fleetCallerCertPins") as String?).orEmpty().replace("\"", "")
         buildConfigField("String", "FLEET_CALLER_CERT_PINS", "\"$pins\"")
+        // Cloud OAuth public client IDs. Supplied at build time via -P props or env; empty default.
+        // NEVER commit real IDs. See docs/CLOUD.md.
+        fun cfg(name: String, prop: String): String =
+            (System.getenv(prop) ?: (project.findProperty(prop) as String?)).orEmpty().replace("\"", "")
+        buildConfigField("String", "GDRIVE_CLIENT_ID", "\"${cfg("gdriveClientId", "gdriveClientId")}\"")
+        buildConfigField("String", "DROPBOX_APP_KEY", "\"${cfg("dropboxAppKey", "dropboxAppKey")}\"")
+        buildConfigField("String", "ONEDRIVE_CLIENT_ID", "\"${cfg("onedriveClientId", "onedriveClientId")}\"")
+        // Custom-scheme OAuth redirect. Overridable (e.g. Google needs the reversed client-ID
+        // scheme: -PoauthRedirectScheme=com.googleusercontent.apps.XXXX). See docs/CLOUD.md.
+        val oauthScheme = (project.findProperty("oauthRedirectScheme") as String?)?.trim().takeUnless { it.isNullOrEmpty() }
+            ?: "ai.victorious.victorfiles"
+        manifestPlaceholders["oauthRedirectScheme"] = oauthScheme
+        buildConfigField("String", "OAUTH_REDIRECT_SCHEME", "\"$oauthScheme\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -50,7 +63,7 @@ android {
                 storePassword = storePass
                 keyAlias = alias
                 keyPassword = keyPass
-                println("signing: using File Manager debug keystore at ${store.absolutePath}")
+                println("signing: using VictorFiles debug keystore at ${store.absolutePath}")
             } else {
                 println("signing: DEBUG_KEYSTORE_* not fully set; using Android default debug key")
             }
@@ -75,6 +88,8 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // jadx (and its guava transitive) touch newer java.* APIs; desugaring keeps minSdk 26 safe.
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
@@ -90,12 +105,14 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
             excludes += "/META-INF/{LICENSE,LICENSE.txt,NOTICE,NOTICE.txt,DEPENDENCIES}"
+            excludes += "/META-INF/{LICENSE.md,LICENSE-notice.md,NOTICE.md}"
         }
     }
 }
 
 dependencies {
     implementation(project(":core"))
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
     implementation(libs.apksig)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
@@ -116,8 +133,28 @@ dependencies {
     implementation(libs.androidx.security.crypto)
     implementation(libs.zxing.core)
     implementation(libs.androidx.biometric)
+    // Apache-2.0 PTY + VT100 view (jackpal/Termux modules). Falls back to the pipe shell if libtermux fails to load.
+    implementation(libs.termux.terminal.emulator)
+    implementation(libs.termux.terminal.view)
     implementation(libs.androidx.fragment.ktx)
     implementation(libs.okhttp)
+    // Phase 12 — media viewers + widgets (all Apache-2.0)
+    implementation(libs.media3.exoplayer)
+    implementation(libs.media3.ui)
+    implementation(libs.media3.session)
+    implementation(libs.media3.common)
+    implementation(libs.glance.appwidget)
+    implementation(libs.glance.material3)
+    implementation(libs.androidx.documentfile)
     debugImplementation(libs.androidx.compose.ui.tooling)
     testImplementation(libs.junit)
+
+    // Instrumented smoke tests (run on an emulator by the "Emulator smoke tests" CI job).
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.rules)
+    androidTestImplementation(libs.androidx.test.espresso.core)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
