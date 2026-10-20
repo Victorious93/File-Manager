@@ -93,6 +93,7 @@ sealed interface ToolRequest {
     data class ApkMod(val path: String, val dir: String) : ToolRequest
     data class MtNpTools(val path: String, val dir: String) : ToolRequest
     data class FolderSync(val dir: String) : ToolRequest
+    data class PhotoTools(val paths: List<String>, val dir: String) : ToolRequest
 }
 
 @Composable
@@ -134,6 +135,12 @@ fun ToolsPane(state: UiState, onEvent: (UiEvent) -> Unit) {
             }
         }
         item {
+        item {
+            ToolItem(Icons.Outlined.Image, "Photo tools", "EXIF view/edit/strip, batch rename, resize/convert (${files.size} selected)") {
+                if (files.isEmpty()) onEvent(UiEvent.ShowMessage("Select image files in Files first"))
+                else onEvent(UiEvent.OpenTool(ToolRequest.PhotoTools(files.map { it.absolutePath }, dir)))
+            }
+        }
             ToolItem(Icons.Outlined.Compare, "Folder sync", "One-way / two-way sync, dry-run, conflicts, schedule") {
                 onEvent(UiEvent.OpenTool(ToolRequest.FolderSync(dir)))
             }
@@ -259,6 +266,7 @@ fun ToolHost(request: ToolRequest, onClose: () -> Unit, onEvent: (UiEvent) -> Un
         is ToolRequest.ApkMod -> ApkModScreen(request.path, request.dir, onClose, onEvent)
         is ToolRequest.MtNpTools -> MtNpScreen(File(request.path), request.dir, onClose, onEvent)
         is ToolRequest.FolderSync -> FolderSyncScreen(request.dir, onClose, onEvent)
+        is ToolRequest.PhotoTools -> PhotoToolsScreen(request.paths, request.dir, onClose, onEvent)
     }
 }
 
