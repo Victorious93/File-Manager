@@ -1,3 +1,4 @@
+import ai.victorious.filemanager.notes.NotesVaultPane
 @file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 
 package ai.victorious.filemanager.ui
