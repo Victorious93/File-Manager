@@ -579,3 +579,10 @@ stream (`STREAM_MUSIC`). Optional FFmpeg audio decoding (LGPL) is documented in
 `docs/FFMPEG_MEDIA.md` — only packaged when natives were built and the Media3 decoder
 module is on the classpath.
 
+
+## Folder sync
+
+Tools → **Folder sync**: pick two folders (or a saved SMB/SFTP/WebDAV connection for side B),
+choose one-way or two-way, conflict policy, dry-run preview, then run. Local deletes go to trash.
+Optional WorkManager schedule for local↔local.
+
