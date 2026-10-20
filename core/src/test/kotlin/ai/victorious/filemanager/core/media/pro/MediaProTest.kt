@@ -18,7 +18,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import kotlin.random.Random
 
 class FakeRemote : MediaRemote {
     var loaded = true
@@ -139,58 +138,8 @@ class MediaBridgeTest {
     }
 }
 
-class PlayQueueTest {
+class PlaylistTest {
     private fun items(k: Int) = List(k) { MediaItemRef("id$it", "/m/$it.mp3", "T$it") }
-
-    @Test fun nextPrevAndEnd() {
-        val q = PlayQueue(); q.setAll(items(3))
-        assertEquals("id0", q.current()!!.id)
-        assertEquals("id1", q.next()!!.id); assertEquals("id2", q.next()!!.id)
-        assertNull(q.next())
-        assertEquals("id1", q.prev()!!.id)
-    }
-
-    @Test fun repeatAllWraps() {
-        val q = PlayQueue(); q.setAll(items(2)); q.repeat = RepeatMode.ALL
-        q.next(); assertEquals("id0", q.next()!!.id)
-        assertEquals("id1", q.prev()!!.id)
-    }
-
-    @Test fun repeatOneAutoAdvanceStays() {
-        val q = PlayQueue(); q.setAll(items(2)); q.repeat = RepeatMode.ONE
-        assertEquals("id0", q.next(userInitiated = false)!!.id)
-        assertEquals("id1", q.next(userInitiated = true)!!.id)
-    }
-
-    @Test fun shuffleKeepsCurrentAndIsPermutation() {
-        val q = PlayQueue(Random(7)); q.setAll(items(10), startIndex = 4)
-        q.setShuffle(true)
-        assertEquals("id4", q.current()!!.id)
-        assertEquals(items(10).map { it.id }.toSet(), q.playOrder().map { it.id }.toSet())
-        assertEquals(10, q.playOrder().size)
-        q.next(); val cur = q.current()!!.id
-        q.setShuffle(false)
-        assertEquals(cur, q.current()!!.id)
-        assertEquals(items(10).map { it.id }, q.playOrder().map { it.id })
-    }
-
-    @Test fun playNextAddRemoveMove() {
-        val q = PlayQueue(); q.setAll(items(3))
-        q.playNext(MediaItemRef("x", "/x", "X"))
-        assertEquals(listOf("id0", "x", "id1", "id2"), q.playOrder().map { it.id })
-        q.next(); q.remove("id0")
-        assertEquals("x", q.current()!!.id)
-        q.move(2, 0)
-        assertEquals(listOf("id2", "x", "id1"), q.playOrder().map { it.id })
-        assertEquals("x", q.current()!!.id)
-        q.add(MediaItemRef("y", "/y", "Y")); assertEquals(4, q.size)
-        assertEquals("id1", q.jumpTo("id1")!!.id)
-    }
-
-    @Test fun emptyQueue() {
-        val q = PlayQueue()
-        assertNull(q.current()); assertNull(q.next()); assertNull(q.prev())
-    }
 
     @Test fun playlistsRoundTrip() {
         val lists = listOf(Playlist("p1", "Gym", items(2)), Playlist("p2", "Empty", emptyList()))

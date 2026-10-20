@@ -139,6 +139,8 @@ class FileManagerApplication : Application() {
             // UNIFIED_BACKUP default: remote callers can never export/import settings.
             configRemoteAllowed = false,
             confirmationBroker = confirmations,
+            // Media Pro player; idle -> no_session. Keyboard debug (pinned) is scoped to media.*.
+            media = ai.victorious.filemanager.media.MediaProEngine.also { it.init(this) },
         )
     }
 
