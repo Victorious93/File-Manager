@@ -396,6 +396,30 @@ refused with `external_control_disabled`.
 
 Separately, root/Shizuku changes inside the app always require your confirmation dialog.
 
+### Fleet remote-control envelope v1 (protocol 1.1)
+
+Newer controllers use the frozen fleet envelope (full detail in `docs/FLEET_BRIDGE.md`):
+
+| Operation | What it does |
+|---|---|
+| `capabilities.get` | Lists every operation with its kind (read / action / destructive), whether it may be called remotely, and whether it needs your confirmation |
+| `node.status.get` | A small health snapshot: "alive", whether external control is on, and the Shizuku state. **It never includes file names, paths or file contents.** |
+| `remote.command`, `macro.step`, `macro.run` | Run one advertised operation, one macro step, or a short macro (with a "dry run" that only checks, never executes) |
+
+What protects you:
+
+- **Who is calling is decided by Android** (the caller's package and signing certificate), never by
+  anything written inside the message — including SMS trigger information.
+- **External control stays off until you turn it on.**
+- Every request carries a one-time code and a timestamp. Old requests (older than their time
+  limit, or more than 2 minutes off from your phone's clock) are refused, and a repeated request
+  is refused as a replay.
+- **Anything destructive always needs your confirmation on this device.** A remote request is never
+  approved automatically. Right now there is no remote destructive operation at all.
+- **Victorious Keyboard** (debug build, matching certificate only) may use media controls only.
+  Those controls are not built into File Manager yet, so they answer "capability off". The release
+  keyboard is not allowed yet.
+
 ---
 
 ## 6. Troubleshooting and FAQ
