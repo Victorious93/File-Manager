@@ -134,7 +134,7 @@ fun ToolsPane(state: UiState, onEvent: (UiEvent) -> Unit) {
             }
         }
         item {
-            ToolItem(Icons.Outlined.Sync, "Folder sync", "One-way / two-way sync, dry-run, conflicts, schedule") {
+            ToolItem(Icons.Outlined.SwapHoriz, "Folder sync", "One-way / two-way sync, dry-run, conflicts, schedule") {
                 onEvent(UiEvent.OpenTool(ToolRequest.FolderSync(dir)))
             }
         }

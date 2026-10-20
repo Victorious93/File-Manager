@@ -110,8 +110,9 @@ object FolderSync {
         return SyncPlan(actions, conflicts.distinct())
     }
 
+    /** Cheap equality hint: same size and identical mtime (callers may refine with hashes later). */
     private fun sameContentHint(a: SyncFile, b: SyncFile): Boolean =
-        a.size == b.size && kotlin.math.abs(a.modifiedEpochMs - b.modifiedEpochMs) <= 2000
+        a.size == b.size && a.modifiedEpochMs == b.modifiedEpochMs
 
     fun conflictCopyName(relative: String, sideLabel: String): String {
         val dot = relative.lastIndexOf('.')
