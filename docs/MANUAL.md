@@ -420,6 +420,13 @@ What protects you:
   Those controls are not built into File Manager yet, so they answer "capability off". The release
   keyboard is not allowed yet.
 
+**Settings backup (`config.export` / `config.import`).** File Manager can describe its settings
+(preferences and bookmarks only — never your files, passwords, tokens or cloud logins, and never
+bookmarks pointing into the secure folder) in the fleet backup format. Remote controllers **cannot**
+call these: both are local-only by default. Importing always needs your confirmation on the device,
+offers a "dry run" preview, lets you choose skip / overwrite / merge-by-id, and always turns external
+control **off** afterwards. The in-app button is not built yet.
+
 ---
 
 ## 6. Troubleshooting and FAQ

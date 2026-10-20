@@ -191,3 +191,39 @@ a forbidden term (`password`, `token`, `secret`, `apiKey`, `codeWord`, `whitelis
 
 Note: because the keyboard is scoped to `media.*`, it cannot call `capabilities.get` or
 `node.status.get` either. The keyboard pin also makes legacy `cert_pinning` report `true`.
+
+### `config.export` / `config.import` (UNIFIED_BACKUP.md, FROZEN)
+
+Standalone top-level ops (same envelope fields). Code: `core/.../fleet/ConfigBackup.kt`.
+
+| Op | kind | remoteAllowed | requiresConfirm |
+|---|---|---|---|
+| `config.export` | action | **false** | false |
+| `config.import` | action | **false** | **true** |
+
+Because `remoteAllowed` is false (spec default; only an explicit owner decision —
+`BridgeExecutor(configRemoteAllowed = true)` — may raise it), **every bridge caller gets
+`capability_off`**. Note: this PR maps `remoteAllowed:false` to `capability_off` for all ops
+(per UNIFIED_BACKUP §6), replacing the earlier `unauthorized`.
+
+- **Export** → one `UnifiedBackupEntry {packageName, schemaVersion:1, ciphertext | clearPayload}`.
+  Payload schema v1 = `{"preferences":{key:primitive}, "bookmarks":[{id,path,label,createdAtEpochMs}]}`.
+  Preferences and bookmarks only — never file contents. Dropped: the external-control switch,
+  any key/value matching the secret list (`password`, `token`, `apiKey`, `secret`, `bearer`,
+  `cookie`, `credential`, `oauth`, `twilio`, `authToken`, `numberPool`, `codeWord`, `whitelist`,
+  `privateKey`, `signingKey`, `keystore`, …), and secret-bearing bookmark paths (secure folder /
+  vault, `cloud`, `.ssh`, `Android/data`, app-private prefixes, secret-named paths). The final
+  payload is re-scanned and refused (`invalid_parameters`) if anything slipped through.
+  Ciphertext: `AES/GCM/NoPadding`, 12-byte IV, 128-bit tag, `v1.<b64url iv>.<b64url ct>`,
+  AAD `packageName|schemaVersion|sourceNodeRef`. `clearPayload:"true"` is local-dev only.
+  `packageName` arg other than this app → `not_found`.
+- **Import** args: `bundle` (JSON string), `conflictPolicy` `skip` (default) | `overwrite` |
+  `merge-by-id`, `dryRun` (`"true"`, or envelope top-level). Order: version (fail closed) →
+  duplicate package → wrapping/ciphertext-vs-clear rules → decrypt (failure = `internal`) →
+  secret scan → dry-run report (no writes, no confirmation needed) → apply → **external control
+  forced OFF**. Non-dry-run always needs on-device confirmation (`confirmation_required`;
+  default `RemoteConfirmation.NEVER`). Ids: preferences by key, bookmarks by `id`.
+
+**Not done yet:** the app does not wire a `NodeConfigStore` / Android-Keystore wrapping key
+(`configBackup = null` on device, so the ops report `capability_off` and there is no Settings
+export/import button yet). Core logic is unit-tested on the JVM only.
