@@ -4,6 +4,9 @@ import ai.victorious.filemanager.FileManagerApplication
 import ai.victorious.filemanager.appmgr.AppManagerService
 import ai.victorious.filemanager.core.appmgr.AppOpsManagerOps
 import ai.victorious.filemanager.core.appmgr.AppProfile
+import ai.victorious.filemanager.core.appmgr.ProfileSchedule
+import ai.victorious.filemanager.core.appmgr.ProfileActions
+import ai.victorious.filemanager.appmgr.ProfileScheduleWorker
 import ai.victorious.filemanager.core.appmgr.AppUsage
 import ai.victorious.filemanager.core.appmgr.BatchPlan
 import ai.victorious.filemanager.core.appmgr.ComponentType
@@ -17,6 +20,8 @@ import ai.victorious.filemanager.core.appmgr.UsageSort
 import android.content.Intent
 import android.provider.Settings
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -361,42 +366,53 @@ private fun RunningTab(service: AppManagerService, onEvent: (UiEvent) -> Unit) {
 
 @Composable
 private fun ProfilesTab(service: AppManagerService, onEvent: (UiEvent) -> Unit) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var profiles by remember { mutableStateOf(service.loadProfiles()) }
     var plan by remember { mutableStateOf<BatchPlan?>(null) }
     var name by remember { mutableStateOf("") }
-    Column {
+    var editing by remember { mutableStateOf<AppProfile?>(null) }
+    Column(Modifier.fillMaxSize()) {
         Row {
             OutlinedTextField(name, { name = it }, label = { Text("New profile name") }, modifier = Modifier.weight(1f), singleLine = true)
             TextButton(enabled = name.isNotBlank(), onClick = {
                 val p = AppProfile(UUID.randomUUID().toString(), name.trim(), actions = emptyList(), createdAtMs = System.currentTimeMillis())
-                profiles = profiles + p; service.saveProfiles(profiles); name = ""
+                profiles = profiles + p; service.saveProfiles(profiles); name = ""; editing = p
             }) { Text("Create") }
         }
-        Text("Open an app's detail and use batch actions, or edit profiles as JSON later. Apply runs every saved action after confirm.", style = MaterialTheme.typography.bodySmall)
-        LazyColumn {
-            items(profiles) { p ->
+        Text("Edit steps, reorder, and schedule. Apply still asks for confirmation. Schedules run via WorkManager (off by default).", style = MaterialTheme.typography.bodySmall)
+        LazyColumn(Modifier.weight(1f)) {
+            items(profiles, key = { it.id }) { p ->
                 Row(Modifier.fillMaxWidth().padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f).clickable {
-                        // Quick template: disable itself is empty; user adds actions via detail → future.
-                        onEvent(UiEvent.ShowMessage("${p.name}: ${p.actions.size} actions"))
-                    }) {
+                    Column(Modifier.weight(1f).clickable { editing = p }) {
                         Text(p.name, style = MaterialTheme.typography.titleSmall)
-                        Text("${p.actions.size} actions · ${p.description}", style = MaterialTheme.typography.bodySmall)
+                        Text("${p.actions.size} steps · ${ProfileScheduleWorker.describe(p.schedule)}", style = MaterialTheme.typography.bodySmall)
                     }
                     TextButton(enabled = p.actions.isNotEmpty(), onClick = {
                         runCatching { plan = service.planProfile(p) }.onFailure { onEvent(UiEvent.ShowMessage(it.message ?: "")) }
                     }) { Text("Apply") }
+                    TextButton(onClick = { editing = p }) { Text("Edit") }
                     TextButton(onClick = {
-                        // Demo action pack: force-stop nothing — allow adding a disable of a typed package.
-                        val updated = p.copy(actions = p.actions + ProfileAction.ForceStop("com.example.placeholder"))
-                        profiles = profiles.map { if (it.id == p.id) updated else it }
-                        service.saveProfiles(profiles)
-                    }) { Text("+ demo") }
-                    TextButton(onClick = { profiles = profiles.filterNot { it.id == p.id }; service.saveProfiles(profiles) }) { Text("Delete") }
+                        ProfileScheduleWorker.cancel(context, p.id)
+                        profiles = profiles.filterNot { it.id == p.id }; service.saveProfiles(profiles)
+                        if (editing?.id == p.id) editing = null
+                    }) { Text("Delete") }
                 }
             }
         }
+    }
+    editing?.let { ed ->
+        ProfileEditorDialog(
+            profile = ed,
+            onDismiss = { editing = null },
+            onSave = { updated ->
+                profiles = profiles.map { if (it.id == updated.id) updated else it }
+                service.saveProfiles(profiles)
+                ProfileScheduleWorker.apply(context, updated)
+                editing = null
+                onEvent(UiEvent.ShowMessage("Saved ${updated.name} (${ProfileScheduleWorker.describe(updated.schedule)})"))
+            },
+        )
     }
     ConfirmPlan(plan, onConfirm = {
         val p = plan!!; plan = null
@@ -405,4 +421,78 @@ private fun ProfilesTab(service: AppManagerService, onEvent: (UiEvent) -> Unit) 
             onEvent(UiEvent.ShowMessage(if (err == null) "Profile applied" else err))
         }
     }, onDismiss = { plan = null })
+}
+
+@Composable
+private fun ProfileEditorDialog(profile: AppProfile, onDismiss: () -> Unit, onSave: (AppProfile) -> Unit) {
+    var name by remember(profile.id) { mutableStateOf(profile.name) }
+    var desc by remember(profile.id) { mutableStateOf(profile.description) }
+    var actions by remember(profile.id) { mutableStateOf(profile.actions) }
+    var mode by remember(profile.id) { mutableStateOf(profile.schedule.mode) }
+    var hour by remember(profile.id) { mutableStateOf(profile.schedule.hourOfDay.toString()) }
+    var minute by remember(profile.id) { mutableStateOf(profile.schedule.minuteOfHour.toString()) }
+    var delayH by remember(profile.id) { mutableStateOf(profile.schedule.delayHours.toString()) }
+    var pkg by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit profile") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(desc, { desc = it }, label = { Text("Description") }, modifier = Modifier.fillMaxWidth())
+                Text("Steps", style = MaterialTheme.typography.labelLarge)
+                actions.forEachIndexed { i, a ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("${i + 1}. ${ProfileActions.summarize(a)}", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                        TextButton(enabled = i > 0, onClick = { actions = ProfileActions.move(actions, i, i - 1) }) { Text("↑") }
+                        TextButton(enabled = i < actions.lastIndex, onClick = { actions = ProfileActions.move(actions, i, i + 1) }) { Text("↓") }
+                        TextButton(onClick = { actions = ProfileActions.removeAt(actions, i) }) { Text("✕") }
+                    }
+                }
+                OutlinedTextField(pkg, { pkg = it }, label = { Text("Package for new step") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Row {
+                    TextButton(enabled = pkg.isNotBlank(), onClick = {
+                        actions = actions + ProfileAction.ForceStop(pkg.trim()); pkg = ""
+                    }) { Text("+ Force-stop") }
+                    TextButton(enabled = pkg.isNotBlank(), onClick = {
+                        actions = actions + ProfileAction.DisablePackage(pkg.trim()); pkg = ""
+                    }) { Text("+ Disable") }
+                    TextButton(enabled = pkg.isNotBlank(), onClick = {
+                        actions = actions + ProfileAction.EnablePackage(pkg.trim()); pkg = ""
+                    }) { Text("+ Enable") }
+                }
+                Text("Schedule", style = MaterialTheme.typography.labelLarge)
+                Row {
+                    listOf("off", "once", "daily", "weekly").forEach { m ->
+                        FilterChip(selected = mode == m, onClick = { mode = m }, label = { Text(m) })
+                    }
+                }
+                if (mode == "once") OutlinedTextField(delayH, { delayH = it }, label = { Text("Delay hours") }, singleLine = true)
+                if (mode == "daily" || mode == "weekly") {
+                    Row {
+                        OutlinedTextField(hour, { hour = it }, label = { Text("Hour") }, modifier = Modifier.weight(1f), singleLine = true)
+                        OutlinedTextField(minute, { minute = it }, label = { Text("Minute") }, modifier = Modifier.weight(1f), singleLine = true)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                onSave(
+                    profile.copy(
+                        name = name.trim().ifBlank { profile.name },
+                        description = desc,
+                        actions = actions,
+                        schedule = ProfileSchedule(
+                            mode = mode,
+                            hourOfDay = hour.toIntOrNull() ?: 9,
+                            minuteOfHour = minute.toIntOrNull() ?: 0,
+                            delayHours = delayH.toIntOrNull() ?: 1,
+                        ),
+                    ),
+                )
+            }) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }

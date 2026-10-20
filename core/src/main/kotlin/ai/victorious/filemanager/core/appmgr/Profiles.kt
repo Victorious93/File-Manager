@@ -19,6 +19,17 @@ sealed class ProfileAction {
     @Serializable data class SetAppOp(val packageName: String, val op: String, val mode: String) : ProfileAction()
 }
 
+/** Optional schedule for a profile (WorkManager maps this in the app layer). */
+@Serializable
+data class ProfileSchedule(
+    /** Off | once delay hours | daily at hour | weekly. */
+    val mode: String = "off", // off, once, daily, weekly
+    val hourOfDay: Int = 9,
+    val minuteOfHour: Int = 0,
+    val dayOfWeek: Int = 1, // 1=Monday … 7=Sunday (ISO)
+    val delayHours: Int = 1,
+)
+
 @Serializable
 data class AppProfile(
     val id: String,
@@ -26,7 +37,34 @@ data class AppProfile(
     val description: String = "",
     val actions: List<ProfileAction> = emptyList(),
     val createdAtMs: Long = 0,
+    val schedule: ProfileSchedule = ProfileSchedule(),
 )
+
+object ProfileActions {
+    fun move(actions: List<ProfileAction>, from: Int, to: Int): List<ProfileAction> {
+        if (from !in actions.indices || to !in actions.indices || from == to) return actions
+        val m = actions.toMutableList()
+        val item = m.removeAt(from)
+        m.add(to, item)
+        return m
+    }
+
+    fun removeAt(actions: List<ProfileAction>, index: Int): List<ProfileAction> =
+        if (index in actions.indices) actions.toMutableList().also { it.removeAt(index) } else actions
+
+    fun summarize(a: ProfileAction): String = when (a) {
+        is ProfileAction.DisablePackage -> "Disable ${a.packageName}"
+        is ProfileAction.EnablePackage -> "Enable ${a.packageName}"
+        is ProfileAction.SuspendPackage -> "Suspend ${a.packageName}"
+        is ProfileAction.UnsuspendPackage -> "Unsuspend ${a.packageName}"
+        is ProfileAction.ForceStop -> "Force-stop ${a.packageName}"
+        is ProfileAction.BlockComponent -> "Block ${a.packageName}/${a.className}"
+        is ProfileAction.UnblockComponent -> "Unblock ${a.packageName}/${a.className}"
+        is ProfileAction.GrantPermission -> "Grant ${a.permission} → ${a.packageName}"
+        is ProfileAction.RevokePermission -> "Revoke ${a.permission} ← ${a.packageName}"
+        is ProfileAction.SetAppOp -> "AppOp ${a.op}=${a.mode} on ${a.packageName}"
+    }
+}
 
 object ProfileCodec {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true; classDiscriminator = "kind" }
