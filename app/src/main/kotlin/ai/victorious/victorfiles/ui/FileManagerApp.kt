@@ -98,6 +98,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import java.text.DateFormat
@@ -817,7 +818,7 @@ private fun ListingBar(
             { onEvent(UiEvent.SetListing(options.copy(filter = it))) },
             placeholder = { Text("Filter") },
             singleLine = true,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).testTag("listing-filter"),
         )
         TextButton(onClick = { onEvent(UiEvent.SelectAll(pane)) }) { Text("All") }
         Box {
