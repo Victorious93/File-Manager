@@ -130,7 +130,7 @@ outer `request_id` (not repeated):
 | `macro.step` | action | true | false | One step; echoes `macroId`/`stepIndex`/`onError` + `result` |
 | `macro.run` | action | true | false | Sequential, per-step `{index, op, onError, status: ok\|error\|skipped\|validated, result?, error?}`; `status: completed\|completed_with_errors\|aborted`; `rollback:false` (never promised) |
 | `filemanager.status` | read | true | false | Legacy status object, reachable via `remote.command` |
-| `media.playPause`, `media.next`, `media.previous`, `media.status.get` | action/read | true | false | **Placeholders → `capability_off`.** VictorFiles has no remote media surface yet. |
+| `media.play`, `media.pause`, `media.toggle`, `media.next`, `media.prev`, `media.seek{positionMs}`, `media.seekBy{deltaMs}`, `media.volume{level}`, `media.state` | action (state: read) | true | false | Media Pro (`docs/MEDIA_PRO.md`). Idle → `no_session`. `capability_off` only when no player is wired. |
 
 `dryRun:true` runs every gate for every step (exists, remoteAllowed, capability on,
 confirmation) **without executing** anything; runnable steps report `validated`.

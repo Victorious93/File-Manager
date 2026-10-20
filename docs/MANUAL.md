@@ -364,6 +364,27 @@ components and are not fleet permissions.
 
 ---
 
+## Media Pro (video & music player)
+
+Opening a video or song plays it in **Media Pro** (see `docs/MEDIA_PRO.md` for details).
+
+- **Controls:** tap the screen to show/hide them. Double-tap the left or right side to jump 10 seconds.
+  Swipe sideways to seek. Swipe up/down on the left side for brightness, on the right for volume.
+- **Subtitles:** subtitle files with the same name as the video (`movie.srt`, `movie.en.ass`) load
+  automatically. Tap **Subs** to pick any other subtitle file.
+- **PiP:** tap **PiP**, or press Home while a video plays, to keep it in a small floating window.
+- **⋮ menu:** playback speed, sleep timer, equalizer, queue (shuffle / repeat), playlists, open a
+  network stream (web link, `rtsp://` camera, or `smb://` network share), and **Background play**
+  (keep listening after you leave the player; on by default).
+- **Music:** opening a song queues every song in that folder. Save the queue as a playlist from ⋮ → Playlists.
+- **Resume:** videos and songs continue where you stopped.
+- **Lock screen / notification:** play, pause and skip from the notification or lock screen.
+- **Victorious Keyboard:** with **Allow external control** turned on, the Victorious Keyboard (debug
+  build) can play, pause, skip, seek, change the volume and read what's playing. It cannot do
+  anything else in File Manager.
+
+---
+
 ## 5. Fleet integration
 
 ### How the controller connects

@@ -292,7 +292,7 @@ private fun MediaProScreen(player: ExoPlayer, pip: Boolean, onClose: () -> Unit,
         Sheet.MORE -> PickDialog("Options", { sheet = Sheet.NONE }) {
             var bg by remember { mutableStateOf(MediaProEngine.backgroundPlay) }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Background play", Modifier.weight(1f)); Switch(bg, { bg = it; MediaProEngine.setBackgroundPlay(it) })
+                Text("Background play", Modifier.weight(1f)); Switch(bg, { bg = it; MediaProEngine.updateBackgroundPlay(it) })
             }
             listOf("Speed" to Sheet.SPEED, "Sleep timer" to Sheet.SLEEP, "Equalizer" to Sheet.EQ, "Queue / shuffle" to Sheet.QUEUE,
                 "Playlists" to Sheet.PLAYLISTS, "Open network stream" to Sheet.STREAM).forEach { (l, s) ->

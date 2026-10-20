@@ -47,6 +47,7 @@ object MediaProEngine : MediaRemote {
     /** Bumps every second while a player exists (UI refresh, sleep timer state). */
     val tick: StateFlow<Long> = _tick
     var backgroundPlay = true
+        private set
 
     fun init(context: Context) {
         if (::app.isInitialized) return
@@ -59,7 +60,7 @@ object MediaProEngine : MediaRemote {
         }
     }
 
-    fun setBackgroundPlay(on: Boolean) {
+    fun updateBackgroundPlay(on: Boolean) {
         backgroundPlay = on
         app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean("background_play", on).apply()
     }
