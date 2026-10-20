@@ -365,6 +365,19 @@ components and are not fleet permissions.
 ---
 
 
+
+## Notes vault
+
+The **Notes** tab is an Obsidian-style markdown vault (details in `docs/NOTES.md`).
+
+1. Pick any folder (or accept the suggested app `Notes/` folder).
+2. Create notes, use `[[Other note]]` links and `#tags`.
+3. Split view shows a live preview. Backlinks and outgoing links appear under the editor.
+4. **Quick switch** jumps to a note by title; **Daily** opens today’s note; **Graph** shows how notes link.
+5. Search looks through note text (and the file index when available).
+
+Everything stays on your device as normal `.md` files.
+
 ## App Manager Pro
 
 The **Apps** tab is App Manager Pro (details in `docs/APP_MANAGER.md`).
