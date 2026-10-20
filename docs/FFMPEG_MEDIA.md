@@ -29,3 +29,6 @@ Media3 Apache-2.0 Java/JNI wrapper. App depends on `:ffmpeg-decoder`; `FfmpegRen
 `EXTENSION_RENDERER_MODE_ON` when the class loads.
 
 Also shipped: volume mapping + UI toggle + unit tests + LGPL notice asset.
+
+
+Verified on this branch: `:ffmpeg-decoder:assembleDebug` produces `libffmpegJNI.so` for armeabi-v7a, arm64-v8a, x86, x86_64.
