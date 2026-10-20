@@ -32,6 +32,9 @@ class EnvelopeExecutor(
     private val replay: ReplayGuard = ReplayGuard(),
     private val confirmation: RemoteConfirmation = RemoteConfirmation.NEVER,
     extraOps: List<NodeOp> = emptyList(),
+    private val configBackup: NodeConfigBackup? = null,
+    /** UNIFIED_BACKUP default is false; only an explicit owner decision may raise it. */
+    configRemoteAllowed: Boolean = false,
     legacyStatus: (() -> JsonObject)? = null,
 ) {
     private val ops: Map<String, NodeOp> = buildList {
@@ -43,6 +46,8 @@ class EnvelopeExecutor(
         if (legacyStatus != null) {
             add(NodeOp(BridgeOp.STATUS, OpKind.READ, remoteAllowed = true, requiresConfirm = false) { legacyStatus() })
         }
+        add(NodeOp(ConfigOps.EXPORT, OpKind.ACTION, remoteAllowed = configRemoteAllowed, requiresConfirm = false, enabled = configBackup != null) { a -> configExport(a) })
+        add(NodeOp(ConfigOps.IMPORT, OpKind.ACTION, remoteAllowed = configRemoteAllowed, requiresConfirm = true, enabled = configBackup != null) { a -> configImport(a) })
         addAll(MediaOps.placeholders)
         addAll(extraOps)
     }.associateBy { it.name }
@@ -65,7 +70,7 @@ class EnvelopeExecutor(
 
     private fun run(request: BridgeRequest, caller: CallerIdentity?): JsonObject {
         val op = request.operation
-        if (op !in EnvelopeOp.ALL) throw Fail(RemoteError.UNSUPPORTED_OP, "unsupported op '$op'")
+        if (op !in EnvelopeOp.ROUTED) throw Fail(RemoteError.UNSUPPORTED_OP, "unsupported op '$op'")
 
         // 1. Identity: package + cert only.
         val decision = policy.evaluate(caller)
@@ -118,6 +123,11 @@ class EnvelopeExecutor(
                 put("result", invoke(env.actionRef, env.params, env))
             }
             EnvelopeOp.MACRO_RUN -> macroRun(env)
+            ConfigOps.EXPORT, ConfigOps.IMPORT -> {
+                // Top-level envelope dryRun is equivalent to args.dryRun (UNIFIED_BACKUP §1).
+                val params = if (env.dryRun) JsonObject(env.params + ("dryRun" to JsonPrimitive(true))) else env.params
+                invoke(op, params, env.copy(params = params))
+            }
             else -> throw Fail(RemoteError.UNSUPPORTED_OP, "unsupported op '$op'")
         }
     }
@@ -126,10 +136,12 @@ class EnvelopeExecutor(
     private fun gate(name: String, env: EnvelopeV1): NodeOp {
         if (name in EnvelopeOp.META) throw Fail(RemoteError.INVALID_PARAMETERS, "'$name' cannot be nested")
         val op = ops[name] ?: throw Fail(RemoteError.NOT_FOUND, "op '$name' is not advertised by this node")
-        if (!op.remoteAllowed) throw Fail(RemoteError.UNAUTHORIZED, "op '$name' is not remote-allowed")
+        // UNIFIED_BACKUP §6 / STATUS_TRAY: remoteAllowed=false for a remote caller -> capability_off.
+        if (!op.remoteAllowed) throw Fail(RemoteError.CAPABILITY_OFF, "op '$name' is not remote-allowed on this node")
         if (!op.enabled) throw Fail(RemoteError.CAPABILITY_OFF, "op '$name' is turned off on this node")
         // Classified by the node itself; envelope `destructive` is ignored.
-        if ((op.kind == OpKind.DESTRUCTIVE || op.requiresConfirm) && !confirmation.confirmedOnDevice(op, env)) {
+        val dryImport = name == ConfigOps.IMPORT && (env.dryRun || isTrue(env.params["dryRun"]))
+        if ((op.kind == OpKind.DESTRUCTIVE || op.requiresConfirm) && !dryImport && !confirmation.confirmedOnDevice(op, env)) {
             throw Fail(RemoteError.CONFIRMATION_REQUIRED, "op '$name' needs on-device confirmation")
         }
         return op
@@ -198,6 +210,25 @@ class EnvelopeExecutor(
             result?.let { put("result", it) }
             if (cat != null) put("error", buildJsonObject { put("category", JsonPrimitive(cat)); put("message", JsonPrimitive(msg)) })
         }
+
+    private fun isTrue(e: kotlinx.serialization.json.JsonElement?): Boolean =
+        (e as? JsonPrimitive)?.content?.equals("true", ignoreCase = true) == true
+
+    private fun configExport(args: JsonObject): JsonObject {
+        val cb = configBackup ?: throw Fail(RemoteError.UNSUPPORTED_OP, "no config surface")
+        val pkg = (args["packageName"] as? JsonPrimitive)?.content.orEmpty()
+        if (pkg.isNotEmpty() && pkg != packageName) throw Fail(RemoteError.NOT_FOUND, "no entry for $pkg")
+        return UnifiedFleetBackupCodec.encodeEntry(cb.export(clearPayload = isTrue(args["clearPayload"])))
+    }
+
+    private fun configImport(args: JsonObject): JsonObject {
+        val cb = configBackup ?: throw Fail(RemoteError.UNSUPPORTED_OP, "no config surface")
+        val bundle = (args["bundle"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+            ?: throw Fail(RemoteError.INVALID_PARAMETERS, "bundle (JSON string) is required")
+        val policy = BackupConflictPolicy.parse((args["conflictPolicy"] as? JsonPrimitive)?.content)
+            ?: throw Fail(RemoteError.INVALID_PARAMETERS, "conflictPolicy must be skip|overwrite|merge-by-id")
+        return cb.import(bundle, policy, dryRun = isTrue(args["dryRun"])).toJson()
+    }
 
     private fun statusResult(args: JsonObject): JsonObject {
         val asked = (args["nodeId"] as? JsonPrimitive)?.takeIf { it.isString }?.content

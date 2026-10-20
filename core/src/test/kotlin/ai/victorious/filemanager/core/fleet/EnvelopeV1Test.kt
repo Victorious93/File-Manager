@@ -127,7 +127,6 @@ class EnvelopeV1Test {
     }
 
     @Test fun destructiveCannotBeAssertedIntoNonDestructiveOp() {
-        @Suppress("UNUSED_VARIABLE") val unused = 0
         // Advisory flag true does not block a read, and false does not unlock a destructive op.
         assertTrue(call(cmd("test.read", mapOf("destructive" to JsonPrimitive(true)))).ok)
         assertErr(RemoteError.CONFIRMATION_REQUIRED, call(cmd("test.wipe")))
@@ -346,8 +345,8 @@ class EnvelopeV1Test {
         assertErr(RemoteError.INVALID_PARAMETERS, call(cmd(EnvelopeOp.MACRO_RUN)))
     }
 
-    @Test fun localOnlyOpUnauthorizedRemotely() {
-        assertErr(RemoteError.UNAUTHORIZED, call(cmd("test.local")))
+    @Test fun localOnlyOpCapabilityOffRemotely() {
+        assertErr(RemoteError.CAPABILITY_OFF, call(cmd("test.local")))
         assertTrue(ran.isEmpty())
     }
 

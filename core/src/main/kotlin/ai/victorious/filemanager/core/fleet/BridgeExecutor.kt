@@ -29,6 +29,8 @@ class BridgeExecutor(
     replayGuard: ReplayGuard = ReplayGuard(),
     confirmation: RemoteConfirmation = RemoteConfirmation.NEVER,
     extraOps: List<NodeOp> = emptyList(),
+    configBackup: NodeConfigBackup? = null,
+    configRemoteAllowed: Boolean = false,
 ) {
     /** Frozen fleet envelope v1 (capabilities.get, remote.command, macro.*, node.status.get). */
     val envelope = EnvelopeExecutor(
@@ -41,6 +43,8 @@ class BridgeExecutor(
         replay = replayGuard,
         confirmation = confirmation,
         extraOps = extraOps,
+        configBackup = configBackup,
+        configRemoteAllowed = configRemoteAllowed,
         legacyStatus = { status(externalControlEnabled()) },
     )
 
@@ -60,7 +64,7 @@ class BridgeExecutor(
                 "unsupported protocol_major ${request.protocolMajor}; this stub speaks $BRIDGE_PROTOCOL_MAJOR",
             )
         }
-        if (request.operation in EnvelopeOp.ALL) {
+        if (request.operation in EnvelopeOp.ROUTED) {
             val out = envelope.handle(request, caller)
             return if (out.ok) ok(request.requestId, out.result!!) else fail(request.requestId, out.category!!, out.message.orEmpty())
         }

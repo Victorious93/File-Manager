@@ -27,6 +27,9 @@ object EnvelopeOp {
 
     val ALL: Set<String> = setOf(CAPABILITIES_GET, REMOTE_COMMAND, MACRO_STEP, MACRO_RUN, NODE_STATUS_GET)
 
+    /** Standalone top-level ops routed to the v1 executor (envelope ops + UNIFIED_BACKUP config ops). */
+    val ROUTED: Set<String> = ALL + setOf("config.export", "config.import")
+
     /** Ops that wrap other ops; they may not be nested inside remote.command / macros. */
     val META: Set<String> = setOf(REMOTE_COMMAND, MACRO_STEP, MACRO_RUN)
 }
@@ -137,6 +140,7 @@ object EnvelopeCodec {
             ttlMs = ttl,
             destructive = destructive,
             trigger = trigger,
+            dryRun = p.bool("dryRun") ?: (p["dryRun"] as? JsonPrimitive)?.content.equals("true", ignoreCase = true),
         )
         return when (op) {
             EnvelopeOp.REMOTE_COMMAND -> {
@@ -160,7 +164,7 @@ object EnvelopeCodec {
                     val onErr = OnError.parse(o.string("onError")) ?: bad("steps[$i].onError must be abort|continue")
                     MacroStepSpec(sop, o.obj("params") ?: o.obj("args") ?: JsonObject(emptyMap()), onErr, o.long("timeoutMs"))
                 }
-                base.copy(macroId = p.string("macroId"), steps = steps, dryRun = p.bool("dryRun") ?: false)
+                base.copy(macroId = p.string("macroId"), steps = steps, dryRun = base.dryRun)
             }
             else -> base
         }
