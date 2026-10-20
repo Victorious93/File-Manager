@@ -294,6 +294,11 @@ private fun MediaProScreen(player: ExoPlayer, pip: Boolean, onClose: () -> Unit,
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Background play", Modifier.weight(1f)); Switch(bg, { bg = it; MediaProEngine.updateBackgroundPlay(it) })
             }
+            var sysVol by remember { mutableStateOf(MediaProEngine.controlSystemVolume) }
+            Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("media.volume → system STREAM_MUSIC", Modifier.weight(1f)); Switch(sysVol, { sysVol = it; MediaProEngine.updateControlSystemVolume(it) })
+
+            }
             listOf("Speed" to Sheet.SPEED, "Sleep timer" to Sheet.SLEEP, "Equalizer" to Sheet.EQ, "Queue / shuffle" to Sheet.QUEUE,
                 "Playlists" to Sheet.PLAYLISTS, "Open network stream" to Sheet.STREAM).forEach { (l, s) ->
                 Row(Modifier.fillMaxWidth().clickable { sheet = s }.padding(10.dp)) { Text(l) }

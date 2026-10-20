@@ -10,7 +10,9 @@ import ai.victorious.filemanager.core.media.pro.ResumeStore
 import ai.victorious.filemanager.core.media.pro.SleepTimer
 import ai.victorious.filemanager.core.media.pro.StreamSupport
 import ai.victorious.filemanager.core.media.pro.SubtitleSupport
+import ai.victorious.filemanager.core.media.pro.VolumeMapping
 import android.content.Context
+import android.media.AudioManager
 import android.media.audiofx.Equalizer
 import android.net.Uri
 import android.os.Handler
@@ -48,12 +50,16 @@ object MediaProEngine : MediaRemote {
     val tick: StateFlow<Long> = _tick
     var backgroundPlay = true
         private set
+    /** When true, media.volume also sets STREAM_MUSIC (system media volume). */
+    var controlSystemVolume = false
+        private set
 
     fun init(context: Context) {
         if (::app.isInitialized) return
         app = context.applicationContext
         val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         backgroundPlay = prefs.getBoolean("background_play", true)
+        controlSystemVolume = prefs.getBoolean("control_system_volume", false)
         runCatching {
             val o = JSONObject(prefs.getString("resume", "{}")!!)
             resume.load(o.keys().asSequence().associateWith { o.getLong(it) })
@@ -65,11 +71,17 @@ object MediaProEngine : MediaRemote {
         app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean("background_play", on).apply()
     }
 
+    fun updateControlSystemVolume(on: Boolean) {
+        controlSystemVolume = on
+        app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean("control_system_volume", on).apply()
+    }
+
     /** Builds the player (called by the MediaSession service). */
     fun createPlayer(context: Context): ExoPlayer {
         init(context)
         player?.let { return it }
         val p = ExoPlayer.Builder(context)
+            .setRenderersFactory(FfmpegRenderers.factory(context))
             .setMediaSourceFactory(DefaultMediaSourceFactory(RoutingDataSourceFactory(context)))
             .setHandleAudioBecomingNoisy(true)
             .setAudioAttributes(
@@ -227,7 +239,15 @@ object MediaProEngine : MediaRemote {
         p.seekTo(if (d != null) positionMs.coerceAtMost(d) else positionMs)
     }
     override fun seekBy(deltaMs: Long) = on { p -> seekTo((p.currentPosition + deltaMs).coerceAtLeast(0)) }
-    override fun setVolume(level: Int) = on { it.volume = level.coerceIn(0, 100) / 100f }
+    override fun setVolume(level: Int) = on { p ->
+        val v = level.coerceIn(0, 100)
+        p.volume = v / 100f
+        if (controlSystemVolume) {
+            val am = app.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+            am.setStreamVolume(AudioManager.STREAM_MUSIC, VolumeMapping.streamIndex(v, max), 0)
+        }
+    }
 
     private const val PREFS = "media_pro"
 }
