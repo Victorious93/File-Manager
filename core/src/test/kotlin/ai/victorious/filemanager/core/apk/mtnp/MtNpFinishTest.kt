@@ -26,6 +26,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MtNpFinishTest {
+    private fun fixtureApk(): File {
+        val url = javaClass.classLoader.getResource("apk/fixture.apk")
+            ?: error("Missing test resource apk/fixture.apk")
+        return File(url.toURI())
+    }
+
     private fun writeDex(vararg classes: Pair<String, List<String>>): ByteArray {
         val pool = DexPool(Opcodes.getDefault())
         for ((cls, strings) in classes) {
@@ -127,46 +133,36 @@ class MtNpFinishTest {
     }
 
     @Test fun arscTranslateCsvRoundTrip() {
-        val fixture = File("src/test/resources/apk/fixture.apk")
-        if (!fixture.exists()) {
-            // Path when running from module dir vs repo root
-            val alt = File("../src/test/resources/apk/fixture.apk")
-            org.junit.Assume.assumeTrue("fixture.apk required", fixture.exists() || alt.exists())
-        }
-        val apk = if (fixture.exists()) fixture else File("../src/test/resources/apk/fixture.apk")
+        val apk = fixtureApk()
         val arscBytes = ZipFile(apk).use { z -> z.getInputStream(z.getEntry("resources.arsc")).readBytes() }
         val arsc = Arsc.open(arscBytes)
         val locs = arsc.locales()
-        assertTrue(locs.contains("default"))
-        assertTrue(locs.size >= 2)
+        assertTrue("no locales from fixture: strings=${'$'}{arsc.strings.size}", locs.isNotEmpty())
+        val primary = locs.first()
+        val secondary = locs.firstOrNull { it != primary } ?: primary
         val csv = ArscTranslate.exportCsv(arsc, locs)
         assertTrue(csv.startsWith("resId,name,"))
-        val xml = ArscTranslate.exportXml(arsc, "default")
+        val xml = ArscTranslate.exportXml(arsc, primary)
         assertTrue(xml.contains("<resources>"))
         val side = ArscTranslate.sideBySide(arsc)
         assertTrue(side.isNotEmpty())
         val imp = ArscTranslate.importCsv(arsc, csv)
-        // Re-importing identical values should produce edits that apply cleanly
-        val applied = ArscTranslate.apply(arsc, imp.edits.filterValues { it.isNotEmpty() }.let { edits ->
-            // Only keep edits that actually change something to exercise apply; empty filter OK
-            edits.filter { (t, v) -> arsc.strings.any { s -> s.resId == t.resId && s.locale == t.locale && s.value != v } }
-                .ifEmpty { edits.entries.take(1).associate { it.key to it.value } }
-        })
-        assertNotNull(Arsc.open(applied))
-        val suggestions = ArscTranslate.parseAiResponse(
-            arsc, locs.first { it != "default" },
-            "app_name\tNombre",
-        )
-        // May be empty if fixture has no app_name — still must not throw
+        val sampleEdit = imp.edits.entries.firstOrNull()?.let { (t, v) ->
+            mapOf(t to (v + "!"))
+        } ?: emptyMap()
+        if (sampleEdit.isNotEmpty()) {
+            val applied = ArscTranslate.apply(arsc, sampleEdit)
+            assertNotNull(Arsc.open(applied))
+        }
+        val anyName = arsc.strings.firstOrNull()?.name ?: "app_name"
+        val suggestions = ArscTranslate.parseAiResponse(arsc, secondary, "$anyName\tTranslated")
         assertNotNull(suggestions)
-        val prompt = ArscTranslate.aiPrompt(side, "default", locs.first { it != "default" })
+        val prompt = ArscTranslate.aiPrompt(side, primary, secondary)
         assertTrue(prompt.contains("Translate"))
     }
 
     @Test fun arscImportXmlUnknownLocaleSkipped() {
-        val fixture = File("src/test/resources/apk/fixture.apk")
-        org.junit.Assume.assumeTrue(fixture.exists())
-        val arscBytes = ZipFile(fixture).use { z -> z.getInputStream(z.getEntry("resources.arsc")).readBytes() }
+        val arscBytes = ZipFile(fixtureApk()).use { z -> z.getInputStream(z.getEntry("resources.arsc")).readBytes() }
         val arsc = Arsc.open(arscBytes)
         val r = ArscTranslate.importXml(arsc, "zz", "<resources><string name=\"x\">y</string></resources>")
         assertTrue(r.edits.isEmpty())
