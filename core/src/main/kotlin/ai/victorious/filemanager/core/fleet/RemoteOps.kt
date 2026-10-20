@@ -32,19 +32,15 @@ data class NodeOp(
     }
 }
 
-/** Victorious Keyboard media.* surface. Not implemented in VictorFiles yet → capability_off placeholders. */
+/** Victorious Keyboard media.* surface (see core/media/pro/MediaRemote.kt). Aliases kept for older call sites. */
 object MediaOps {
-    const val PLAY_PAUSE = "media.playPause"
-    const val NEXT = "media.next"
-    const val PREVIOUS = "media.previous"
-    const val STATUS_GET = "media.status.get"
+    const val PLAY_PAUSE = ai.victorious.filemanager.core.media.pro.MediaBridgeOps.TOGGLE
+    const val NEXT = ai.victorious.filemanager.core.media.pro.MediaBridgeOps.NEXT
+    const val PREVIOUS = ai.victorious.filemanager.core.media.pro.MediaBridgeOps.PREV
+    const val STATUS_GET = ai.victorious.filemanager.core.media.pro.MediaBridgeOps.STATE
 
-    val placeholders: List<NodeOp> = listOf(
-        NodeOp(PLAY_PAUSE, OpKind.ACTION, remoteAllowed = true, requiresConfirm = false, enabled = false),
-        NodeOp(NEXT, OpKind.ACTION, remoteAllowed = true, requiresConfirm = false, enabled = false),
-        NodeOp(PREVIOUS, OpKind.ACTION, remoteAllowed = true, requiresConfirm = false, enabled = false),
-        NodeOp(STATUS_GET, OpKind.READ, remoteAllowed = true, requiresConfirm = false, enabled = false),
-    )
+    /** Used when no Media Pro player is available -> capability_off. */
+    val placeholders: List<NodeOp> get() = ai.victorious.filemanager.core.media.pro.MediaBridgeOps.placeholders()
 }
 
 /**
