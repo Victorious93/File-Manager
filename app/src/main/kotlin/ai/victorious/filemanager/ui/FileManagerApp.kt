@@ -2,6 +2,8 @@
 
 package ai.victorious.filemanager.ui
 
+import ai.victorious.filemanager.notes.NotesVaultPane
+
 import ai.victorious.filemanager.core.fs.FileEntry
 import android.content.Intent
 import android.net.Uri
@@ -210,6 +212,7 @@ fun FileManagerApp(
                                 Dest.SEARCH -> "Search"
                                 Dest.BOOKMARKS -> "Bookmarks"
                                 Dest.APPS -> "Apps"
+                                Dest.NOTES -> "Notes"
                                 Dest.TOOLS -> "Tools"
                                 Dest.TRASH -> "Trash"
                                 Dest.SETTINGS -> "Settings"
@@ -340,6 +343,7 @@ fun FileManagerApp(
                 Dest.SEARCH -> SearchPane(state, onEvent)
                 Dest.BOOKMARKS -> BookmarksPane(state, onEvent)
                 Dest.APPS -> AppManagerProPane(onEvent = onEvent)
+                Dest.NOTES -> NotesVaultPane(onEvent = onEvent)
                 Dest.TOOLS -> ToolsPane(state, onEvent)
                 Dest.TRASH -> TrashPane(state, onEvent)
                 Dest.SETTINGS -> SettingsPane(onEvent)
@@ -879,6 +883,7 @@ private val NavItems = listOf(
     NavItem(Dest.SEARCH, Icons.Outlined.Search, "Search"),
     NavItem(Dest.BOOKMARKS, Icons.Outlined.BookmarkBorder, "Bookmarks"),
     NavItem(Dest.APPS, Icons.Outlined.Apps, "Apps"),
+    NavItem(Dest.NOTES, Icons.Outlined.Description, "Notes"),
     NavItem(Dest.TOOLS, Icons.Outlined.Build, "Tools"),
     NavItem(Dest.TRASH, Icons.Outlined.RestoreFromTrash, "Trash"),
     NavItem(Dest.SETTINGS, Icons.Outlined.SettingsIcon, "Settings"),
