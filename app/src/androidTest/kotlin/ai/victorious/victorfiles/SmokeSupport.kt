@@ -10,6 +10,8 @@ import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -135,6 +137,12 @@ object Smoke {
             return code to raw.substringAfter("\r\n\r\n", "")
         }
     }
+
+    /**
+     * The text field a test means to type into. Each file pane also carries a Filter box
+     * (tag `listing-filter`), so an unscoped hasSetTextAction() is ambiguous on the Files screen.
+     */
+    fun input(): SemanticsMatcher = hasSetTextAction() and !hasTestTag("listing-filter")
 
     fun clickable(text: String): SemanticsMatcher = hasText(text) and hasClickAction()
 }

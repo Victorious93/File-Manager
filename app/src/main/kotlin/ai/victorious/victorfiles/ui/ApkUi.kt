@@ -105,6 +105,7 @@ fun FolderMenuItems(path: String, onEvent: (UiEvent) -> Unit, dismiss: () -> Uni
     DropdownMenuItem(text = { Text("View as gallery") }, onClick = { dismiss(); onEvent(UiEvent.OpenFile(path, ViewerMode.GALLERY)) })
     val hasManifest = remember(path) { File(path, "AndroidManifest.xml").isFile }
     val surgery = remember(path) { runCatching { isSurgeryTarget(path) }.getOrDefault(false) }
+    DropdownMenuItem(text = { Text("Properties / folder size") }, onClick = { dismiss(); onEvent(UiEvent.ShowProperties(path)) })
     if (surgery) {
         DropdownMenuItem(text = { Text("APK surgery (DEX / res / manifest)") }, onClick = { dismiss(); onEvent(UiEvent.OpenSurgery(path)) })
     }

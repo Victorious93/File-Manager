@@ -4,7 +4,6 @@ import ai.victorious.victorfiles.ui.UiEvent
 import ai.victorious.victorfiles.ui.ViewerMode
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasScrollAction
-import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
@@ -132,7 +131,7 @@ class SmokeTest {
 
         // Create file → undo → create again
         rule.onAllNodesWithContentDescription("New folder or file")[0].performClick()
-        rule.onNode(hasSetTextAction()).performTextInput("note.txt")
+        rule.onNode(Smoke.input()).performTextInput("note.txt")
         rule.onNode(Smoke.clickable("New file")).performClick()
         Smoke.waitFor(rule, "note.txt created") { File(a, "note.txt").isFile }
         Smoke.waitFor(rule, "undo enabled") { Smoke.vm(rule).ui.value.canUndo }
@@ -140,7 +139,7 @@ class SmokeTest {
         Smoke.waitFor(rule, "create undone") { !File(a, "note.txt").exists() }
 
         rule.onAllNodesWithContentDescription("New folder or file")[0].performClick()
-        rule.onNode(hasSetTextAction()).performTextInput("made")
+        rule.onNode(Smoke.input()).performTextInput("made")
         rule.onNode(Smoke.clickable("New folder")).performClick()
         Smoke.waitFor(rule, "folder created") { File(a, "made").isDirectory }
         File(a, "note.txt").writeText("hello")
@@ -150,8 +149,8 @@ class SmokeTest {
         // Rename via long-press menu → Select → Rename dialog
         selectViaMenu("note.txt")
         rule.onNodeWithContentDescription("Rename").performClick()
-        rule.onNode(hasSetTextAction()).performTextClearance()
-        rule.onNode(hasSetTextAction()).performTextInput("renamed.txt")
+        rule.onNode(Smoke.input()).performTextClearance()
+        rule.onNode(Smoke.input()).performTextInput("renamed.txt")
         rule.onNode(Smoke.clickable("Save")).performClick()
         Smoke.waitFor(rule, "renamed") { File(a, "renamed.txt").isFile && !File(a, "note.txt").exists() }
         Smoke.waitIdle(rule)
@@ -188,8 +187,8 @@ class SmokeTest {
         val f = File(root, "edit.txt").apply { writeText("before") }
         Smoke.event(rule, UiEvent.OpenFile(f.absolutePath, ViewerMode.TEXT))
         Smoke.waitText(rule, "edit.txt")
-        rule.waitUntil(15_000) { rule.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isNotEmpty() }
-        rule.onNode(hasSetTextAction()).performTextReplacement("after smoke edit")
+        rule.waitUntil(15_000) { rule.onAllNodes(Smoke.input()).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNode(Smoke.input()).performTextReplacement("after smoke edit")
         rule.onNodeWithContentDescription("Save").performClick()
         Smoke.waitFor(rule, "file saved") { f.readText() == "after smoke edit" }
         rule.onNodeWithContentDescription("Close").performClick()
@@ -272,8 +271,8 @@ class SmokeTest {
                 session.emulator?.screen?.transcriptText?.contains("sum=42") == true
             }
         } else {
-            rule.waitUntil(15_000) { rule.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isNotEmpty() }
-            rule.onNode(hasSetTextAction()).performTextInput(line)
+            rule.waitUntil(15_000) { rule.onAllNodes(Smoke.input()).fetchSemanticsNodes().isNotEmpty() }
+            rule.onNode(Smoke.input()).performTextInput(line)
             rule.onNode(Smoke.clickable("Send")).performClick()
             Smoke.waitText(rule, "sum=42", substring = true, timeoutMs = 20_000)
         }

@@ -10,6 +10,8 @@ import ai.victorious.victorfiles.core.archive.EncryptedZip
 import ai.victorious.victorfiles.core.archive.WrongPasswordException
 import ai.victorious.victorfiles.core.syntax.FindReplace
 import ai.victorious.victorfiles.core.syntax.SyntaxHighlighter
+import ai.victorious.victorfiles.core.archive.ZipEdit
+import ai.victorious.victorfiles.core.archive.ZipEditor
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material.icons.outlined.FindReplace
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -512,6 +514,20 @@ private fun ArchiveScreen(file: File, extractTo: File, onClose: () -> Unit, onMe
     var isRar by remember { mutableStateOf(false) }
     val dest = File(extractTo, file.name.substringBefore('.').ifBlank { "extracted" })
     val savedPasswords = (LocalContext.current.applicationContext as ai.victorious.victorfiles.FileManagerApplication).archivePasswords
+    var reload by remember { mutableIntStateOf(0) }
+    var picked by remember { mutableStateOf<ArchiveItem?>(null) }
+    var editText by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var renaming by remember { mutableStateOf<String?>(null) }
+    var zipFormat by remember { mutableStateOf(false) }
+    fun editArchive(edit: ZipEdit, done: String) {
+        busy = true
+        scope.launch {
+            withContext(Dispatchers.IO) { runCatching { ZipEditor.apply(file, listOf(edit)) } }
+                .onSuccess { reload++; onMessage("$done — v1 signature removed; sign the APK again before installing") }
+                .onFailure { onMessage("Edit failed: ${it.message}") }
+            busy = false
+        }
+    }
     fun runExtract(password: CharArray?, remember: Boolean = false) {
         busy = true
         scope.launch {
@@ -540,10 +556,11 @@ private fun ArchiveScreen(file: File, extractTo: File, onClose: () -> Unit, onMe
             busy = false
         }
     }
-    LaunchedEffect(file) {
+    LaunchedEffect(file, reload) {
         // Corrupt / unknown archives must surface as an error, not crash the LaunchedEffect.
         val format = withContext(Dispatchers.IO) { runCatching { Archives.format(file) }.getOrDefault(ArchiveFormat.UNKNOWN) }
         isRar = format == ArchiveFormat.RAR
+        zipFormat = format == ArchiveFormat.ZIP
         encrypted = withContext(Dispatchers.IO) {
             runCatching {
                 when (format) {
@@ -596,13 +613,71 @@ private fun ArchiveScreen(file: File, extractTo: File, onClose: () -> Unit, onMe
             )
             LazyColumn(Modifier.fillMaxSize()) {
                 items(list) { item ->
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .clickable(enabled = zipFormat && !encrypted && !busy && !item.isDirectory) { picked = item }
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                    ) {
                         Text(item.name, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                         if (!item.isDirectory) Text("${item.size} B", style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
         }
+    }
+    picked?.let { item ->
+        AlertDialog(
+            onDismissRequest = { picked = null },
+            title = { Text(item.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            text = { Text("Edit this entry inside the archive without extracting it.") },
+            confirmButton = {
+                Row {
+                    TextButton(onClick = {
+                        picked = null
+                        scope.launch {
+                            val loaded = withContext(Dispatchers.IO) {
+                                runCatching {
+                                    require(item.size <= 1_000_000) { "Too large to edit as text (>1 MB)" }
+                                    val bytes = java.util.zip.ZipFile(file).use { z -> z.getInputStream(z.getEntry(item.name)).readBytes() }
+                                    require(bytes.none { it == 0.toByte() }) { "Binary entry — use the hex editor after extracting" }
+                                    String(bytes, Charsets.UTF_8)
+                                }
+                            }
+                            loaded.onSuccess { editText = item.name to it }.onFailure { onMessage(it.message ?: "Cannot open") }
+                        }
+                    }) { Text("Edit text") }
+                    TextButton(onClick = { renaming = item.name; picked = null }) { Text("Rename") }
+                    TextButton(onClick = { picked = null; editArchive(ZipEdit.Delete(item.name), "Deleted ${item.name}") }) { Text("Delete") }
+                }
+            },
+            dismissButton = { TextButton(onClick = { picked = null }) { Text("Cancel") } },
+        )
+    }
+    editText?.let { (name, initial) ->
+        var text by remember(name) { mutableStateOf(initial) }
+        AlertDialog(
+            onDismissRequest = { editText = null },
+            title = { Text(name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            text = { OutlinedTextField(text, { text = it }, modifier = Modifier.fillMaxWidth()) },
+            confirmButton = {
+                TextButton(onClick = { editText = null; editArchive(ZipEdit.Put(name, text.toByteArray(Charsets.UTF_8)), "Saved $name") }) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { editText = null }) { Text("Cancel") } },
+        )
+    }
+    renaming?.let { old ->
+        var value by remember(old) { mutableStateOf(old) }
+        AlertDialog(
+            onDismissRequest = { renaming = null },
+            title = { Text("Rename entry") },
+            text = { OutlinedTextField(value, { value = it }, singleLine = true, modifier = Modifier.fillMaxWidth()) },
+            confirmButton = {
+                TextButton(enabled = value.isNotBlank() && value != old, onClick = {
+                    renaming = null; editArchive(ZipEdit.Rename(old, value.trim()), "Renamed to ${value.trim()}")
+                }) { Text("Rename") }
+            },
+            dismissButton = { TextButton(onClick = { renaming = null }) { Text("Cancel") } },
+        )
     }
     if (askPassword) {
         PasswordDialog(
