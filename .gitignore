@@ -48,3 +48,4 @@ debug-signing/
 passwords.env
 *.passwords
 fm-debug.jks
+local.properties

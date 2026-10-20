@@ -21,16 +21,11 @@ Media3 does **not** publish `decoder_ffmpeg` to Maven (ExoPlayer issue 2781). Yo
 `FfmpegRenderers.factory()` already sets `EXTENSION_RENDERER_MODE_ON` when
 `androidx.media3.decoder.ffmpeg.FfmpegAudioRenderer` is on the classpath; otherwise OFF.
 
-### Why this PR may not ship natives
-On the build box we started `build_ffmpeg.sh` for all four ABIs (vorbis/opus/flac). That
-script configures and compiles FFmpeg four times plus the JNI CMake step and typically needs
-**tens of minutes to hours** and a full Media3 composite Gradle include. If the timed build
-does not finish cleanly before the next stacked phases, this PR still ships:
+### Status on this branch
+`build_ffmpeg.sh` completed on the box (NDK 26.1, ABI level 21, decoders: vorbis/opus/flac,
+LGPL 2.1). Natives live under `:ffmpeg-decoder` (`android-libs` for armeabi-v7a, arm64-v8a,
+x86, x86_64). Full FFmpeg `.c` sources were **not** vendored — only headers + static libs +
+Media3 Apache-2.0 Java/JNI wrapper. App depends on `:ffmpeg-decoder`; `FfmpegRenderers` enables
+`EXTENSION_RENDERER_MODE_ON` when the class loads.
 
-- volume mapping + UI toggle + unit tests
-- LGPL notice asset
-- renderers factory hook
-- this documentation with exact steps
-
-Re-run the script locally, add the module dependency, and the hook activates without further
-UI work.
+Also shipped: volume mapping + UI toggle + unit tests + LGPL notice asset.
