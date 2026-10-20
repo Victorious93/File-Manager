@@ -42,6 +42,7 @@ import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Extension
 import androidx.compose.material.icons.outlined.Wifi
+import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
