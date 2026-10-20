@@ -72,6 +72,13 @@ entry**, which the current static ARSC tooling cannot add (see `docs/APK_DEEP_ED
 `PatchStep.TrustUserCertificates` is previewed as *not applicable* and refused by `apply`. For
 plain‑HTTP needs today, use the **usesCleartextTraffic** preset.
 
+
+## UI
+Long-press an `.apk` → **APK patch presets (gated)**, or Tools → **APK patch presets**. The screen
+shows package + cert, the authorization dialog (verbatim `PatchGate.CONFIRMATION_TEXT`), one-tap
+manifest flag chips, a DEX pattern scan for neutralize candidates, preview diffs, Apply+sign
+(File-Manager debug key), Undo, and Install.
+
 ## Safety / engineering notes
 - Transforms are text-level on smali and re-assembled with Google's smali assembler
   (`SmaliAssembler`); a broken transform fails assembly rather than corrupting the DEX.

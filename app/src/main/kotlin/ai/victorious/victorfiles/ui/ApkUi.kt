@@ -54,6 +54,11 @@ fun ApkMenuItems(path: String, onEvent: (UiEvent) -> Unit, dismiss: () -> Unit) 
         val dir = File(path).parent ?: path
         onEvent(UiEvent.OpenTool(ToolRequest.ApkMod(path, dir)))
     })
+    DropdownMenuItem(text = { Text("APK patch presets (gated)") }, onClick = {
+        dismiss()
+        val dir = File(path).parent ?: path
+        onEvent(UiEvent.OpenTool(ToolRequest.PatchPresets(path, dir)))
+    })
     DropdownMenuItem(text = { Text("APK surgery (DEX / res / manifest)") }, onClick = { dismiss(); onEvent(UiEvent.OpenSurgery(path)) })
     DropdownMenuItem(text = { Text("APK info") }, onClick = { dismiss(); onEvent(UiEvent.ShowApkInfo(path)) })
     DropdownMenuItem(text = { Text("Install APK") }, onClick = {
