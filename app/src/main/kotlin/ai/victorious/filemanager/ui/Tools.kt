@@ -42,6 +42,7 @@ import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Extension
 import androidx.compose.material.icons.outlined.Wifi
+import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -93,6 +94,7 @@ sealed interface ToolRequest {
     data class ApkMod(val path: String, val dir: String) : ToolRequest
     data class MtNpTools(val path: String, val dir: String) : ToolRequest
     data class FolderSync(val dir: String) : ToolRequest
+    data class PhotoTools(val paths: List<String>, val dir: String) : ToolRequest
 }
 
 @Composable
@@ -131,6 +133,12 @@ fun ToolsPane(state: UiState, onEvent: (UiEvent) -> Unit) {
         item {
             ToolItem(Icons.Outlined.Shield, "Secure folder", "Biometric-locked, encrypted at rest (${files.size} selected)") {
                 onEvent(UiEvent.OpenTool(ToolRequest.SecureFolder(files.map { it.absolutePath }, dir)))
+            }
+        }
+        item {
+            ToolItem(Icons.Outlined.PhotoCamera, "Photo tools", "EXIF view/edit/strip, batch rename, resize/convert (${files.size} selected)") {
+                if (files.isEmpty()) onEvent(UiEvent.ShowMessage("Select image files in Files first"))
+                else onEvent(UiEvent.OpenTool(ToolRequest.PhotoTools(files.map { it.absolutePath }, dir)))
             }
         }
         item {
@@ -259,6 +267,7 @@ fun ToolHost(request: ToolRequest, onClose: () -> Unit, onEvent: (UiEvent) -> Un
         is ToolRequest.ApkMod -> ApkModScreen(request.path, request.dir, onClose, onEvent)
         is ToolRequest.MtNpTools -> MtNpScreen(File(request.path), request.dir, onClose, onEvent)
         is ToolRequest.FolderSync -> FolderSyncScreen(request.dir, onClose, onEvent)
+        is ToolRequest.PhotoTools -> PhotoToolsScreen(request.paths, request.dir, onClose, onEvent)
     }
 }
 
