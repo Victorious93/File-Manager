@@ -92,6 +92,7 @@ sealed interface ToolRequest {
     data class SmaliTools(val target: String, val mapping: String?, val dir: String) : ToolRequest
     data class ApkMod(val path: String, val dir: String) : ToolRequest
     data class MtNpTools(val path: String, val dir: String) : ToolRequest
+    data class FolderSync(val dir: String) : ToolRequest
 }
 
 @Composable
@@ -130,6 +131,11 @@ fun ToolsPane(state: UiState, onEvent: (UiEvent) -> Unit) {
         item {
             ToolItem(Icons.Outlined.Shield, "Secure folder", "Biometric-locked, encrypted at rest (${files.size} selected)") {
                 onEvent(UiEvent.OpenTool(ToolRequest.SecureFolder(files.map { it.absolutePath }, dir)))
+            }
+        }
+        item {
+            ToolItem(Icons.Outlined.Compare, "Folder sync", "One-way / two-way sync, dry-run, conflicts, schedule") {
+                onEvent(UiEvent.OpenTool(ToolRequest.FolderSync(dir)))
             }
         }
         item {
@@ -252,6 +258,7 @@ fun ToolHost(request: ToolRequest, onClose: () -> Unit, onEvent: (UiEvent) -> Un
         is ToolRequest.SmaliTools -> SmaliToolsScreen(File(request.target), request.mapping?.let(::File), request.dir, onClose, onEvent)
         is ToolRequest.ApkMod -> ApkModScreen(request.path, request.dir, onClose, onEvent)
         is ToolRequest.MtNpTools -> MtNpScreen(File(request.path), request.dir, onClose, onEvent)
+        is ToolRequest.FolderSync -> FolderSyncScreen(request.dir, onClose, onEvent)
     }
 }
 
