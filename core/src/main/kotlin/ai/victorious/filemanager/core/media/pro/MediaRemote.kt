@@ -29,7 +29,7 @@ interface MediaRemote {
     fun prev(): Boolean
     fun seekTo(positionMs: Long): Boolean
     fun seekBy(deltaMs: Long): Boolean
-    /** Player volume 0..100 (not the system stream volume). */
+    /** Player volume 0..100. App may also map this to STREAM_MUSIC when the user enables that option. */
     fun setVolume(level: Int): Boolean
 }
 
