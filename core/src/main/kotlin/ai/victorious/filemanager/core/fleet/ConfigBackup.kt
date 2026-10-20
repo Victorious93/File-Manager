@@ -249,10 +249,11 @@ class NodeConfigBackup(
     }
 
     /** Standalone single-entry bundle for this node. */
-    fun exportBundle(clearPayload: Boolean): UnifiedFleetBackup = UnifiedFleetBackup(
-        UnifiedFleetBackupCodec.VERSION, clock(), sourceNodeRef,
-        if (clearPayload) BackupWrapping.NONE else BackupWrapping.RAW_AES_256_GCM, listOf(export(clearPayload)),
-    )
+    fun exportBundle(clearPayload: Boolean, wrapping: BackupWrapping = BackupWrapping.RAW_AES_256_GCM): UnifiedFleetBackup =
+        UnifiedFleetBackup(
+            UnifiedFleetBackupCodec.VERSION, clock(), sourceNodeRef,
+            if (clearPayload) BackupWrapping.NONE else wrapping, listOf(export(clearPayload)),
+        )
 
     /**
      * `config.import`. Caller MUST have obtained on-device confirmation unless [dryRun].

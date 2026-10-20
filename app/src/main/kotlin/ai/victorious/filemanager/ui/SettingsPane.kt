@@ -104,7 +104,9 @@ fun SettingsPane(onEvent: (UiEvent) -> Unit = {}) {
             }
             Switch(checked = external, onCheckedChange = fleet::setExternalControlEnabled)
         }
-        Text("Fleet node: ${app.nodeId} (external_node, stub)", style = MaterialTheme.typography.bodySmall)
+        Text("Fleet node: ${app.nodeId} (external_node)", style = MaterialTheme.typography.bodySmall)
+
+        BackupRestoreSection(onEvent)
     }
 }
 

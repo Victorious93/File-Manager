@@ -31,6 +31,7 @@ class BridgeExecutor(
     extraOps: List<NodeOp> = emptyList(),
     configBackup: NodeConfigBackup? = null,
     configRemoteAllowed: Boolean = false,
+    confirmationBroker: ConfirmationBroker? = null,
 ) {
     /** Frozen fleet envelope v1 (capabilities.get, remote.command, macro.*, node.status.get). */
     val envelope = EnvelopeExecutor(
@@ -45,8 +46,23 @@ class BridgeExecutor(
         extraOps = extraOps,
         configBackup = configBackup,
         configRemoteAllowed = configRemoteAllowed,
+        broker = confirmationBroker,
         legacyStatus = { status(externalControlEnabled()) },
     )
+
+    /**
+     * Messenger entry point. Identical to [handle] except that v1 requests needing on-device
+     * confirmation are held (see [ConfirmationBroker]); [reply] is invoked exactly once.
+     */
+    fun handleAsync(requestLine: String, caller: CallerIdentity?, reply: (String) -> Unit) {
+        val request = runCatching { bridgeJson.decodeFromString<BridgeRequest>(requestLine.trim()) }.getOrNull()
+        if (request == null || request.protocolMajor != BRIDGE_PROTOCOL_MAJOR || request.operation !in EnvelopeOp.ROUTED) {
+            reply(handle(requestLine, caller)); return
+        }
+        envelope.handleAsync(request, caller) { out ->
+            reply(if (out.ok) ok(request.requestId, out.result!!) else fail(request.requestId, out.category!!, out.message.orEmpty()))
+        }
+    }
 
     fun handle(requestLine: String, caller: CallerIdentity?): String {
         if (requestLine.isBlank()) {

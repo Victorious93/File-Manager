@@ -31,6 +31,8 @@ class EnvelopeExecutor(
     private val shizukuState: () -> ShizukuState? = { null },
     private val replay: ReplayGuard = ReplayGuard(),
     private val confirmation: RemoteConfirmation = RemoteConfirmation.NEVER,
+    /** When set, [handleAsync] holds confirm-needing remote.command / macro.step / config.import until the user decides. */
+    private val broker: ConfirmationBroker? = null,
     extraOps: List<NodeOp> = emptyList(),
     private val configBackup: NodeConfigBackup? = null,
     /** UNIFIED_BACKUP default is false; only an explicit owner decision may raise it. */
@@ -54,9 +56,54 @@ class EnvelopeExecutor(
 
     fun descriptors(): List<NodeOp> = ops.values.toList()
 
+    private companion object {
+        val HOLDABLE = setOf(EnvelopeOp.REMOTE_COMMAND, EnvelopeOp.MACRO_STEP, ConfigOps.IMPORT)
+    }
+
     class Outcome(val ok: Boolean, val result: JsonObject?, val category: String?, val message: String?)
 
     private class Fail(val category: String, msg: String) : Exception(msg)
+
+    /** Raised by [gate] for a holdable op that still needs on-device approval. */
+    private class NeedsConfirm(val opName: String) : Exception("needs confirmation")
+
+    private class Ctx(val holdable: Boolean, val preConfirmed: Boolean)
+
+    private var ctx = ThreadLocal.withInitial { Ctx(false, false) }
+
+    /**
+     * Async variant used by the Messenger service. Requests that need confirmation are
+     * held in [broker]; [reply] is called exactly once (immediately, or on decision/timeout).
+     */
+    fun handleAsync(request: BridgeRequest, caller: CallerIdentity?, reply: (Outcome) -> Unit) {
+        val b = broker
+        if (b == null) { reply(handle(request, caller)); return }
+        var held: Triple<EnvelopeV1, CallerDecision, String>? = null
+        val first = try {
+            Outcome(true, run(request, caller, holdable = true) { env, dec, opName -> held = Triple(env, dec, opName) }, null, null)
+        } catch (f: Fail) { Outcome(false, null, f.category, f.message) } catch (e: EnvelopeException) {
+            Outcome(false, null, e.category, e.message)
+        } catch (n: NeedsConfirm) { null } catch (t: Throwable) { Outcome(false, null, RemoteError.INTERNAL, "internal error") }
+        if (first != null) { reply(first); return }
+        val (env, dec, opName) = held ?: run { reply(Outcome(false, null, RemoteError.INTERNAL, "internal error")); return }
+        val p = b.submit(
+            dec.sourceNodeRef, env.nonce, dec.matchedPackage.orEmpty(), env.op, opName, env.params,
+            env.timestampMs + env.ttlMs,
+        ) { decision ->
+            if (decision != ConfirmationBroker.Decision.APPROVED) {
+                reply(Outcome(false, null, RemoteError.CONFIRMATION_REQUIRED,
+                    if (decision == ConfirmationBroker.Decision.DENIED) "denied on device" else "confirmation timed out (denied)"))
+            } else {
+                reply(
+                    try { Outcome(true, dispatch(env, dec, enabled = true, preConfirmed = true), null, null) }
+                    catch (f: Fail) { Outcome(false, null, f.category, f.message) }
+                    catch (e: EnvelopeException) { Outcome(false, null, e.category, e.message) }
+                    catch (t: Throwable) { Outcome(false, null, RemoteError.INTERNAL, "internal error") },
+                )
+            }
+        }
+        if (p == null) reply(Outcome(false, null, RemoteError.CONFIRMATION_REQUIRED, "could not hold request for confirmation"))
+    }
 
     fun handle(request: BridgeRequest, caller: CallerIdentity?): Outcome = try {
         Outcome(true, run(request, caller), null, null)
@@ -68,7 +115,12 @@ class EnvelopeExecutor(
         Outcome(false, null, RemoteError.INTERNAL, "internal error")
     }
 
-    private fun run(request: BridgeRequest, caller: CallerIdentity?): JsonObject {
+    private fun run(
+        request: BridgeRequest,
+        caller: CallerIdentity?,
+        holdable: Boolean = false,
+        onHold: (EnvelopeV1, CallerDecision, String) -> Unit = { _, _, _ -> },
+    ): JsonObject {
         val op = request.operation
         if (op !in EnvelopeOp.ROUTED) throw Fail(RemoteError.UNSUPPORTED_OP, "unsupported op '$op'")
 
@@ -111,6 +163,24 @@ class EnvelopeExecutor(
         }
 
         // 5. Dispatch.
+        return try {
+            dispatch(env, decision, enabled, preConfirmed = false, holdable = holdable)
+        } catch (n: NeedsConfirm) {
+            onHold(env, decision, n.opName)
+            throw n
+        }
+    }
+
+    private fun dispatch(env: EnvelopeV1, decision: CallerDecision, enabled: Boolean, preConfirmed: Boolean, holdable: Boolean = false): JsonObject {
+        val op = env.op
+        val canHold = holdable && op in HOLDABLE
+        val prev = ctx.get()
+        ctx.set(Ctx(canHold, preConfirmed && op in HOLDABLE))
+        try { return dispatchInner(env, decision, enabled) } finally { ctx.set(prev) }
+    }
+
+    private fun dispatchInner(env: EnvelopeV1, decision: CallerDecision, enabled: Boolean): JsonObject {
+        val op = env.op
         return when (op) {
             EnvelopeOp.CAPABILITIES_GET -> capabilities(enabled, decision)
             EnvelopeOp.NODE_STATUS_GET -> statusResult(env.params)
@@ -141,7 +211,11 @@ class EnvelopeExecutor(
         if (!op.enabled) throw Fail(RemoteError.CAPABILITY_OFF, "op '$name' is turned off on this node")
         // Classified by the node itself; envelope `destructive` is ignored.
         val dryImport = name == ConfigOps.IMPORT && (env.dryRun || isTrue(env.params["dryRun"]))
-        if ((op.kind == OpKind.DESTRUCTIVE || op.requiresConfirm) && !dryImport && !confirmation.confirmedOnDevice(op, env)) {
+        val c = ctx.get()
+        if ((op.kind == OpKind.DESTRUCTIVE || op.requiresConfirm) && !dryImport && !c.preConfirmed &&
+            !confirmation.confirmedOnDevice(op, env)
+        ) {
+            if (c.holdable) throw NeedsConfirm(name)
             throw Fail(RemoteError.CONFIRMATION_REQUIRED, "op '$name' needs on-device confirmation")
         }
         return op

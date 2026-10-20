@@ -41,10 +41,12 @@ class FileManagerBridgeService : Service() {
                     // sendingUid is the kernel-attested sender (-1 if unknown).
                     val caller = resolver.resolve(msg.sendingUid)
                     val line = msg.data?.getString(BRIDGE_KEY_REQUEST).orEmpty()
-                    val response = executor.handle(line, caller)
-                    val out = Message.obtain(null, BRIDGE_MSG_RESPONSE)
-                    out.data = Bundle().apply { putString(BRIDGE_KEY_RESPONSE, response) }
-                    runCatching { replyTo.send(out) }
+                    // Requests needing on-device approval are held; the reply is sent once decided.
+                    executor.handleAsync(line, caller) { response ->
+                        val out = Message.obtain(null, BRIDGE_MSG_RESPONSE)
+                        out.data = Bundle().apply { putString(BRIDGE_KEY_RESPONSE, response) }
+                        runCatching { replyTo.send(out) }
+                    }
                 }
             },
         )

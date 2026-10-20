@@ -48,6 +48,10 @@ class FileManagerApplication : Application() {
     lateinit var nodeId: String
         private set
     lateinit var bridge: BridgeExecutor
+    lateinit var confirmations: ai.victorious.filemanager.core.fleet.ConfirmationBroker
+        private set
+    lateinit var configBackup: ai.victorious.filemanager.core.fleet.NodeConfigBackup
+        private set
         private set
     lateinit var fleetSettings: FleetSettings
         private set
@@ -111,12 +115,30 @@ class FileManagerApplication : Application() {
         secureFolder = SecureFolderManager(this)
         thumbnails = ThumbnailLoader(cacheDir)
         decompiler = DecompileService(File(cacheDir, "javacache"))
+        val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+        confirmations = ai.victorious.filemanager.core.fleet.ConfirmationBroker(
+            schedule = { d, block -> mainHandler.postDelayed(block, d) },
+        )
+        val notifier = ai.victorious.filemanager.fleet.RemoteConfirmNotifier(this)
+        confirmations.addListener { list -> mainHandler.post { notifier.onPending(list) } }
+        configBackup = ai.victorious.filemanager.core.fleet.NodeConfigBackup(
+            packageName = packageName,
+            sourceNodeRef = nodeId,
+            store = ai.victorious.filemanager.fleet.AppConfigStore(this, bookmarks, fleetSettings) { themeSettings.reload() },
+            aead = runCatching { ai.victorious.filemanager.fleet.BackupKeystore.aead() }.getOrNull(),
+            sensitivePathPrefixes = listOf(dataDir.absolutePath, noBackupFilesDir.absolutePath, filesDir.absolutePath) +
+                listOfNotNull(getExternalFilesDir(null)?.parentFile?.absolutePath),
+        )
         bridge = BridgeExecutor(
             nodeId = nodeId,
             policy = CallerPolicy(certPins = CallerPolicy.parsePins(BuildConfig.FLEET_CALLER_CERT_PINS)),
             externalControlEnabled = fleetSettings::isExternalControlEnabled,
             packageName = packageName,
             shizukuState = { shizuku.state.value },
+            configBackup = configBackup,
+            // UNIFIED_BACKUP default: remote callers can never export/import settings.
+            configRemoteAllowed = false,
+            confirmationBroker = confirmations,
         )
     }
 
