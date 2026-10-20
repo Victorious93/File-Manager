@@ -122,7 +122,7 @@ class LogcatTest {
         assertEquals("ActivityManager", p.tag)
         assertEquals(1234, p.pid)
         assertTrue(p.message.contains("com.a"))
-        assertEquals(line, LogcatParser.parse("not a log").raw)
+        assertEquals("not a log", LogcatParser.parse("not a log").raw)
     }
 
     @Test fun filter() {
