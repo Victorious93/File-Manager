@@ -586,3 +586,9 @@ Tools → **Folder sync**: pick two folders (or a saved SMB/SFTP/WebDAV connecti
 choose one-way or two-way, conflict policy, dry-run preview, then run. Local deletes go to trash.
 Optional WorkManager schedule for local↔local.
 
+
+## Server mode (FTP / SFTP / web)
+
+Tools → Wi-Fi file transfer / Server mode: start a **LAN-only** FTP, SFTP, or web file manager
+for the focused folder. Off by default; password or PIN shown with a QR code. Stop when done.
+
