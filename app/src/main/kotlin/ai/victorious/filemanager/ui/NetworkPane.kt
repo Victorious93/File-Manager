@@ -339,60 +339,71 @@ private fun S3ConnectionDialog(onDismiss: () -> Unit, onSave: (ConnectionDraft) 
 @Composable
 fun WifiTransferScreen(rootPath: String, onMessage: (String) -> Unit, onClose: () -> Unit) {
     val app = LocalContext.current.applicationContext as FileManagerApplication
-    val ctrl = app.wifiTransfer
-    var running by remember { mutableStateOf(ctrl.isRunning) }
-    var url by remember { mutableStateOf(ctrl.url) }
-    var pin by remember { mutableStateOf(ctrl.pin) }
+    val wifi = app.wifiTransfer
+    val servers = app.serverMode
+    var running by remember { mutableStateOf(wifi.isRunning || servers.session != null) }
+    var url by remember { mutableStateOf(servers.session?.url ?: wifi.url) }
+    var secret by remember { mutableStateOf(servers.session?.password ?: wifi.pin) }
+    var kind by remember { mutableStateOf(servers.session?.kind ?: if (wifi.isRunning) "web" else "") }
     var requirePin by remember { mutableStateOf(true) }
     var qr by remember { mutableStateOf<Bitmap?>(null) }
 
-    DisposableEffect(Unit) {
-        onDispose { /* keep running until user stops */ }
+    fun refreshQr(content: String) {
+        qr = wifi.qrBitmap(content)
     }
 
     Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("Wi-Fi file transfer", style = MaterialTheme.typography.titleLarge)
+            Text("Server mode", style = MaterialTheme.typography.titleLarge)
             TextButton(onClick = onClose) { Text("Close") }
         }
         Text(
-            "Serves $rootPath on the LAN only. Stop when finished.",
+            "Off by default. Serves $rootPath on the LAN only (FTP / SFTP / Web). Password or PIN + QR. Stop when finished.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 8.dp)) {
-            Text("Require PIN", Modifier.weight(1f))
+            Text("Web requires PIN", Modifier.weight(1f))
             Switch(checked = requirePin, onCheckedChange = { requirePin = it }, enabled = !running)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = {
+            Button(enabled = !running, onClick = {
                 try {
-                    val s = ctrl.start(rootPath, requirePin = requirePin)
-                    running = true
-                    url = s.url
-                    pin = ctrl.pin
-                    qr = ctrl.qrBitmap(s.url + (ctrl.pin?.let { "?pin=$it" } ?: ""))
-                    onMessage("Wi-Fi transfer started")
-                } catch (t: Throwable) {
-                    onMessage(CredentialRedactor.safeMessage(t))
-                }
-            }, enabled = !running) { Text("Start") }
-            Button(onClick = {
-                ctrl.stop()
-                running = false
-                url = null
-                pin = null
-                qr = null
-                onMessage("Wi-Fi transfer stopped")
-            }, enabled = running) { Text("Stop") }
+                    val s = servers.startWeb(rootPath, requirePin = requirePin)
+                    running = true; kind = s.kind; url = s.url; secret = s.password
+                    refreshQr(s.url + if (s.password.isNotEmpty()) "?pin=${s.password}" else "")
+                    onMessage("Web server started")
+                } catch (t: Throwable) { onMessage(CredentialRedactor.safeMessage(t)) }
+            }) { Text("Web") }
+            Button(enabled = !running, onClick = {
+                try {
+                    val s = servers.startFtp(java.io.File(rootPath))
+                    running = true; kind = s.kind; url = s.url; secret = s.password
+                    refreshQr(s.url)
+                    onMessage("FTP started on port ${s.port}")
+                } catch (t: Throwable) { onMessage(CredentialRedactor.safeMessage(t)) }
+            }) { Text("FTP") }
+            Button(enabled = !running, onClick = {
+                try {
+                    val s = servers.startSftp(java.io.File(rootPath))
+                    running = true; kind = s.kind; url = s.url; secret = s.password
+                    refreshQr(s.url)
+                    onMessage("SFTP started on port ${s.port}")
+                } catch (t: Throwable) { onMessage(CredentialRedactor.safeMessage(t)) }
+            }) { Text("SFTP") }
+            Button(enabled = running, onClick = {
+                servers.stopAll()
+                running = false; url = null; secret = null; kind = ""; qr = null
+                onMessage("Servers stopped")
+            }) { Text("Stop") }
         }
         if (running) {
-            Text("URL: $url", modifier = Modifier.padding(top = 16.dp))
-            if (pin != null) Text("PIN: $pin", style = MaterialTheme.typography.titleMedium)
+            Text("Kind: $kind", modifier = Modifier.padding(top = 16.dp))
+            Text("URL: $url")
+            if (!secret.isNullOrEmpty()) Text("Password / PIN: $secret", style = MaterialTheme.typography.titleMedium)
             qr?.let {
                 Image(it.asImageBitmap(), contentDescription = "QR", modifier = Modifier.size(240.dp).padding(16.dp))
             }
-            Icon(Icons.Outlined.Wifi, null, modifier = Modifier.padding(8.dp))
         }
     }
 }

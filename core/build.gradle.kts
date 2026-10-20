@@ -32,6 +32,10 @@ dependencies {
     implementation(libs.jsch)
     implementation(libs.smbj)
     implementation(libs.okhttp)
+    implementation(libs.apache.ftpserver)
+    implementation(libs.apache.sshd.core)
+    implementation(libs.apache.sshd.sftp)
+    implementation(libs.apache.sshd.common)
     api(libs.nanohttpd)
     // jadx: dex -> readable Java decompiler (Apache-2.0). See docs/JAVA_VIEW.md.
     implementation(libs.jadx.core)

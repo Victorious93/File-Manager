@@ -84,9 +84,25 @@ class WifiTransferRouter(
                 val mark = if (e.isDirectory) "/" else ""
                 """<li><a href="/$href$q">${escape(e.name)}$mark</a></li>"""
             }
-            val html = """<!DOCTYPE html><html><body><h1>Index of /${escape(rel)}</h1><ul>$links</ul>
-<form method="POST" enctype="multipart/form-data" action="/${escape(rel)}$q">
-<input type="file" name="file"/><button type="submit">Upload</button></form></body></html>"""
+            val html = """<!DOCTYPE html>
+<html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>VictorFiles — ${escape(rel.ifEmpty { "/" })}</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:1.5rem;background:#0f1115;color:#e8eaed}
+a{color:#8ab4f8;text-decoration:none} a:hover{text-decoration:underline}
+h1{font-size:1.25rem} ul{list-style:none;padding:0}
+li{padding:.4rem .6rem;border-bottom:1px solid #2a2f3a}
+.dir{font-weight:600} .meta{color:#9aa0a6;font-size:.85rem}
+form{margin-top:1.5rem;padding:1rem;background:#1a1d24;border-radius:8px}
+button,input[type=submit]{background:#8ab4f8;color:#0f1115;border:0;padding:.5rem 1rem;border-radius:6px}
+</style></head><body>
+<h1>Index of /${escape(rel.ifEmpty { "/" })}</h1>
+<ul>$links</ul>
+<form method="POST" enctype="multipart/form-data" action="?upload=1">
+<label>Upload into this folder<br/><input type="file" name="file"/></label>
+<button type="submit">Upload</button></form>
+<p class="meta">LAN only · PIN protected when enabled · VictorFiles</p>
+</body></html>"""
             return WifiHttpResponse(200, "text/html; charset=utf-8", html.toByteArray())
         }
         return WifiHttpResponse(

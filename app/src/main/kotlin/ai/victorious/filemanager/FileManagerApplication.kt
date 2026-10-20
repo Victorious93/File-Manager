@@ -18,6 +18,7 @@ import ai.victorious.filemanager.priv.ShizukuController
 import ai.victorious.filemanager.core.net.CompositeFileIo
 import ai.victorious.filemanager.net.ConnectionRepository
 import ai.victorious.filemanager.net.WifiTransferController
+import ai.victorious.filemanager.net.ServerModeController
 import ai.victorious.filemanager.terminal.TerminalSessionManager
 import ai.victorious.filemanager.ai.AiSettings
 import ai.victorious.filemanager.plugins.PluginRepository
@@ -67,6 +68,8 @@ class FileManagerApplication : Application() {
         private set
     lateinit var wifiTransfer: WifiTransferController
         private set
+    lateinit var serverMode: ServerModeController
+        private set
     lateinit var aiSettings: AiSettings
         private set
     lateinit var plugins: PluginRepository
@@ -110,6 +113,7 @@ class FileManagerApplication : Application() {
         fleetSettings = FleetSettings(this)
         terminals = TerminalSessionManager(privilege)
         wifiTransfer = WifiTransferController(io)
+        serverMode = ServerModeController(wifiTransfer)
         aiSettings = AiSettings(this).also { runCatching { it.load() } }
         plugins = PluginRepository(this, privilege)
         secureFolder = SecureFolderManager(this)
