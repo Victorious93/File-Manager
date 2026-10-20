@@ -48,10 +48,10 @@ class FileManagerApplication : Application() {
     lateinit var nodeId: String
         private set
     lateinit var bridge: BridgeExecutor
+        private set
     lateinit var confirmations: ai.victorious.filemanager.core.fleet.ConfirmationBroker
         private set
     lateinit var configBackup: ai.victorious.filemanager.core.fleet.NodeConfigBackup
-        private set
         private set
     lateinit var fleetSettings: FleetSettings
         private set
