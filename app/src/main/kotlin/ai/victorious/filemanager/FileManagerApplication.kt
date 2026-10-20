@@ -115,6 +115,8 @@ class FileManagerApplication : Application() {
             nodeId = nodeId,
             policy = CallerPolicy(certPins = CallerPolicy.parsePins(BuildConfig.FLEET_CALLER_CERT_PINS)),
             externalControlEnabled = fleetSettings::isExternalControlEnabled,
+            packageName = packageName,
+            shizukuState = { shizuku.state.value },
         )
     }
 
