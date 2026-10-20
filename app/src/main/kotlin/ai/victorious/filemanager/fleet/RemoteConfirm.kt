@@ -30,6 +30,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -93,7 +94,8 @@ class RemoteConfirmActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= 27) { setShowWhenLocked(true); setTurnScreenOn(true) }
         val broker = (application as FileManagerApplication).confirmations
         setContent {
-            VictoriousTheme((application as FileManagerApplication).themeSettings.state.value) {
+            val themeState by (application as FileManagerApplication).themeSettings.state.collectAsState()
+            VictoriousTheme(themeState) {
                 var pending by remember { mutableStateOf(broker.pending()) }
                 var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
                 LaunchedEffect(Unit) {
