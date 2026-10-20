@@ -36,4 +36,5 @@ dependencies {
     api("androidx.media3:media3-decoder:1.4.1")
     implementation(libs.media3.exoplayer)
     implementation("androidx.annotation:annotation:1.8.2")
+    compileOnly("org.checkerframework:checker-qual:3.42.0")
 }
