@@ -364,6 +364,22 @@ components and are not fleet permissions.
 
 ---
 
+
+## App Manager Pro
+
+The **Apps** tab is App Manager Pro (details in `docs/APP_MANAGER.md`).
+
+- Browse installed apps, multi-select for **Disable / Enable / Force-stop / Freeze**.
+- Open an app for its components, permissions, AppOps and trackers. **Block** a component or
+  **Block tracker components** in one tap.
+- **Trackers** tab lists user apps that match a built-in signature list of advertising / analytics
+  SDKs (class-name prefixes we maintain ourselves).
+- **Logcat** with filters and export; **Usage** (needs the system "Usage access" permission);
+  **Running** processes; **Profiles** of saved actions; **Backup** for APK (and data with root).
+
+Actions that change an app always ask you to **Confirm** first. Root or Shizuku is required for
+block / freeze / permission / AppOps changes.
+
 ## Media Pro (video & music player)
 
 Opening a video or song plays it in **Media Pro** (see `docs/MEDIA_PRO.md` for details).

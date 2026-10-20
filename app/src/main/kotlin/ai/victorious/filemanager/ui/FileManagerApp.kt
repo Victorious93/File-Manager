@@ -339,10 +339,7 @@ fun FileManagerApp(
                 Dest.FILES -> DualPane(state, onEvent, onCreate = { showCreate = true })
                 Dest.SEARCH -> SearchPane(state, onEvent)
                 Dest.BOOKMARKS -> BookmarksPane(state, onEvent)
-                Dest.APPS -> {
-                    val dir = if (state.focusedPane == 0) state.left.active.path else state.right.active.path
-                    AppsPane(backupDir = dir, onEvent = onEvent)
-                }
+                Dest.APPS -> AppManagerProPane(onEvent = onEvent)
                 Dest.TOOLS -> ToolsPane(state, onEvent)
                 Dest.TRASH -> TrashPane(state, onEvent)
                 Dest.SETTINGS -> SettingsPane(onEvent)
