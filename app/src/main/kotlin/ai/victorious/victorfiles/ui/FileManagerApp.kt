@@ -366,6 +366,13 @@ fun FileManagerApp(
             onConfirm = { onEvent(UiEvent.ConfirmRename(it)) },
         )
     }
+    state.splitTarget?.let { path ->
+        SplitDialog(
+            file = File(path),
+            onDismiss = { onEvent(UiEvent.DismissSplit) },
+            onConfirm = { onEvent(UiEvent.ConfirmSplit(it)) },
+        )
+    }
     state.properties?.let { PropertiesDialog(it, onEvent) }
     state.batchRename?.let { br ->
         LaunchedEffect(br.targets) { onEvent(UiEvent.UpdateBatchRename(br.spec)) }
@@ -549,6 +556,7 @@ private fun FilePane(
                         FolderMenuItems(entry.path, onEvent, dismiss)
                     } else { dismiss ->
                         OpenWithItems(entry.path, onEvent, dismiss)
+                        SplitJoinMenuItem(entry.path, onEvent, dismiss)
                         ShareMenuItem(entry.path, onEvent, dismiss)
                         if (isApk(entry.path)) ApkMenuItems(entry.path, onEvent, dismiss)
                         if (entry.path.endsWith(".dex", ignoreCase = true)) DexMenuItems(entry.path, onEvent, dismiss)
@@ -973,6 +981,45 @@ private fun BatchRenameDialog(state: BatchRenameState, onEvent: (UiEvent) -> Uni
             Button(onClick = { onEvent(UiEvent.ConfirmBatchRename) }, enabled = state.plan.isApplicable) { Text("Rename") }
         },
         dismissButton = { TextButton(onClick = { onEvent(UiEvent.DismissBatchRename) }) { Text("Cancel") } },
+    )
+}
+
+private val PART_NAME = Regex("""\.\d{3}$""")
+
+@Composable
+private fun SplitJoinMenuItem(path: String, onEvent: (UiEvent) -> Unit, dismiss: () -> Unit) {
+    if (PART_NAME.containsMatchIn(path)) {
+        DropdownMenuItem(text = { Text("Join parts") }, onClick = { dismiss(); onEvent(UiEvent.JoinParts(path)) })
+    } else {
+        DropdownMenuItem(text = { Text("Split file…") }, onClick = { dismiss(); onEvent(UiEvent.RequestSplit(path)) })
+    }
+}
+
+@Composable
+private fun SplitDialog(file: File, onDismiss: () -> Unit, onConfirm: (Long) -> Unit) {
+    var text by remember { mutableStateOf("100") }
+    val size = ai.victorious.victorfiles.core.ops.FileSplit.parseSize(text)
+    val length = remember(file) { file.length() }
+    val parts = size?.let { (length + it - 1) / it }
+    val max = ai.victorious.victorfiles.core.ops.FileSplit.MAX_PARTS
+    val error = when {
+        size == null -> "Enter a size like 100, 50MB, 1.5GB, 700k (bare numbers are MB)"
+        parts!! < 2 -> "Part size is not smaller than the file (${length} bytes)"
+        parts > max -> "$parts parts is over the $max limit; use a larger size"
+        else -> null
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Split ${file.name}") },
+        text = {
+            OutlinedTextField(
+                value = text, onValueChange = { text = it }, singleLine = true, label = { Text("Part size") },
+                isError = error != null,
+                supportingText = { Text(error ?: "$parts parts: ${file.name}.001 … in this folder") },
+            )
+        },
+        confirmButton = { Button(onClick = { onConfirm(size!!) }, enabled = error == null) { Text("Split") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }
 
