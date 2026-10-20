@@ -1,4 +1,8 @@
 <p align="center">
+  <img src="assets/logo.png" alt="File-Manager logo" width="200">
+</p>
+
+<p align="center">
   <img src="docs/assets/logo.png" alt="VictorFiles logo" width="240">
 </p>
 
