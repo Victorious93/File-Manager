@@ -87,7 +87,7 @@ object ArscTranslate {
             val cols = parseCsvLine(line)
             if (cols.size < 2) continue
             val id = cols[0].removePrefix("0x").toLongOrNull(16)?.toInt()
-                ?: run { skipped += "bad id ${cols[0]}"; continue }
+            if (id == null) { skipped += "bad id ${cols[0]}"; continue }
             for ((i, loc) in locales.withIndex()) {
                 val value = cols.getOrNull(2 + i) ?: continue
                 if (value.isEmpty()) continue
