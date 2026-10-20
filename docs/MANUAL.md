@@ -558,3 +558,15 @@ Under APK tools (see `docs/MT_NP_FINISH.md`):
 - **Edit strings** in DEX or resources; **Translation mode** compares locales, exports CSV/XML, and
   can suggest translations through the AI assistant — you approve every change.
 
+
+
+## Notes vault — SAF + graph
+
+Use **Pick folder (Storage Access Framework)** to grant a vault directory. The graph view is a
+draggable force-directed layout (pinch to zoom, drag nodes).
+
+## App Manager — profiles editor
+
+Profiles tab: edit steps, reorder, and optional schedule (WorkManager). Schedules are off until
+you set once/daily/weekly. Apply still asks for confirmation.
+
