@@ -98,7 +98,7 @@ button,input[type=submit]{background:#8ab4f8;color:#0f1115;border:0;padding:.5re
 </style></head><body>
 <h1>Index of /${escape(rel.ifEmpty { "/" })}</h1>
 <ul>$links</ul>
-<form method="POST" enctype="multipart/form-data" action="?upload=1">
+<form method="POST" enctype="multipart/form-data" action="/${escape(rel)}$q">
 <label>Upload into this folder<br/><input type="file" name="file"/></label>
 <button type="submit">Upload</button></form>
 <p class="meta">LAN only · PIN protected when enabled · VictorFiles</p>
