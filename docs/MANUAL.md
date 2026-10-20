@@ -415,7 +415,11 @@ What protects you:
   limit, or more than 2 minutes off from your phone's clock) are refused, and a repeated request
   is refused as a replay.
 - **Anything destructive always needs your confirmation on this device.** A remote request is never
-  approved automatically. Right now there is no remote destructive operation at all.
+  approved automatically. When one arrives you get a notification and a full-screen prompt showing
+  which app is asking, the operation, the action and a short summary of its settings (passwords,
+  tokens and file paths are hidden). Tap **Approve** or **Deny**. If you do nothing, it is denied
+  when the request's time limit runs out (at most 5 minutes). Each answer applies to that one
+  request only. Right now File Manager has no remote destructive operation at all.
 - **Victorious Keyboard** (debug build, matching certificate only) may use media controls only.
   Those controls are not built into File Manager yet, so they answer "capability off". The release
   keyboard is not allowed yet.
@@ -425,7 +429,19 @@ What protects you:
 bookmarks pointing into the secure folder) in the fleet backup format. Remote controllers **cannot**
 call these: both are local-only by default. Importing always needs your confirmation on the device,
 offers a "dry run" preview, lets you choose skip / overwrite / merge-by-id, and always turns external
-control **off** afterwards. The in-app button is not built yet.
+control **off** afterwards.
+
+**Settings → Backup & restore**
+
+1. **Export to file** — choose where to save `victorfiles-settings.json`. The file is encrypted with
+   a key stored in this phone's secure keystore, so it can be restored on **this phone (this
+   install)** only. Uninstalling File Manager destroys the key.
+2. **Import from file** — pick the file. You first see a **preview** (nothing is changed yet) of how
+   many preferences and bookmarks would be added, overwritten or skipped.
+3. Choose a mode: **skip** (keep what you have, ignore the file's version of existing items),
+   **overwrite** (the file wins) or **merge-by-id** (keep yours, add anything new).
+4. Tap **Confirm import**. External control is switched off afterwards; turn it back on yourself if
+   you want it.
 
 ---
 

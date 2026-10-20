@@ -224,6 +224,29 @@ Because `remoteAllowed` is false (spec default; only an explicit owner decision 
   forced OFF**. Non-dry-run always needs on-device confirmation (`confirmation_required`;
   default `RemoteConfirmation.NEVER`). Ids: preferences by key, bookmarks by `id`.
 
-**Not done yet:** the app does not wire a `NodeConfigStore` / Android-Keystore wrapping key
-(`configBackup = null` on device, so the ops report `capability_off` and there is no Settings
-export/import button yet). Core logic is unit-tested on the JVM only.
+**App wiring:** `AppConfigStore` (SharedPreferences `fm_theme` + `BookmarkStore`; privilege, AI,
+cloud, connection and fleet prefs are never included) and `BackupKeystore` (AES-256-GCM key
+`victorfiles_config_backup_v1` in the Android Keystore, `wrapping: "android-keystore"`; the alias
+is not in the file, so an encrypted export restores on this device/install only). Bookmarks under
+the app's data dirs are dropped. **Settings → Backup & restore**: *Export to file* (SAF) and
+*Import from file* → dry-run preview → choose `skip` / `overwrite` / `merge-by-id` → *Confirm
+import*. Over the bridge both ops remain `remoteAllowed:false` → `capability_off`.
+
+### On-device confirmation (held requests)
+
+`ConfirmationBroker` + `FileManagerBridgeService` (`BridgeExecutor.handleAsync`). A
+`remote.command` / `macro.step` (or a remote-allowed `config.import`) whose op is destructive or
+`requiresConfirm` is **held** after every other gate (identity, scope, external control, expiry,
+replay — so its nonce is already consumed) and the reply is deferred:
+
+- A high-priority notification with a full-screen intent opens `RemoteConfirmActivity` (Compose):
+  caller app, op, actionRef, a **redacted params summary** (secret-named keys/values →
+  `[redacted]`, path-like values → `[path hidden]`, long text → length only, max 8 lines) and
+  **Approve / Deny** with a countdown.
+- Deadline = the envelope's own `timestampMs + ttlMs`; at the deadline it is **denied**
+  (`confirmation_required`, "timed out"). Deny → `confirmation_required` ("denied on device").
+  Approve → the op runs once and the real result is returned.
+- Never auto-approved. A decision is single-use and must carry the held request's nonce; a late
+  approval counts as a timeout. At most 8 requests are held; beyond that → `confirmation_required`.
+- `macro.run` steps are **not** held: a confirm-needing step still reports
+  `confirmation_required` per step. The synchronous `handle()` path never holds.
