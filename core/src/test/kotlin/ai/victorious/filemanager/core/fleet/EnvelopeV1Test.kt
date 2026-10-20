@@ -255,7 +255,7 @@ class EnvelopeV1Test {
 
     @Test fun pinnedCertMismatchUnauthorized() {
         val pinned = BridgeExecutor(
-            nodeId, CallerPolicy(certPins = mapOf("ai.droidcommand.app" to setOf("cc".repeat(32)))),
+            nodeId, policy = CallerPolicy(certPins = mapOf("ai.droidcommand.app" to setOf("cc".repeat(32)))),
             externalControlEnabled = { true }, clock = { now },
         )
         val r = bridgeJson.decodeFromString(BridgeResponse.serializer(), pinned.handle(req(EnvelopeOp.CAPABILITIES_GET), dca))
