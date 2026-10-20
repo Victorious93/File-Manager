@@ -546,3 +546,15 @@ screen lock or biometrics. This cannot be recovered.
 - **Fleet bridge** never exposes your files and is off by default.
 - **Trash** payloads on shared storage stay until you empty the trash.
 - Uninstalling the app removes its private data (settings, secure folder, debug signing key).
+
+
+## APK deep edit — DEX repair, merge, strings & translation
+
+Under APK tools (see `docs/MT_NP_FINISH.md`):
+
+- **Repair DEX** fixes checksums and size after manual edits.
+- **Merge / split** `classes*.dex` files.
+- **String decrypt** previews XOR/Base64-looking strings; you choose the method before anything changes.
+- **Edit strings** in DEX or resources; **Translation mode** compares locales, exports CSV/XML, and
+  can suggest translations through the AI assistant — you approve every change.
+

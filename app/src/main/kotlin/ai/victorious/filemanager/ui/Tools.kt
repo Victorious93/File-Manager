@@ -91,6 +91,7 @@ sealed interface ToolRequest {
     data class CompareApks(val left: String, val right: String, val dir: String) : ToolRequest
     data class SmaliTools(val target: String, val mapping: String?, val dir: String) : ToolRequest
     data class ApkMod(val path: String, val dir: String) : ToolRequest
+    data class MtNpTools(val path: String, val dir: String) : ToolRequest
 }
 
 @Composable
@@ -159,6 +160,13 @@ fun ToolsPane(state: UiState, onEvent: (UiEvent) -> Unit) {
             ToolItem(Icons.Outlined.Compare, "Compare two APKs", "Manifest, permissions, DEX classes, resources (${apks.size} APK selected)") {
                 if (apks.size == 2) onEvent(UiEvent.OpenTool(ToolRequest.CompareApks(apks[0].path, apks[1].path, dir)))
                 else onEvent(UiEvent.ShowMessage("Select exactly 2 .apk files in Files, then come back"))
+            }
+        }
+        item {
+            ToolItem(Icons.Outlined.Build, "DEX / ARSC tools", "Repair, merge/split, string decrypt, edit, translation mode") {
+                val target = files.filter { isApk(it.path) || it.extension.equals("dex", true) || it.name.equals("resources.arsc", true) }
+                if (target.size == 1) onEvent(UiEvent.OpenTool(ToolRequest.MtNpTools(target[0].path, dir)))
+                else onEvent(UiEvent.ShowMessage("Select one .apk, .dex, or resources.arsc"))
             }
         }
         item {
@@ -243,6 +251,7 @@ fun ToolHost(request: ToolRequest, onClose: () -> Unit, onEvent: (UiEvent) -> Un
         is ToolRequest.CompareApks -> ApkCompareScreen(File(request.left), File(request.right), request.dir, onClose, onEvent)
         is ToolRequest.SmaliTools -> SmaliToolsScreen(File(request.target), request.mapping?.let(::File), request.dir, onClose, onEvent)
         is ToolRequest.ApkMod -> ApkModScreen(request.path, request.dir, onClose, onEvent)
+        is ToolRequest.MtNpTools -> MtNpScreen(File(request.path), request.dir, onClose, onEvent)
     }
 }
 
