@@ -153,6 +153,7 @@ dependencies {
     implementation(libs.glance.appwidget)
     implementation(libs.glance.material3)
     implementation(libs.androidx.documentfile)
+    implementation(libs.androidx.exifinterface)
     implementation(libs.androidx.work.runtime)
     debugImplementation(libs.androidx.compose.ui.tooling)
     testImplementation(libs.junit)
