@@ -44,6 +44,11 @@ class BookmarkStore(
         save(load().filterNot { it.id == id })
     }
 
+    /** Replaces every bookmark (used by config.import after confirmation). */
+    fun replaceAll(entries: List<Bookmark>) {
+        save(entries.distinctBy { it.id })
+    }
+
     fun isBookmarked(path: String): Boolean {
         val normalized = PathHelpers.normalize(path)
         return load().any { it.path == normalized }

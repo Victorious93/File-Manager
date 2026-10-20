@@ -1,5 +1,6 @@
 package ai.victorious.filemanager.core.fleet
 
+import ai.victorious.filemanager.core.priv.ShizukuState
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -13,6 +14,7 @@ import kotlinx.serialization.json.buildJsonObject
  * Gating order (see docs/FLEET_BRIDGE.md):
  * 1. envelope parse / protocol_major / target node
  * 2. caller identity ([CallerPolicy]) -> unauthorized_caller
+ * Frozen v1 envelope ops are routed to [EnvelopeExecutor] first (own gating/error codes).
  * 3. external-control toggle -> external_control_disabled, except the
  *    read-only capabilities.get / status which answer with enabled:false
  */
@@ -21,7 +23,47 @@ class BridgeExecutor(
     private val version: String = APP_VERSION,
     private val policy: CallerPolicy = CallerPolicy(),
     private val externalControlEnabled: () -> Boolean = { false },
+    packageName: String = APPLICATION_ID,
+    clock: () -> Long = System::currentTimeMillis,
+    shizukuState: () -> ShizukuState? = { null },
+    replayGuard: ReplayGuard = ReplayGuard(),
+    confirmation: RemoteConfirmation = RemoteConfirmation.NEVER,
+    extraOps: List<NodeOp> = emptyList(),
+    configBackup: NodeConfigBackup? = null,
+    configRemoteAllowed: Boolean = false,
+    confirmationBroker: ConfirmationBroker? = null,
 ) {
+    /** Frozen fleet envelope v1 (capabilities.get, remote.command, macro.*, node.status.get). */
+    val envelope = EnvelopeExecutor(
+        nodeId = nodeId,
+        packageName = packageName,
+        policy = policy,
+        externalControlEnabled = externalControlEnabled,
+        clock = clock,
+        shizukuState = shizukuState,
+        replay = replayGuard,
+        confirmation = confirmation,
+        extraOps = extraOps,
+        configBackup = configBackup,
+        configRemoteAllowed = configRemoteAllowed,
+        broker = confirmationBroker,
+        legacyStatus = { status(externalControlEnabled()) },
+    )
+
+    /**
+     * Messenger entry point. Identical to [handle] except that v1 requests needing on-device
+     * confirmation are held (see [ConfirmationBroker]); [reply] is invoked exactly once.
+     */
+    fun handleAsync(requestLine: String, caller: CallerIdentity?, reply: (String) -> Unit) {
+        val request = runCatching { bridgeJson.decodeFromString<BridgeRequest>(requestLine.trim()) }.getOrNull()
+        if (request == null || request.protocolMajor != BRIDGE_PROTOCOL_MAJOR || request.operation !in EnvelopeOp.ROUTED) {
+            reply(handle(requestLine, caller)); return
+        }
+        envelope.handleAsync(request, caller) { out ->
+            reply(if (out.ok) ok(request.requestId, out.result!!) else fail(request.requestId, out.category!!, out.message.orEmpty()))
+        }
+    }
+
     fun handle(requestLine: String, caller: CallerIdentity?): String {
         if (requestLine.isBlank()) {
             return fail(null, ErrorCategory.MALFORMED, "empty request")
@@ -38,6 +80,10 @@ class BridgeExecutor(
                 "unsupported protocol_major ${request.protocolMajor}; this stub speaks $BRIDGE_PROTOCOL_MAJOR",
             )
         }
+        if (request.operation in EnvelopeOp.ROUTED) {
+            val out = envelope.handle(request, caller)
+            return if (out.ok) ok(request.requestId, out.result!!) else fail(request.requestId, out.category!!, out.message.orEmpty())
+        }
         if (request.targetNodeId.isNotBlank() && request.targetNodeId != nodeId) {
             return fail(
                 request.requestId,
@@ -48,6 +94,9 @@ class BridgeExecutor(
         val decision = policy.evaluate(caller)
         if (!decision.allowed) {
             return fail(request.requestId, ErrorCategory.UNAUTHORIZED_CALLER, decision.reason)
+        }
+        if (!decision.mayInvoke(request.operation)) {
+            return fail(request.requestId, ErrorCategory.UNAUTHORIZED_CALLER, "caller ${decision.matchedPackage} may not invoke '${request.operation}'")
         }
         val enabled = externalControlEnabled()
         if (!enabled && request.operation != BridgeOp.CAPABILITIES && request.operation != BridgeOp.STATUS) {
