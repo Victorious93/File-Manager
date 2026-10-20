@@ -135,12 +135,12 @@ fun ToolsPane(state: UiState, onEvent: (UiEvent) -> Unit) {
             }
         }
         item {
-        item {
-            ToolItem(Icons.Outlined.Image, "Photo tools", "EXIF view/edit/strip, batch rename, resize/convert (${files.size} selected)") {
+            ToolItem(Icons.Outlined.PhotoCamera, "Photo tools", "EXIF view/edit/strip, batch rename, resize/convert (${files.size} selected)") {
                 if (files.isEmpty()) onEvent(UiEvent.ShowMessage("Select image files in Files first"))
                 else onEvent(UiEvent.OpenTool(ToolRequest.PhotoTools(files.map { it.absolutePath }, dir)))
             }
         }
+        item {
             ToolItem(Icons.Outlined.Compare, "Folder sync", "One-way / two-way sync, dry-run, conflicts, schedule") {
                 onEvent(UiEvent.OpenTool(ToolRequest.FolderSync(dir)))
             }
