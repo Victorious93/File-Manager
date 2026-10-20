@@ -33,6 +33,8 @@ class EnvelopeExecutor(
     private val confirmation: RemoteConfirmation = RemoteConfirmation.NEVER,
     /** When set, [handleAsync] holds confirm-needing remote.command / macro.step / config.import until the user decides. */
     private val broker: ConfirmationBroker? = null,
+    /** Media Pro player; null -> media.* are capability_off placeholders. */
+    media: ai.victorious.filemanager.core.media.pro.MediaRemote? = null,
     extraOps: List<NodeOp> = emptyList(),
     private val configBackup: NodeConfigBackup? = null,
     /** UNIFIED_BACKUP default is false; only an explicit owner decision may raise it. */
@@ -50,7 +52,7 @@ class EnvelopeExecutor(
         }
         add(NodeOp(ConfigOps.EXPORT, OpKind.ACTION, remoteAllowed = configRemoteAllowed, requiresConfirm = false, enabled = configBackup != null) { a -> configExport(a) })
         add(NodeOp(ConfigOps.IMPORT, OpKind.ACTION, remoteAllowed = configRemoteAllowed, requiresConfirm = true, enabled = configBackup != null) { a -> configImport(a) })
-        addAll(MediaOps.placeholders)
+        addAll(media?.let { ai.victorious.filemanager.core.media.pro.MediaBridgeOps.ops(it) } ?: MediaOps.placeholders)
         addAll(extraOps)
     }.associateBy { it.name }
 

@@ -27,6 +27,7 @@
     <queries>
         <package android:name="ai.droidcommand.app" />
         <package android:name="ai.droidcommand.app.debug" />
+        <package android:name="com.victorious.keyboard.debug" />
         <package android:name="moe.shizuku.privileged.api" />
         <intent>
             <action android:name="rikka.shizuku.intent.action.REQUEST_PERMISSION" />
@@ -67,6 +68,15 @@
                 <data android:mimeType="application/pdf" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".media.MediaProActivity"
+            android:exported="false"
+            android:supportsPictureInPicture="true"
+            android:resizeableActivity="true"
+            android:launchMode="singleTask"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboardHidden"
+            android:theme="@style/Theme.VictoriousFileManager" />
 
         <activity
             android:name=".fleet.RemoteConfirmActivity"
