@@ -221,7 +221,7 @@ class AppManagerService(private val context: Context, private val privilege: Pri
     fun usage(startMs: Long, endMs: Long): List<ai.victorious.filemanager.core.appmgr.AppUsage> {
         if (!hasUsageAccess()) return emptyList()
         val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-        val stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_INTERVAL_DAILY, startMs, endMs).orEmpty()
+        val stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startMs, endMs).orEmpty()
         return ai.victorious.filemanager.core.appmgr.UsageAggregator.merge(
             stats.map {
                 ai.victorious.filemanager.core.appmgr.AppUsage(
