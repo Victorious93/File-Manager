@@ -68,6 +68,10 @@ class FileManagerApplication : Application() {
         private set
     lateinit var connections: ConnectionRepository
         private set
+    /** Saved archive passwords (Keystore-encrypted, noBackupFilesDir). Created lazily; main-thread safe to read the reference only. */
+    val archivePasswords: ai.victorious.filemanager.core.archive.ArchivePasswordStore by lazy {
+        ai.victorious.filemanager.archive.ArchivePasswords.create(this)
+    }
     lateinit var wifiTransfer: WifiTransferController
         private set
     lateinit var serverMode: ServerModeController
