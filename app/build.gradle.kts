@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "ai.victorious.victorfiles"
+    namespace = "ai.victorious.filemanager"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "ai.victorious.victorfiles"
+        applicationId = "ai.victorious.filemanager"
         minSdk = 26
         targetSdk = 35
         versionCode = 1
@@ -29,7 +29,7 @@ android {
         // Custom-scheme OAuth redirect. Overridable (e.g. Google needs the reversed client-ID
         // scheme: -PoauthRedirectScheme=com.googleusercontent.apps.XXXX). See docs/CLOUD.md.
         val oauthScheme = (project.findProperty("oauthRedirectScheme") as String?)?.trim().takeUnless { it.isNullOrEmpty() }
-            ?: "ai.victorious.victorfiles"
+            ?: "ai.victorious.filemanager"
         manifestPlaceholders["oauthRedirectScheme"] = oauthScheme
         buildConfigField("String", "OAUTH_REDIRECT_SCHEME", "\"$oauthScheme\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -99,6 +99,7 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+        aidl = true
     }
 
     packaging {

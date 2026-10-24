@@ -10,9 +10,9 @@ permission, no DependencyGuard, and DroidCommand AI is never required.
 
 | Item | Value |
 |---|---|
-| Service | `ai.victorious.victorfiles.fleet.FileManagerBridgeService` (exported) |
-| Bind action | `ai.victorious.victorfiles.action.BRIDGE` — `onBind` returns `null` for any other (or missing) action |
-| Package | `ai.victorious.victorfiles` (debug: `ai.victorious.victorfiles.debug`) |
+| Service | `ai.victorious.filemanager.fleet.FileManagerBridgeService` (exported) |
+| Bind action | `ai.victorious.filemanager.action.BRIDGE` — `onBind` returns `null` for any other (or missing) action |
+| Package | `ai.victorious.filemanager` (debug: `ai.victorious.filemanager.debug`) |
 | Request | `Message.what = 1`, `data["request"]` = JSON line, `replyTo` required |
 | Response | `Message.what = 2`, `data["response"]` = JSON line |
 

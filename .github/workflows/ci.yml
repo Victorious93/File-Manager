@@ -48,6 +48,26 @@ jobs:
             "platforms;android-35"
 
 
+      # Fail closed: CI must never silently fall back to the Android default
+      # debug key. (The Gradle fallback stays for local / fork builds only.)
+      - name: Require VictorFiles debug signing secrets
+        env:
+          DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+          DEBUG_KEYSTORE_PASSWORD: ${{ secrets.DEBUG_KEYSTORE_PASSWORD }}
+          DEBUG_KEY_ALIAS: ${{ secrets.DEBUG_KEY_ALIAS }}
+          DEBUG_KEY_PASSWORD: ${{ secrets.DEBUG_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          missing=()
+          for n in DEBUG_KEYSTORE_BASE64 DEBUG_KEYSTORE_PASSWORD DEBUG_KEY_ALIAS DEBUG_KEY_PASSWORD; do
+            if [ -z "${!n:-}" ]; then missing+=("$n"); fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error title=Debug signing secrets missing::Required secret(s) empty: ${missing[*]}. CI refuses to build a debug APK with the Android default key."
+            exit 1
+          fi
+          echo "signing: all DEBUG_KEYSTORE_* secrets present"
+
       - name: Decode VictorFiles debug keystore
         env:
           DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
@@ -56,22 +76,17 @@ jobs:
           DEBUG_KEY_PASSWORD: ${{ secrets.DEBUG_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          if [ -n "${DEBUG_KEYSTORE_BASE64:-}" ] && [ -n "${DEBUG_KEYSTORE_PASSWORD:-}" ] \
-            && [ -n "${DEBUG_KEY_ALIAS:-}" ] && [ -n "${DEBUG_KEY_PASSWORD:-}" ]; then
-            KS="$RUNNER_TEMP/fm-debug.jks"
-            echo "$DEBUG_KEYSTORE_BASE64" | base64 -d > "$KS"
-            chmod 600 "$KS"
-            {
-              echo "DEBUG_KEYSTORE_FILE=$KS"
-              echo "DEBUG_KEYSTORE_PASSWORD=$DEBUG_KEYSTORE_PASSWORD"
-              echo "DEBUG_KEY_ALIAS=$DEBUG_KEY_ALIAS"
-              echo "DEBUG_KEY_PASSWORD=$DEBUG_KEY_PASSWORD"
-            } >> "$GITHUB_ENV"
-            echo "signing: decoded VictorFiles debug keystore (secrets present)"
-            # Do not print passwords, base64, or keytool -list output here.
-          else
-            echo "signing: DEBUG_KEYSTORE_* secrets missing; assembleDebug will use Android default debug key"
-          fi
+          KS="$RUNNER_TEMP/fm-debug.jks"
+          echo "$DEBUG_KEYSTORE_BASE64" | base64 -d > "$KS"
+          chmod 600 "$KS"
+          {
+            echo "DEBUG_KEYSTORE_FILE=$KS"
+            echo "DEBUG_KEYSTORE_PASSWORD=$DEBUG_KEYSTORE_PASSWORD"
+            echo "DEBUG_KEY_ALIAS=$DEBUG_KEY_ALIAS"
+            echo "DEBUG_KEY_PASSWORD=$DEBUG_KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
+          echo "signing: decoded VictorFiles debug keystore"
+          # Do not print passwords, base64, or keytool -list output here.
 
       - name: Grant Gradle wrapper execute bit
         run: chmod +x gradlew
@@ -87,19 +102,25 @@ jobs:
 
 
       - name: Verify debug APK signing fingerprint
-        if: env.DEBUG_KEYSTORE_FILE != ''
+        env:
+          EXPECTED_SHA256: "8C:1F:E3:C9:E5:34:F2:71:05:C0:68:8F:45:28:D7:7E:47:11:AE:0A:79:DD:08:D1:E8:59:30:B9:E9:48:85:F2"
         run: |
           set -euo pipefail
           APK="$(ls app/build/outputs/apk/debug/*.apk | head -n1)"
           echo "APK=$APK"
           # Print signer cert digests only (no private material).
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$APK" | tee /tmp/apk-certs.txt
-          if grep -qi 'Signer #1 certificate SHA-256 digest' /tmp/apk-certs.txt; then
-            echo "signing: apksigner printed SHA-256 digest for debug APK"
-          else
-            echo "signing: unexpected apksigner output" >&2
+          actual="$(grep -i 'Signer #1 certificate SHA-256 digest' /tmp/apk-certs.txt | head -n1 | sed 's/.*digest:[[:space:]]*//' || true)"
+          norm() { echo "$1" | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]'; }
+          if [ -z "$actual" ]; then
+            echo "::error title=Debug APK signature::apksigner printed no Signer #1 SHA-256 digest"
             exit 1
           fi
+          if [ "$(norm "$actual")" != "$(norm "$EXPECTED_SHA256")" ]; then
+            echo "::error title=Debug APK signed with wrong key::expected SHA-256 $EXPECTED_SHA256, got $actual"
+            exit 1
+          fi
+          echo "signing: debug APK SHA-256 matches VictorFiles debug key"
 
       # Artifact upload is best-effort: this GitHub account has hit Actions
       # artifact storage quota, which we cannot free from the workflow. The
