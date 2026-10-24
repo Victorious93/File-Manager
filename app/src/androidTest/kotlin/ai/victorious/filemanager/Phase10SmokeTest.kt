@@ -5,7 +5,6 @@ import ai.victorious.filemanager.ui.ToolRequest
 import ai.victorious.filemanager.ui.UiEvent
 import ai.victorious.filemanager.ui.theme.ThemeMode
 import androidx.compose.ui.test.hasScrollAction
-import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.performClick
@@ -53,7 +52,7 @@ class Phase10SmokeTest {
         File(root, "deep/er/zebra-unique-p10.txt").writeText("z")
         Smoke.app.index.invalidate()
         Smoke.event(rule, UiEvent.Navigate(Dest.SEARCH))
-        rule.onNode(hasSetTextAction()).performTextInput("zebra-unique-p10 *.txt")
+        rule.onNode(Smoke.input()).performTextInput("zebra-unique-p10 *.txt")
         Smoke.waitText(rule, "files indexed", substring = true, timeoutMs = 60_000)
         Smoke.waitFor(rule, "hit") { Smoke.vm(rule).ui.value.searchHits.any { it.entry.name == "zebra-unique-p10.txt" } }
     }
@@ -86,7 +85,7 @@ class Phase10SmokeTest {
         val apk = File(root, "self.apk").also { File(Smoke.app.applicationInfo.sourceDir).copyTo(it) }
         Smoke.event(rule, UiEvent.OpenTool(ToolRequest.SmaliTools(apk.path, null, root.path)))
         Smoke.waitText(rule, "classes ·", substring = true, timeoutMs = 120_000)
-        rule.onNode(hasSetTextAction()).performTextInput("FileManagerViewModel")
+        rule.onNode(Smoke.input()).performTextInput("FileManagerViewModel")
         Smoke.waitText(rule, "match(es)", substring = true, timeoutMs = 60_000)
         rule.onNode(hasScrollAction()).performScrollToNode(hasText("ai.victorious.filemanager.ui.FileManagerViewModel", substring = true))
     }

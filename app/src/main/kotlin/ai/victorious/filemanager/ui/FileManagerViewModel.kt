@@ -23,6 +23,10 @@ import ai.victorious.filemanager.core.apk.SmaliAssembler
 import ai.victorious.filemanager.core.apk.SmaliAssemblyException
 import ai.victorious.filemanager.core.viewer.FileKind
 import ai.victorious.filemanager.core.viewer.FileKinds
+import ai.victorious.filemanager.core.listing.ListingOptions
+import ai.victorious.filemanager.core.props.FileProperties
+import ai.victorious.filemanager.core.props.FolderStats
+import ai.victorious.filemanager.core.props.HashAlgorithm
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
@@ -69,6 +73,17 @@ data class PaneState(
     val active: TabState get() = tabs[activeIndex.coerceIn(tabs.indices)]
 }
 
+/** Properties dialog; [stats] (folders) and [hashes] (files) fill in once computed. */
+data class PropertiesState(
+    val path: String,
+    val isDirectory: Boolean,
+    val sizeBytes: Long,
+    val modifiedEpochMs: Long,
+    val stats: FolderStats? = null,
+    val hashes: Map<HashAlgorithm, String>? = null,
+    val error: String? = null,
+)
+
 /** Batch-rename dialog: selected paths, the current rules, and the live preview. */
 data class BatchRenameState(
     val targets: List<String>,
@@ -90,7 +105,11 @@ data class UiState(
     val bookmarks: List<Bookmark> = emptyList(),
     val trash: List<TrashEntry> = emptyList(),
     val renameTarget: String? = null,
+    /** File chosen for Split…; the size dialog is shown while non-null. */
+    val splitTarget: String? = null,
     val batchRename: BatchRenameState? = null,
+    val listing: ListingOptions = ListingOptions(),
+    val properties: PropertiesState? = null,
     val showAbout: Boolean = false,
     val nodeId: String = "",
     val dcaInstalled: Boolean = false,
@@ -138,9 +157,18 @@ sealed interface UiEvent {
     data object RequestRename : UiEvent
     data class ConfirmRename(val newName: String) : UiEvent
     data object DismissRename : UiEvent
+    data class RequestSplit(val path: String) : UiEvent
+    data object DismissSplit : UiEvent
+    data class ConfirmSplit(val partSizeBytes: Long) : UiEvent
+    /** Join the numbered parts (name.001, name.002, …) that [path] belongs to. */
+    data class JoinParts(val path: String) : UiEvent
     data class UpdateBatchRename(val spec: RenameSpec) : UiEvent
     data object ConfirmBatchRename : UiEvent
     data object DismissBatchRename : UiEvent
+    data class SetListing(val options: ListingOptions) : UiEvent
+    data class SelectAll(val pane: Int) : UiEvent
+    data class ShowProperties(val path: String) : UiEvent
+    data object CloseProperties : UiEvent
     data object Undo : UiEvent
     data class Navigate(val dest: Dest) : UiEvent
     data class Search(val query: String) : UiEvent
@@ -299,9 +327,33 @@ class FileManagerViewModel(
             UiEvent.RequestRename -> requestRename()
             is UiEvent.ConfirmRename -> confirmRename(event.newName)
             UiEvent.DismissRename -> _ui.update { it.copy(renameTarget = null) }
+            is UiEvent.RequestSplit -> _ui.update { it.copy(splitTarget = event.path) }
+            UiEvent.DismissSplit -> _ui.update { it.copy(splitTarget = null) }
+            is UiEvent.ConfirmSplit -> {
+                val target = _ui.value.splitTarget
+                _ui.update { it.copy(splitTarget = null) }
+                if (target != null) background("Split…", {
+                    ai.victorious.filemanager.core.ops.FileSplit.split(File(target), event.partSizeBytes)
+                }) { parts ->
+                    refreshAll()
+                    snack("Split into ${parts.size} parts (${parts.first().name} …)")
+                }
+            }
+            is UiEvent.JoinParts -> background("Join…", {
+                ai.victorious.filemanager.core.ops.FileSplit.join(File(event.path))
+            }) { out ->
+                refreshAll()
+                snack("Joined into ${out.name}")
+            }
             is UiEvent.UpdateBatchRename -> updateBatchRename(event.spec)
             UiEvent.ConfirmBatchRename -> confirmBatchRename()
             UiEvent.DismissBatchRename -> _ui.update { it.copy(batchRename = null) }
+            is UiEvent.SetListing -> _ui.update { it.copy(listing = event.options) }
+            is UiEvent.SelectAll -> updatePane(event.pane) { p ->
+                p.copy(selected = _ui.value.listing.apply(p.active.entries).map { it.path }.toSet())
+            }
+            is UiEvent.ShowProperties -> showProperties(event.path)
+            UiEvent.CloseProperties -> { propertiesJob?.cancel(); _ui.update { it.copy(properties = null) } }
             UiEvent.Undo -> undo()
             is UiEvent.Navigate -> _ui.update { it.copy(destination = event.dest) }
             is UiEvent.Search -> search(event.query)
@@ -659,6 +711,33 @@ class FileManagerViewModel(
             else -> {
                 val sorted = sources.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { File(it).name })
                 _ui.update { it.copy(batchRename = BatchRenameState(sorted)) }
+            }
+        }
+    }
+
+    private var propertiesJob: kotlinx.coroutines.Job? = null
+
+    private fun showProperties(path: String) {
+        propertiesJob?.cancel()
+        val file = File(path)
+        _ui.update {
+            it.copy(properties = PropertiesState(path, file.isDirectory, if (file.isFile) file.length() else 0L, file.lastModified()))
+        }
+        propertiesJob = viewModelScope.launch {
+            val computed = withContext(Dispatchers.IO) {
+                val self = kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]
+                runCatching {
+                    if (file.isDirectory) FileProperties.folderStats(file) { self?.isActive == false } to null
+                    else null to FileProperties.checksums(file)
+                }
+            }
+            _ui.update { st ->
+                val cur = st.properties ?: return@update st
+                if (cur.path != path) return@update st
+                computed.fold(
+                    onSuccess = { (stats, hashes) -> st.copy(properties = cur.copy(stats = stats, hashes = hashes)) },
+                    onFailure = { st.copy(properties = cur.copy(error = it.message ?: "Cannot read")) },
+                )
             }
         }
     }
