@@ -98,6 +98,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import java.text.DateFormat
@@ -362,6 +363,14 @@ fun FileManagerApp(
             onConfirm = { onEvent(UiEvent.ConfirmRename(it)) },
         )
     }
+    state.splitTarget?.let { path ->
+        SplitDialog(
+            file = File(path),
+            onDismiss = { onEvent(UiEvent.DismissSplit) },
+            onConfirm = { onEvent(UiEvent.ConfirmSplit(it)) },
+        )
+    }
+    state.properties?.let { PropertiesDialog(it, onEvent) }
     state.batchRename?.let { br ->
         LaunchedEffect(br.targets) { onEvent(UiEvent.UpdateBatchRename(br.spec)) }
         BatchRenameDialog(br, onEvent)
@@ -408,15 +417,15 @@ private fun DualPane(state: UiState, onEvent: (UiEvent) -> Unit, onCreate: () ->
     BoxWithConstraints(Modifier.fillMaxSize()) {
         if (panesSideBySide(maxWidth.value, maxHeight.value)) {
             Row(Modifier.fillMaxSize()) {
-                FilePane(0, state.left, state.focusedPane == 0, onEvent, onCreate, Modifier.weight(1f))
+                FilePane(0, state.left, state.focusedPane == 0, state.listing, onEvent, onCreate, Modifier.weight(1f))
                 VerticalDivider()
-                FilePane(1, state.right, state.focusedPane == 1, onEvent, onCreate, Modifier.weight(1f))
+                FilePane(1, state.right, state.focusedPane == 1, state.listing, onEvent, onCreate, Modifier.weight(1f))
             }
         } else {
             Column(Modifier.fillMaxSize()) {
-                FilePane(0, state.left, state.focusedPane == 0, onEvent, onCreate, Modifier.weight(1f))
+                FilePane(0, state.left, state.focusedPane == 0, state.listing, onEvent, onCreate, Modifier.weight(1f))
                 HorizontalDivider()
-                FilePane(1, state.right, state.focusedPane == 1, onEvent, onCreate, Modifier.weight(1f))
+                FilePane(1, state.right, state.focusedPane == 1, state.listing, onEvent, onCreate, Modifier.weight(1f))
             }
         }
     }
@@ -427,6 +436,7 @@ private fun FilePane(
     index: Int,
     pane: PaneState,
     focused: Boolean,
+    listing: ai.victorious.filemanager.core.listing.ListingOptions,
     onEvent: (UiEvent) -> Unit,
     onCreate: () -> Unit,
     modifier: Modifier = Modifier,
@@ -507,6 +517,7 @@ private fun FilePane(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
         )
+        ListingBar(index, listing, onEvent)
         if (pane.active.error != null) {
             Text(
                 pane.active.error!!,
@@ -515,11 +526,12 @@ private fun FilePane(
                 modifier = Modifier.padding(12.dp),
             )
         }
+        val visibleEntries = remember(pane.active.entries, listing) { listing.apply(pane.active.entries) }
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 12.dp),
         ) {
-            items(pane.active.entries, key = { it.path }) { entry ->
+            items(visibleEntries, key = { it.path }) { entry ->
                 FileRow(
                     entry = entry,
                     selected = entry.path in pane.selected,
@@ -541,6 +553,7 @@ private fun FilePane(
                         FolderMenuItems(entry.path, onEvent, dismiss)
                     } else { dismiss ->
                         OpenWithItems(entry.path, onEvent, dismiss)
+                        SplitJoinMenuItem(entry.path, onEvent, dismiss)
                         ShareMenuItem(entry.path, onEvent, dismiss)
                         if (isApk(entry.path)) ApkMenuItems(entry.path, onEvent, dismiss)
                         if (entry.path.endsWith(".dex", ignoreCase = true)) DexMenuItems(entry.path, onEvent, dismiss)
@@ -601,6 +614,7 @@ private fun FileRow(
 
 @Composable
 private fun OpenWithItems(path: String, onEvent: (UiEvent) -> Unit, dismiss: () -> Unit) {
+    DropdownMenuItem(text = { Text("Properties / checksums") }, onClick = { dismiss(); onEvent(UiEvent.ShowProperties(path)) })
     listOf(
         "Open in text editor" to ViewerMode.TEXT,
         "Open in hex editor" to ViewerMode.HEX,
@@ -618,17 +632,86 @@ private fun OpenWithItems(path: String, onEvent: (UiEvent) -> Unit, dismiss: () 
 
 @Composable
 private fun SearchPane(state: UiState, onEvent: (UiEvent) -> Unit) {
+    var inContents by remember { mutableStateOf(false) }
+    var regex by remember { mutableStateOf(false) }
+    var globs by remember { mutableStateOf("") }
+    var contentHits by remember { mutableStateOf<List<ai.victorious.filemanager.core.search.ContentHit>>(emptyList()) }
+    var contentError by remember { mutableStateOf<String?>(null) }
+    val scope = pane(state).active.path
+    LaunchedEffect(inContents, regex, globs, state.searchQuery, scope) {
+        if (!inContents) { contentHits = emptyList(); contentError = null; return@LaunchedEffect }
+        kotlinx.coroutines.delay(350)
+        val q = ai.victorious.filemanager.core.search.ContentQuery(
+            text = state.searchQuery,
+            regex = regex,
+            nameGlobs = globs.split(',', ' ').filter { it.isNotBlank() },
+        )
+        val r = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val job = kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]
+            runCatching { ai.victorious.filemanager.core.search.ContentSearch.search(File(scope), q) { job?.isActive == false } }
+        }
+        r.onSuccess { contentHits = it; contentError = null }.onFailure { contentError = it.message; contentHits = emptyList() }
+    }
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         OutlinedTextField(
             value = state.searchQuery,
             onValueChange = { onEvent(UiEvent.Search(it)) },
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("Search this device") },
-            supportingText = { Text("Terms are AND-ed · *.pdf filters by type · /folder matches the path") },
+            label = { Text(if (inContents) "Search inside files" else "Search this device") },
+            supportingText = { Text("Terms are AND-ed · *.pdf · /folder · type:image · size>10mb · newer:7d") },
             singleLine = true,
             leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
         )
+        if (!inContents) {
+            // Library-style quick filters: each chip swaps its own token into the query.
+            fun withToken(prefix: String, token: String): String {
+                val kept = state.searchQuery.split(' ').filter { it.isNotBlank() && !it.startsWith(prefix) }
+                return (kept + token).joinToString(" ")
+            }
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                ai.victorious.filemanager.core.search.FileCategory.entries.forEach { c ->
+                    FilterChip(
+                        selected = "type:${c.token}" in state.searchQuery.split(' '),
+                        onClick = { onEvent(UiEvent.Search(withToken("type:", "type:${c.token}"))) },
+                        label = { Text(c.label) },
+                    )
+                }
+                FilterChip(
+                    selected = "newer:7d" in state.searchQuery.split(' '),
+                    onClick = { onEvent(UiEvent.Search(withToken("newer:", "newer:7d"))) },
+                    label = { Text("Recent") },
+                )
+                FilterChip(
+                    selected = "size>100mb" in state.searchQuery.split(' '),
+                    onClick = { onEvent(UiEvent.Search(withToken("size>", "size>100mb"))) },
+                    label = { Text("Large") },
+                )
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(inContents, { inContents = it }); Text("File contents")
+            Spacer(Modifier.width(8.dp))
+            Checkbox(regex, { regex = it }, enabled = inContents); Text("Regex")
+        }
+        if (inContents) {
+            OutlinedTextField(globs, { globs = it }, label = { Text("Only files (e.g. *.smali, *.xml)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            Text("Searching in $scope", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            contentError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        }
         Spacer(Modifier.height(12.dp))
+        if (inContents) {
+            Text("${contentHits.size} matches", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            LazyColumn {
+                items(contentHits) { hit ->
+                    Column(Modifier.fillMaxWidth().clickable { onEvent(UiEvent.OpenFile(hit.path)) }.padding(vertical = 6.dp)) {
+                        Text("${File(hit.path).name}:${hit.line}", fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(hit.text.trim(), style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(hit.path, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+            return@Column
+        }
         Text(
             state.searchStatus ?: "${state.searchHits.size} results",
             style = MaterialTheme.typography.bodySmall,
@@ -728,6 +811,103 @@ private fun EmptyState(title: String, body: String) {
 }
 
 @Composable
+private fun ListingBar(
+    pane: Int,
+    options: ai.victorious.filemanager.core.listing.ListingOptions,
+    onEvent: (UiEvent) -> Unit,
+) {
+    var menu by remember { mutableStateOf(false) }
+    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        OutlinedTextField(
+            options.filter,
+            { onEvent(UiEvent.SetListing(options.copy(filter = it))) },
+            placeholder = { Text("Filter") },
+            singleLine = true,
+            modifier = Modifier.weight(1f).testTag("listing-filter"),
+        )
+        TextButton(onClick = { onEvent(UiEvent.SelectAll(pane)) }) { Text("All") }
+        Box {
+            TextButton(onClick = { menu = true }) { Text("Sort") }
+            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                ai.victorious.filemanager.core.listing.SortKey.entries.forEach { key ->
+                    DropdownMenuItem(
+                        text = { Text((if (options.sortKey == key) "● " else "") + key.name.lowercase().replaceFirstChar { it.uppercase() }) },
+                        onClick = { onEvent(UiEvent.SetListing(options.copy(sortKey = key))); menu = false },
+                    )
+                }
+                DropdownMenuItem(
+                    text = { Text(if (options.ascending) "Ascending ✓" else "Descending ✓") },
+                    onClick = { onEvent(UiEvent.SetListing(options.copy(ascending = !options.ascending))); menu = false },
+                )
+                DropdownMenuItem(
+                    text = { Text((if (options.foldersFirst) "✓ " else "") + "Folders first") },
+                    onClick = { onEvent(UiEvent.SetListing(options.copy(foldersFirst = !options.foldersFirst))); menu = false },
+                )
+                DropdownMenuItem(
+                    text = { Text((if (options.showHidden) "✓ " else "") + "Show hidden") },
+                    onClick = { onEvent(UiEvent.SetListing(options.copy(showHidden = !options.showHidden))); menu = false },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PropertiesDialog(p: PropertiesState, onEvent: (UiEvent) -> Unit) {
+    var expected by remember(p.path) { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = { onEvent(UiEvent.CloseProperties) },
+        title = { Text(File(p.path).name.ifEmpty { p.path }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(p.path, style = MaterialTheme.typography.bodySmall)
+                Text("Modified: ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date(p.modifiedEpochMs))}")
+                if (p.isDirectory) {
+                    p.stats?.let {
+                        Text("${it.files} file(s), ${it.folders} folder(s)")
+                        Text("Total ${ai.victorious.filemanager.core.storage.StorageAnalyzer.human(it.bytes)} (${it.bytes} bytes)")
+                        if (it.unreadable > 0) Text("${it.unreadable} folder(s) unreadable", color = MaterialTheme.colorScheme.error)
+                    } ?: Text("Calculating…")
+                } else {
+                    Text("Size: ${ai.victorious.filemanager.core.storage.StorageAnalyzer.human(p.sizeBytes)} (${p.sizeBytes} bytes)")
+                    p.hashes?.let { hashes ->
+                        hashes.forEach { (alg, value) ->
+                            Text("${alg.jca}: $value", style = MaterialTheme.typography.bodySmall)
+                        }
+                        OutlinedTextField(expected, { expected = it }, label = { Text("Paste a checksum to compare") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                        if (expected.isNotBlank()) {
+                            val ok = hashes.values.any { ai.victorious.filemanager.core.props.FileProperties.matches(expected, it) }
+                            Text(
+                                if (ok) "Match" else "No match",
+                                color = if (ok) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    } ?: Text("Hashing…")
+                }
+                p.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                val current = remember(p.path) { ai.victorious.filemanager.core.props.FileMode.read(File(p.path)) }
+                if (current != null) {
+                    HorizontalDivider()
+                    var modeText by remember(p.path) { mutableStateOf(current.octal) }
+                    var recursive by remember(p.path) { mutableStateOf(false) }
+                    var modeMsg by remember(p.path) { mutableStateOf<String?>(null) }
+                    val parsed = runCatching { ai.victorious.filemanager.core.props.FileMode.parse(modeText) }.getOrNull()
+                    Text("Permissions: ${current.symbolic} (${current.octal})")
+                    OutlinedTextField(modeText, { modeText = it }, label = { Text("Mode (e.g. 755 or rwxr-xr-x)") }, singleLine = true, isError = parsed == null, modifier = Modifier.fillMaxWidth())
+                    if (p.isDirectory) Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(recursive, { recursive = it }); Text("Apply to contents") }
+                    TextButton(enabled = parsed != null, onClick = {
+                        modeMsg = runCatching { "Changed ${ai.victorious.filemanager.core.props.FileMode.apply(File(p.path), parsed!!, recursive)} item(s)" }
+                            .getOrElse { "Failed: ${it.message}" }
+                    }) { Text("Apply mode") }
+                    modeMsg?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onEvent(UiEvent.CloseProperties) }) { Text("Close") } },
+    )
+}
+
+@Composable
 private fun CreateDialog(onDismiss: () -> Unit, onConfirm: (name: String, folder: Boolean) -> Unit) {
     var value by remember { mutableStateOf("") }
     val ok = value.trim().isNotEmpty() && ai.victorious.filemanager.core.path.PathHelpers.isValidFileName(value.trim())
@@ -798,6 +978,45 @@ private fun BatchRenameDialog(state: BatchRenameState, onEvent: (UiEvent) -> Uni
             Button(onClick = { onEvent(UiEvent.ConfirmBatchRename) }, enabled = state.plan.isApplicable) { Text("Rename") }
         },
         dismissButton = { TextButton(onClick = { onEvent(UiEvent.DismissBatchRename) }) { Text("Cancel") } },
+    )
+}
+
+private val PART_NAME = Regex("""\.\d{3}$""")
+
+@Composable
+private fun SplitJoinMenuItem(path: String, onEvent: (UiEvent) -> Unit, dismiss: () -> Unit) {
+    if (PART_NAME.containsMatchIn(path)) {
+        DropdownMenuItem(text = { Text("Join parts") }, onClick = { dismiss(); onEvent(UiEvent.JoinParts(path)) })
+    } else {
+        DropdownMenuItem(text = { Text("Split file…") }, onClick = { dismiss(); onEvent(UiEvent.RequestSplit(path)) })
+    }
+}
+
+@Composable
+private fun SplitDialog(file: File, onDismiss: () -> Unit, onConfirm: (Long) -> Unit) {
+    var text by remember { mutableStateOf("100") }
+    val size = ai.victorious.filemanager.core.ops.FileSplit.parseSize(text)
+    val length = remember(file) { file.length() }
+    val parts = size?.let { (length + it - 1) / it }
+    val max = ai.victorious.filemanager.core.ops.FileSplit.MAX_PARTS
+    val error = when {
+        size == null -> "Enter a size like 100, 50MB, 1.5GB, 700k (bare numbers are MB)"
+        parts!! < 2 -> "Part size is not smaller than the file (${length} bytes)"
+        parts > max -> "$parts parts is over the $max limit; use a larger size"
+        else -> null
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Split ${file.name}") },
+        text = {
+            OutlinedTextField(
+                value = text, onValueChange = { text = it }, singleLine = true, label = { Text("Part size") },
+                isError = error != null,
+                supportingText = { Text(error ?: "$parts parts: ${file.name}.001 … in this folder") },
+            )
+        },
+        confirmButton = { Button(onClick = { onConfirm(size!!) }, enabled = error == null) { Text("Split") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }
 

@@ -5,4 +5,11 @@
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar">true</item>
     </style>
+    <!-- Translucent window for PanelActivity: the host app stays visible behind the sheet. -->
+    <style name="Theme.VictorFiles.Panel" parent="Theme.VictoriousFileManager">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
 </resources>
