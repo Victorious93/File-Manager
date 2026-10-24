@@ -33,4 +33,20 @@ class EncryptedZipTest {
         assertEquals(1, EncryptedZip.extract(zip, File(dir, "o"), null))
         dir.deleteRecursively()
     }
+
+    @Test fun verifyPasswordWritesNothingAndDistinguishesPasswords() {
+        for (aes in listOf(true, false)) {
+            val dir = Files.createTempDirectory("ez3").toFile()
+            val a = File(dir, "big.txt").apply { writeText("x".repeat(50_000)) }
+            val b = File(dir, "small.txt").apply { writeText("tiny") }
+            val zip = File(dir, "v.zip")
+            EncryptedZip.create(listOf(a, b), zip, "pw".toCharArray(), aes = aes)
+            val before = dir.list()!!.toSet()
+            assertTrue("aes=$aes right", EncryptedZip.verifyPassword(zip, "pw".toCharArray()))
+            assertFalse("aes=$aes wrong", EncryptedZip.verifyPassword(zip, "nope".toCharArray()))
+            assertEquals(before, dir.list()!!.toSet())
+            dir.deleteRecursively()
+        }
+    }
 }
+
