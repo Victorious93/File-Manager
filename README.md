@@ -1,4 +1,8 @@
 <p align="center">
+  <img src="assets/logo.png" alt="File-Manager logo" width="200">
+</p>
+
+<p align="center">
   <img src="docs/assets/logo.png" alt="VictorFiles logo" width="240">
 </p>
 
@@ -10,7 +14,7 @@ This app is an MT Manager–class product: **it works fully on its own**. It is 
 
 ## Features (Phases 1–7)
 
-See also `docs/BATCH_RENAME.md`, `docs/APK_TOOLS.md`, `docs/POWER_TOOLS.md`, `docs/NETWORK.md`, `docs/AI_ASSISTANT.md`, `docs/PLUGINS.md`, and `docs/SECURE_FOLDER.md`.
+See also `docs/BATCH_RENAME.md`, `docs/BROWSING.md`, `docs/APK_TOOLS.md`, `docs/POWER_TOOLS.md`, `docs/NETWORK.md`, `docs/AI_ASSISTANT.md`, `docs/PLUGINS.md`, and `docs/SECURE_FOLDER.md`.
 
 ### Phase 1 includes
 

@@ -13,6 +13,25 @@ class WrongPasswordException(message: String) : java.io.IOException(message)
 object EncryptedZip {
     fun isEncrypted(file: File): Boolean = runCatching { ZipFile(file).isEncrypted }.getOrDefault(false)
 
+    /**
+     * True when [password] decrypts this ZIP. Writes nothing: it reads the smallest file entry fully
+     * (so the CRC / AES MAC is checked, not just the 1-2 byte quick check) and discards the bytes.
+     * An archive with no file entries has nothing to verify and returns true.
+     */
+    fun verifyPassword(file: File, password: CharArray): Boolean {
+        val zip = ZipFile(file, password)
+        val probe = zip.fileHeaders.filter { !it.isDirectory }.minByOrNull { it.uncompressedSize } ?: return true
+        return try {
+            zip.getInputStream(probe).use { input ->
+                val buf = ByteArray(8192)
+                while (input.read(buf) >= 0) { /* discard */ }
+            }
+            true
+        } catch (e: ZipException) {
+            if (e.type == ZipException.Type.WRONG_PASSWORD || e.message?.contains("password", true) == true) false else throw e
+        }
+    }
+
     /** Extracts all entries, rejecting zip-slip paths. Returns number of files written. */
     fun extract(file: File, destDir: File, password: CharArray?): Int {
         val zip = ZipFile(file, password)

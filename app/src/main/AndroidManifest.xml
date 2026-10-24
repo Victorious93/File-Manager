@@ -88,6 +88,22 @@
             android:taskAffinity="${applicationId}.confirm"
             android:theme="@style/Theme.VictoriousFileManager" />
 
+        <!-- Right-edge sheet for host apps (VictorSuite's swipe-out drawer). Same UI as MainActivity,
+             grants the caller no file access, so it is exported without caller gating.
+             See docs/VICTORSUITE_PANEL.md. -->
+        <activity
+            android:name=".panel.PanelActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.VictorFiles.Panel"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="ai.victorious.victorfiles.action.PANEL" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.files"

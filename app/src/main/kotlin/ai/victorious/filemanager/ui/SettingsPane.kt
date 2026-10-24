@@ -26,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.launch
 import androidx.compose.ui.unit.dp
 
 @Composable
@@ -91,6 +92,7 @@ fun SettingsPane(onEvent: (UiEvent) -> Unit = {}) {
 
         AiSettingsSection(onEvent)
         SecureFolderSettingsSection()
+        ArchivePasswordsSection(onEvent)
 
         Text("Fleet", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -153,6 +155,25 @@ private fun AiSettingsSection(onEvent: (UiEvent) -> Unit) {
         }) { Text("Save") }
         OutlinedButton(enabled = hasKey, onClick = { ai.clearKey(); hasKey = false; onEvent(UiEvent.ShowMessage("API key removed")) }) { Text("Remove key") }
     }
+}
+
+@Composable
+private fun ArchivePasswordsSection(onEvent: (UiEvent) -> Unit) {
+    val store = (LocalContext.current.applicationContext as FileManagerApplication).archivePasswords
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var count by remember { mutableStateOf<Int?>(null) }
+    // Keystore + file I/O stay off the main thread.
+    androidx.compose.runtime.LaunchedEffect(Unit) { count = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { store.list().size }.getOrDefault(0) } }
+    Text("Saved archive passwords", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
+    Text(
+        "${count ?: "…"} saved, encrypted with a key in the Android Keystore (never backed up). Tried automatically on encrypted ZIPs.",
+        style = MaterialTheme.typography.bodySmall,
+    )
+    OutlinedButton(enabled = (count ?: 0) > 0, onClick = {
+        count = 0
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) { runCatching { store.clear() } }
+        onEvent(UiEvent.ShowMessage("Saved archive passwords cleared"))
+    }) { Text("Clear all") }
 }
 
 @Composable
