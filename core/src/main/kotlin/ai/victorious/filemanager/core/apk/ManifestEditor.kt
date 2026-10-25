@@ -1,7 +1,10 @@
 package ai.victorious.filemanager.core.apk
 
 import ai.victorious.filemanager.core.apk.AxmlEditor.Companion.ATTR_AUTHORITIES
+import ai.victorious.filemanager.core.apk.AxmlEditor.Companion.ATTR_ALLOW_BACKUP
 import ai.victorious.filemanager.core.apk.AxmlEditor.Companion.ATTR_DEBUGGABLE
+import ai.victorious.filemanager.core.apk.AxmlEditor.Companion.ATTR_EXTRACT_NATIVE_LIBS
+import ai.victorious.filemanager.core.apk.AxmlEditor.Companion.ATTR_USES_CLEARTEXT_TRAFFIC
 import ai.victorious.filemanager.core.apk.AxmlEditor.Companion.ATTR_EXPORTED
 import ai.victorious.filemanager.core.apk.AxmlEditor.Companion.ATTR_MIN_SDK
 import ai.victorious.filemanager.core.apk.AxmlEditor.Companion.ATTR_NAME
@@ -21,6 +24,12 @@ data class ManifestSummary(
     val minSdk: Int?,
     val targetSdk: Int?,
     val debuggable: Boolean,
+    /** Explicit android:allowBackup on <application>, or null when the attribute is absent. */
+    val allowBackup: Boolean?,
+    /** Explicit android:usesCleartextTraffic on <application>, or null when absent. */
+    val usesCleartextTraffic: Boolean?,
+    /** Explicit android:extractNativeLibs on <application>, or null when absent. */
+    val extractNativeLibs: Boolean?,
     val permissions: List<String>,
     val components: List<ManifestComponent>,
 )
@@ -38,6 +47,12 @@ data class ManifestEdit(
     val minSdk: Int? = null,
     val targetSdk: Int? = null,
     val debuggable: Boolean? = null,
+    /** Set android:allowBackup on <application> (true/false). Null = leave unchanged. */
+    val allowBackup: Boolean? = null,
+    /** Set android:usesCleartextTraffic on <application>. Null = leave unchanged. */
+    val usesCleartextTraffic: Boolean? = null,
+    /** Set android:extractNativeLibs on <application>. Null = leave unchanged. */
+    val extractNativeLibs: Boolean? = null,
     val addPermissions: List<String> = emptyList(),
     val removePermissions: List<String> = emptyList(),
     val exported: Map<String, Boolean> = emptyMap(),
@@ -61,6 +76,9 @@ object ManifestEditor {
         else -> name
     }
 
+    private fun boolAttr(ed: AxmlEditor, e: AxmlEditor.Element?, id: Int): Boolean? =
+        e?.let { ed.attr(it, id) }?.takeIf { it.type == AxmlEditor.TYPE_INT_BOOLEAN }?.let { it.data != 0 }
+
     fun summary(bytes: ByteArray): ManifestSummary = summary(AxmlEditor.parse(bytes))
 
     fun summary(ed: AxmlEditor): ManifestSummary {
@@ -78,6 +96,9 @@ object ManifestEditor {
             minSdk = intAttr(sdk, ATTR_MIN_SDK),
             targetSdk = intAttr(sdk, ATTR_TARGET_SDK),
             debuggable = app?.let { ed.attr(it, ATTR_DEBUGGABLE) }?.let { it.type == AxmlEditor.TYPE_INT_BOOLEAN && it.data != 0 } ?: false,
+            allowBackup = boolAttr(ed, app, ATTR_ALLOW_BACKUP),
+            usesCleartextTraffic = boolAttr(ed, app, ATTR_USES_CLEARTEXT_TRAFFIC),
+            extractNativeLibs = boolAttr(ed, app, ATTR_EXTRACT_NATIVE_LIBS),
             permissions = (ed.elements("uses-permission") + ed.elements("uses-permission-sdk-23"))
                 .mapNotNull { e -> ed.attr(e, ATTR_NAME)?.let(ed::valueOf) },
             components = ed.elements.filter { ed.elementName(it) in COMPONENT_TAGS }.mapNotNull { e ->
@@ -123,6 +144,12 @@ object ManifestEditor {
         edit.debuggable?.let { on ->
             val app = ed.elements("application").firstOrNull() ?: error("No <application> element")
             if (on) ed.setBool(app, ATTR_DEBUGGABLE, true) else ed.removeAttr(app, ATTR_DEBUGGABLE)
+        }
+        if (edit.allowBackup != null || edit.usesCleartextTraffic != null || edit.extractNativeLibs != null) {
+            val app = ed.elements("application").firstOrNull() ?: error("No <application> element")
+            edit.allowBackup?.let { ed.setBool(app, ATTR_ALLOW_BACKUP, it) }
+            edit.usesCleartextTraffic?.let { ed.setBool(app, ATTR_USES_CLEARTEXT_TRAFFIC, it) }
+            edit.extractNativeLibs?.let { ed.setBool(app, ATTR_EXTRACT_NATIVE_LIBS, it) }
         }
         for (perm in edit.removePermissions) {
             (ed.elements("uses-permission") + ed.elements("uses-permission-sdk-23"))

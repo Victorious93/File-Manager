@@ -12,6 +12,9 @@ import kotlinx.serialization.json.JsonObject
  * hub signature permission, and it does not require DCA.
  */
 const val BRIDGE_PROTOCOL_MAJOR = 1
+
+/** Frozen fleet remote-control envelope v1 minor; advertised in `capabilities.get` only. */
+const val BRIDGE_PROTOCOL_MINOR = 1
 const val BRIDGE_ACTION = "ai.victorious.filemanager.action.BRIDGE"
 const val BRIDGE_PACKAGE = "ai.victorious.filemanager"
 const val BRIDGE_PACKAGE_DEBUG = "ai.victorious.filemanager.debug"

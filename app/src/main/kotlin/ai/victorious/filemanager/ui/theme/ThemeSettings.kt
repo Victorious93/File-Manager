@@ -40,6 +40,11 @@ class ThemeSettings(context: Context) {
         palette = enumOr(prefs.getString("palette", null), Palette.CLASSIC),
     )
 
+    /** Re-reads SharedPreferences (after a settings import). */
+    fun reload() {
+        _state.value = read()
+    }
+
     fun update(transform: (ThemePrefs) -> ThemePrefs) {
         val next = transform(_state.value)
         prefs.edit()

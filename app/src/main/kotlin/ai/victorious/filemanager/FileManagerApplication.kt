@@ -18,12 +18,15 @@ import ai.victorious.filemanager.priv.ShizukuController
 import ai.victorious.filemanager.core.net.CompositeFileIo
 import ai.victorious.filemanager.net.ConnectionRepository
 import ai.victorious.filemanager.net.WifiTransferController
+import ai.victorious.filemanager.net.ServerModeController
 import ai.victorious.filemanager.terminal.TerminalSessionManager
 import ai.victorious.filemanager.plugins.PluginRepository
 import ai.victorious.filemanager.secure.SecureFolderManager
 import ai.victorious.filemanager.media.ThumbnailLoader
 import ai.victorious.filemanager.core.javadec.DecompileService
 import android.app.Application
+import androidx.annotation.OptIn
+import androidx.media3.common.util.UnstableApi
 import java.io.File
 import java.security.SecureRandom
 
@@ -48,6 +51,10 @@ class FileManagerApplication : Application() {
         private set
     lateinit var bridge: BridgeExecutor
         private set
+    lateinit var confirmations: ai.victorious.filemanager.core.fleet.ConfirmationBroker
+        private set
+    lateinit var configBackup: ai.victorious.filemanager.core.fleet.NodeConfigBackup
+        private set
     lateinit var fleetSettings: FleetSettings
         private set
     lateinit var privilegeSettings: PrivilegeSettings
@@ -66,6 +73,8 @@ class FileManagerApplication : Application() {
     }
     lateinit var wifiTransfer: WifiTransferController
         private set
+    lateinit var serverMode: ServerModeController
+        private set
     lateinit var plugins: PluginRepository
         private set
     lateinit var secureFolder: SecureFolderManager
@@ -75,6 +84,7 @@ class FileManagerApplication : Application() {
     lateinit var decompiler: DecompileService
         private set
 
+    @OptIn(markerClass = [UnstableApi::class])
     override fun onCreate() {
         super.onCreate()
         if (BuildConfig.DEBUG) enableDebugStrictMode()
@@ -107,6 +117,7 @@ class FileManagerApplication : Application() {
         fleetSettings = FleetSettings(this)
         terminals = TerminalSessionManager(privilege)
         wifiTransfer = WifiTransferController(io)
+        serverMode = ServerModeController(wifiTransfer)
         // The built-in third-party AI assistant was removed (DroidCommand AI is the only AI that connects).
         // Earlier versions kept its endpoint and API key here; do not leave that secret on the device.
         runCatching { deleteSharedPreferences("fm_ai_settings") }
@@ -114,10 +125,32 @@ class FileManagerApplication : Application() {
         secureFolder = SecureFolderManager(this)
         thumbnails = ThumbnailLoader(cacheDir)
         decompiler = DecompileService(File(cacheDir, "javacache"))
+        val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+        confirmations = ai.victorious.filemanager.core.fleet.ConfirmationBroker(
+            schedule = { d, block -> mainHandler.postDelayed(block, d) },
+        )
+        val notifier = ai.victorious.filemanager.fleet.RemoteConfirmNotifier(this)
+        confirmations.addListener { list -> mainHandler.post { notifier.onPending(list) } }
+        configBackup = ai.victorious.filemanager.core.fleet.NodeConfigBackup(
+            packageName = packageName,
+            sourceNodeRef = nodeId,
+            store = ai.victorious.filemanager.fleet.AppConfigStore(this, bookmarks, fleetSettings) { themeSettings.reload() },
+            aead = runCatching { ai.victorious.filemanager.fleet.BackupKeystore.aead() }.getOrNull(),
+            sensitivePathPrefixes = listOf(dataDir.absolutePath, noBackupFilesDir.absolutePath, filesDir.absolutePath) +
+                listOfNotNull(getExternalFilesDir(null)?.parentFile?.absolutePath),
+        )
         bridge = BridgeExecutor(
             nodeId = nodeId,
             policy = CallerPolicy(certPins = CallerPolicy.parsePins(BuildConfig.FLEET_CALLER_CERT_PINS)),
             externalControlEnabled = fleetSettings::isExternalControlEnabled,
+            packageName = packageName,
+            shizukuState = { shizuku.state.value },
+            configBackup = configBackup,
+            // UNIFIED_BACKUP default: remote callers can never export/import settings.
+            configRemoteAllowed = false,
+            confirmationBroker = confirmations,
+            // Media Pro player; idle -> no_session. Keyboard debug (pinned) is scoped to media.*.
+            media = ai.victorious.filemanager.media.MediaProEngine.also { it.init(this) },
         )
     }
 

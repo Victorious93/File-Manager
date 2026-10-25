@@ -207,106 +207,29 @@ private fun ImagePagerScreen(images: List<File>, start: File, onClose: () -> Uni
 // Video player (Media3 ExoPlayer in a PlayerView)
 // ---------------------------------------------------------------------------------------------
 
+/** Video and audio now open in Media Pro ([ai.victorious.filemanager.media.MediaProActivity]). */
 @androidx.annotation.OptIn(UnstableApi::class)
 @Composable
 fun VideoPlayerScreen(file: File, onClose: () -> Unit) {
     val context = LocalContext.current
-    val player = remember {
-        androidx.media3.exoplayer.ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
-            prepare()
-            playWhenReady = true
-        }
-    }
-    DisposableEffect(Unit) { onDispose { player.release() } }
-    MediaScaffold(file.name, onClose) { mod ->
-        Box(mod.background(Color.Black), contentAlignment = Alignment.Center) {
-            AndroidView(
-                factory = { ctx ->
-                    PlayerView(ctx).apply {
-                        this.player = player
-                        setShowNextButton(false)
-                        setShowPreviousButton(false)
-                    }
-                },
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
+    LaunchedEffect(file.absolutePath) {
+        ai.victorious.filemanager.media.MediaProActivity.open(context, file)
+        onClose()
     }
 }
 
-// ---------------------------------------------------------------------------------------------
-// Audio player (controls a background MediaSessionService via MediaController)
-// ---------------------------------------------------------------------------------------------
-
+/** Audio opens Media Pro with the folder's audio files as the queue (shuffle / repeat / playlists). */
+@androidx.annotation.OptIn(UnstableApi::class)
 @Composable
 fun AudioPlayerScreen(file: File, onClose: () -> Unit) {
     val context = LocalContext.current
-    var controller by remember { mutableStateOf<MediaController?>(null) }
-
-    DisposableEffect(file.absolutePath) {
-        val token = SessionToken(context, ComponentName(context, AudioPlaybackService::class.java))
-        val future = MediaController.Builder(context, token).buildAsync()
-        future.addListener({
-            val c = runCatching { future.get() }.getOrNull()
-            controller = c
-            if (c != null) {
-                c.setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
-                c.prepare()
-                c.play()
-            }
-        }, ContextCompat.getMainExecutor(context))
-        onDispose {
-            controller?.release()
-            MediaController.releaseFuture(future)
-        }
-    }
-
-    var isPlaying by remember { mutableStateOf(true) }
-    var position by remember { mutableLongStateOf(0L) }
-    var duration by remember { mutableLongStateOf(0L) }
-
-    LaunchedEffect(controller) {
-        while (true) {
-            controller?.let {
-                isPlaying = it.isPlaying
-                position = it.currentPosition.coerceAtLeast(0)
-                duration = it.duration.coerceAtLeast(0)
-            }
-            delay(500)
-        }
-    }
-
-    MediaScaffold(file.name, onClose) { mod ->
-        Column(mod.padding(24.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(Icons.Outlined.PlayCircle, contentDescription = null, modifier = Modifier.size(96.dp), tint = MaterialTheme.colorScheme.primary)
-            Text(file.name, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 16.dp))
-            val total = if (duration > 0) duration else 1
-            Slider(
-                value = position.toFloat().coerceIn(0f, total.toFloat()),
-                onValueChange = { controller?.seekTo(it.toLong()) },
-                valueRange = 0f..total.toFloat(),
-                modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
-            )
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(formatMs(position), style = MaterialTheme.typography.bodySmall)
-                Text(if (duration > 0) formatMs(duration) else "--:--", style = MaterialTheme.typography.bodySmall)
-            }
-            IconButton(onClick = {
-                val c = controller ?: return@IconButton
-                if (c.isPlaying) c.pause() else c.play()
-            }, modifier = Modifier.size(72.dp).padding(top = 8.dp)) {
-                Icon(
-                    if (isPlaying) Icons.Outlined.Pause else Icons.Outlined.PlayArrow,
-                    contentDescription = if (isPlaying) "Pause" else "Play",
-                    modifier = Modifier.size(56.dp),
-                )
-            }
-            Text("Playback continues in the background with notification controls.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+    LaunchedEffect(file.absolutePath) {
+        ai.victorious.filemanager.media.MediaProActivity.open(context, file, folderQueue = true)
+        onClose()
     }
 }
 
+@Suppress("unused")
 private fun formatMs(ms: Long): String {
     if (ms <= 0) return "0:00"
     val totalSec = ms / 1000

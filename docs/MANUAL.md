@@ -377,6 +377,56 @@ components and are not fleet permissions.
 
 ---
 
+
+
+## Notes vault
+
+The **Notes** tab is an Obsidian-style markdown vault (details in `docs/NOTES.md`).
+
+1. Pick any folder (or accept the suggested app `Notes/` folder).
+2. Create notes, use `[[Other note]]` links and `#tags`.
+3. Split view shows a live preview. Backlinks and outgoing links appear under the editor.
+4. **Quick switch** jumps to a note by title; **Daily** opens today’s note; **Graph** shows how notes link.
+5. Search looks through note text (and the file index when available).
+
+Everything stays on your device as normal `.md` files.
+
+## App Manager Pro
+
+The **Apps** tab is App Manager Pro (details in `docs/APP_MANAGER.md`).
+
+- Browse installed apps, multi-select for **Disable / Enable / Force-stop / Freeze**.
+- Open an app for its components, permissions, AppOps and trackers. **Block** a component or
+  **Block tracker components** in one tap.
+- **Trackers** tab lists user apps that match a built-in signature list of advertising / analytics
+  SDKs (class-name prefixes we maintain ourselves).
+- **Logcat** with filters and export; **Usage** (needs the system "Usage access" permission);
+  **Running** processes; **Profiles** of saved actions; **Backup** for APK (and data with root).
+
+Actions that change an app always ask you to **Confirm** first. Root or Shizuku is required for
+block / freeze / permission / AppOps changes.
+
+## Media Pro (video & music player)
+
+Opening a video or song plays it in **Media Pro** (see `docs/MEDIA_PRO.md` for details).
+
+- **Controls:** tap the screen to show/hide them. Double-tap the left or right side to jump 10 seconds.
+  Swipe sideways to seek. Swipe up/down on the left side for brightness, on the right for volume.
+- **Subtitles:** subtitle files with the same name as the video (`movie.srt`, `movie.en.ass`) load
+  automatically. Tap **Subs** to pick any other subtitle file.
+- **PiP:** tap **PiP**, or press Home while a video plays, to keep it in a small floating window.
+- **⋮ menu:** playback speed, sleep timer, equalizer, queue (shuffle / repeat), playlists, open a
+  network stream (web link, `rtsp://` camera, or `smb://` network share), and **Background play**
+  (keep listening after you leave the player; on by default).
+- **Music:** opening a song queues every song in that folder. Save the queue as a playlist from ⋮ → Playlists.
+- **Resume:** videos and songs continue where you stopped.
+- **Lock screen / notification:** play, pause and skip from the notification or lock screen.
+- **Victorious Keyboard:** with **Allow external control** turned on, the Victorious Keyboard (debug
+  build) can play, pause, skip, seek, change the volume and read what's playing. It cannot do
+  anything else in File Manager.
+
+---
+
 ## 5. Fleet integration
 
 ### How the controller connects
@@ -408,6 +458,53 @@ refused with `external_control_disabled`.
 4. **Unknown operations** are refused (`unknown_operation`).
 
 Separately, root/Shizuku changes inside the app always require your confirmation dialog.
+
+### Fleet remote-control envelope v1 (protocol 1.1)
+
+Newer controllers use the frozen fleet envelope (full detail in `docs/FLEET_BRIDGE.md`):
+
+| Operation | What it does |
+|---|---|
+| `capabilities.get` | Lists every operation with its kind (read / action / destructive), whether it may be called remotely, and whether it needs your confirmation |
+| `node.status.get` | A small health snapshot: "alive", whether external control is on, and the Shizuku state. **It never includes file names, paths or file contents.** |
+| `remote.command`, `macro.step`, `macro.run` | Run one advertised operation, one macro step, or a short macro (with a "dry run" that only checks, never executes) |
+
+What protects you:
+
+- **Who is calling is decided by Android** (the caller's package and signing certificate), never by
+  anything written inside the message — including SMS trigger information.
+- **External control stays off until you turn it on.**
+- Every request carries a one-time code and a timestamp. Old requests (older than their time
+  limit, or more than 2 minutes off from your phone's clock) are refused, and a repeated request
+  is refused as a replay.
+- **Anything destructive always needs your confirmation on this device.** A remote request is never
+  approved automatically. When one arrives you get a notification and a full-screen prompt showing
+  which app is asking, the operation, the action and a short summary of its settings (passwords,
+  tokens and file paths are hidden). Tap **Approve** or **Deny**. If you do nothing, it is denied
+  when the request's time limit runs out (at most 5 minutes). Each answer applies to that one
+  request only. Right now File Manager has no remote destructive operation at all.
+- **Victorious Keyboard** (debug build, matching certificate only) may use media controls only.
+  Those controls are not built into File Manager yet, so they answer "capability off". The release
+  keyboard is not allowed yet.
+
+**Settings backup (`config.export` / `config.import`).** File Manager can describe its settings
+(preferences and bookmarks only — never your files, passwords, tokens or cloud logins, and never
+bookmarks pointing into the secure folder) in the fleet backup format. Remote controllers **cannot**
+call these: both are local-only by default. Importing always needs your confirmation on the device,
+offers a "dry run" preview, lets you choose skip / overwrite / merge-by-id, and always turns external
+control **off** afterwards.
+
+**Settings → Backup & restore**
+
+1. **Export to file** — choose where to save `victorfiles-settings.json`. The file is encrypted with
+   a key stored in this phone's secure keystore, so it can be restored on **this phone (this
+   install)** only. Uninstalling File Manager destroys the key.
+2. **Import from file** — pick the file. You first see a **preview** (nothing is changed yet) of how
+   many preferences and bookmarks would be added, overwritten or skipped.
+3. Choose a mode: **skip** (keep what you have, ignore the file's version of existing items),
+   **overwrite** (the file wins) or **merge-by-id** (keep yours, add anything new).
+4. Tap **Confirm import**. External control is switched off afterwards; turn it back on yourself if
+   you want it.
 
 ---
 
@@ -462,3 +559,55 @@ screen lock or biometrics. This cannot be recovered.
 - **Fleet bridge** never exposes your files and is off by default.
 - **Trash** payloads on shared storage stay until you empty the trash.
 - Uninstalling the app removes its private data (settings, secure folder, debug signing key).
+
+
+## APK deep edit — DEX repair, merge, strings & translation
+
+Under APK tools (see `docs/MT_NP_FINISH.md`):
+
+- **Repair DEX** fixes checksums and size after manual edits.
+- **Merge / split** `classes*.dex` files.
+- **String decrypt** previews XOR/Base64-looking strings; you choose the method before anything changes.
+- **Edit strings** in DEX or resources; **Translation mode** compares locales, exports CSV/XML, and
+  can suggest translations through the AI assistant — you approve every change.
+
+
+
+## Notes vault — SAF + graph
+
+Use **Pick folder (Storage Access Framework)** to grant a vault directory. The graph view is a
+draggable force-directed layout (pinch to zoom, drag nodes).
+
+## App Manager — profiles editor
+
+Profiles tab: edit steps, reorder, and optional schedule (WorkManager). Schedules are off until
+you set once/daily/weekly. Apply still asks for confirmation.
+
+
+
+## Media — system volume + FFmpeg
+
+In the player **Options** sheet you can let `media.volume` also change the system media
+stream (`STREAM_MUSIC`). Optional FFmpeg audio decoding (LGPL) is documented in
+`docs/FFMPEG_MEDIA.md` — only packaged when natives were built and the Media3 decoder
+module is on the classpath.
+
+
+## Folder sync
+
+Tools → **Folder sync**: pick two folders (or a saved SMB/SFTP/WebDAV connection for side B),
+choose one-way or two-way, conflict policy, dry-run preview, then run. Local deletes go to trash.
+Optional WorkManager schedule for local↔local.
+
+
+## Server mode (FTP / SFTP / web)
+
+Tools → Wi-Fi file transfer / Server mode: start a **LAN-only** FTP, SFTP, or web file manager
+for the focused folder. Off by default; password or PIN shown with a QR code. Stop when done.
+
+
+## Photo tools
+
+Tools → **Photo tools** (select images first): EXIF view/edit/strip, batch rename with a
+preview, and batch resize/convert/compress.
+
