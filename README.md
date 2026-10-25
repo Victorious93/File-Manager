@@ -159,7 +159,7 @@ Debug signing setup: [docs/SIGNING.md](docs/SIGNING.md).
 
 ## Phase 10: gap fill
 
-Indexed search, trash on the same volume, themes (light/dark/AMOLED/dynamic/accent),
+Indexed search, trash on the same volume, themes (light/dark/AMOLED, seven colour themes, dynamic, accent),
 tablet/foldable layouts (NavigationRail plus side-by-side panes), Compare two APKs, Smali
 tools (search, decryption hints, mapping.txt), RAR extraction, and big-folder listing speed.
 See [docs/PHASE10.md](docs/PHASE10.md).

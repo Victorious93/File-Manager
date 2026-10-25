@@ -341,8 +341,11 @@ or once on the selection. Scripts run without root.
 
 ### 3.19 Appearance
 
-**Settings → Appearance**: System / Light / Dark / AMOLED, dynamic colour (Android 12+) and accent
-colours.
+**Settings → Appearance**: System / Light / Dark / AMOLED (the mode), plus a **Theme**: Classic,
+Cyber, Terminal, Ocean, Ember, Rose or Graphite. Every theme has its own light and dark look, so the
+mode and the theme are chosen separately. **Accent** colours recolour the Classic theme only; the
+others bring their own colours. **Dynamic colour** (Android 12+) takes colours from your wallpaper
+and overrides the theme while it is on.
 
 ### 3.20 Help
 
