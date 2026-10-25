@@ -12,3 +12,13 @@ internal fun isWideWindow(widthDp: Float): Boolean = widthDp >= WIDE_WINDOW_DP
 
 internal fun panesSideBySide(widthDp: Float, heightDp: Float): Boolean =
     widthDp >= SIDE_BY_SIDE_MIN_PANE_AREA_DP || (widthDp > heightDp && widthDp >= 400f)
+
+/**
+ * The folder for an action that needs "the other side": the other pane's folder when both panes are on
+ * screen, otherwise the folder the user is looking at. Never a pane that is not visible.
+ */
+internal fun transferDir(dualPane: Boolean, focusedPane: Int, leftPath: String, rightPath: String): String {
+    val focused = if (focusedPane == 0) leftPath else rightPath
+    val other = if (focusedPane == 0) rightPath else leftPath
+    return if (dualPane) other else focused
+}

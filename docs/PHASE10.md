@@ -35,7 +35,7 @@ Choices persist in the `fm_theme` prefs. Scheme selection is a pure function cov
 Layout is driven by window size (`BoxWithConstraints`), not screen size, so split-screen
 and foldables adapt too.
 - At 600 dp and wider, the bottom navigation becomes a NavigationRail.
-- The two file panes sit side by side whenever the pane area is at least 520 dp, or in
+- When the optional two-pane layout is on (it is off by default), the two file panes sit side by side whenever the pane area is at least 520 dp, or in
   landscape at 400 dp or more. Otherwise they stack.
 - This also clears the lint `ConfigurationScreenWidthHeight` warning.
 

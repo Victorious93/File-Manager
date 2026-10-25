@@ -43,7 +43,10 @@ import org.junit.runner.RunWith
 class SmokeTest {
     companion object {
         @BeforeClass @JvmStatic
-        fun grant() = Smoke.grantStorage()
+        fun grant() {
+            Smoke.grantStorage()
+            Smoke.useDualPane()
+        }
     }
 
     @get:Rule

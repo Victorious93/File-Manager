@@ -112,10 +112,13 @@ When both are on, the app uses **Root first, then Shizuku, then normal** access.
 The main screen has a navigation bar: **Files, Search, Bookmarks, Apps, Tools, Trash, Settings**.
 On wide screens (600 dp and up) it becomes a rail on the left.
 
-### 3.1 Dual pane and tabs
+### 3.1 One pane or two, and tabs
 
-- The **Files** tab shows two panes. On wide windows they sit side by side; on phones they stack.
-- Tap a pane to make it the **focused pane**. Tools and copy/move use it.
+- The **Files** tab opens with **one** file list. Tap the split-screen button in the top bar (or
+  **Settings → Appearance → Two file panes**) to show **two** panes. On wide windows they sit side by
+  side; on phones they stack. The choice is remembered.
+- With two panes, tap a pane to make it the **focused pane**. Tools and copy/move use it. The pane you
+  are not looking at keeps its folder and tabs, so switching back is instant.
 - Each pane has tabs: tap **+** to open a new tab, tap a tab to switch, tap its ✕ to close it.
 - Tap a folder to open it; tap a file to open it in the matching viewer.
 - Use the **create** button to make a **New file** or **New folder** in the current folder.
@@ -126,7 +129,9 @@ On wide screens (600 dp and up) it becomes a rail on the left.
 
 1. Long-press an item (or use **Select** in its menu) to start selecting; tap more items to add them.
 2. Use the bottom bar:
-   - **Copy** / **Move** — to the folder open in the *other* pane.
+   - **Copy** / **Move** — with two panes, to the folder open in the *other* pane. With one pane they
+     *stage* the selection and show a **Paste here** bar: open the destination folder and tap **Paste
+     here**. A copy stays staged so you can paste it in more places; a move is used up. **✕** drops it.
    - **Delete** — moves items to the Trash.
    - **Rename** — one item opens a simple rename; two or more open **Batch rename**.
    - **Zip selected** — creates `name.zip` in the current folder.
@@ -198,7 +203,8 @@ Long-press a file to choose how to open it.
 - Supported: ZIP/JAR/APK (list, extract, password-protected ZIP), 7z, TAR (plain, `.tar.gz`/`.tgz`,
   `.tar.bz2`, `.tar.xz`), single compressed files (`.gz`, `.bz2`, `.xz`), and RAR (list and extract
   only, including password RAR).
-- Extraction goes to the folder in the *other* pane. Paths that try to escape the folder are
+- Extraction goes to the folder in the *other* pane, or to the folder on screen when only one pane is
+  shown. Paths that try to escape the folder are
   blocked.
 - Create: **Zip selected** in the bottom bar, or **Tools → Create password ZIP** for AES-256.
 

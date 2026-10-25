@@ -220,6 +220,16 @@ private fun AppearanceSection() {
             onCheckedChange = { on -> theme.update { it.copy(dynamicColor = on) } },
         )
     }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("Two file panes", style = MaterialTheme.typography.titleSmall)
+            Text(
+                "Show two folders at once. Off: one list, and Copy/Move use Paste here.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        Switch(checked = prefs.dualPane, onCheckedChange = { on -> theme.update { it.copy(dualPane = on) } })
+    }
     if (!(prefs.dynamicColor && dynamicSupported)) {
         Text("Accent", style = MaterialTheme.typography.titleSmall)
         androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {

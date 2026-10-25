@@ -44,7 +44,7 @@ See also `docs/BATCH_RENAME.md`, `docs/BROWSING.md`, `docs/APK_TOOLS.md`, `docs/
 
 
 - Kotlin + Jetpack Compose + Material 3
-- Dual panes (side-by-side on wide screens, stacked on phones) with per-pane tabs
+- One file pane by default; optional dual panes (side-by-side on wide screens, stacked on phones) with per-pane tabs, switchable from the top bar or Settings
 - File operations: **copy, move, delete, rename**
 - Sequential **operation queue** with **undo**
 - Search (local name match)
