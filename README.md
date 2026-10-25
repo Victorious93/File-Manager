@@ -7,9 +7,9 @@
 
 Dual-pane power-user file manager for the Victorious fleet.
 
-**Package id:** `ai.victorious.victorfiles`
+**Package id:** `ai.victorious.filemanager` (the app is named VictorFiles; the package id is unchanged)
 
-> **Package note:** Code (`app/build.gradle.kts`) uses `ai.victorious.victorfiles`. ROADMAP target rename is `ai.victorious.filemanager` — not applied in code yet.
+> **Package note:** `app/build.gradle.kts` uses `ai.victorious.filemanager`, matching the fleet-manifest ROADMAP target and what DroidCommand AI and VictorSuite look for.
 
 **Status:** blocked (CI stack) *(from [fleet-manifest ROADMAP](https://github.com/Victorious93/fleet-manifest/blob/main/ROADMAP.md))*
 

@@ -20,7 +20,6 @@ import ai.victorious.filemanager.net.ConnectionRepository
 import ai.victorious.filemanager.net.WifiTransferController
 import ai.victorious.filemanager.net.ServerModeController
 import ai.victorious.filemanager.terminal.TerminalSessionManager
-import ai.victorious.filemanager.ai.AiSettings
 import ai.victorious.filemanager.plugins.PluginRepository
 import ai.victorious.filemanager.secure.SecureFolderManager
 import ai.victorious.filemanager.media.ThumbnailLoader
@@ -76,8 +75,6 @@ class FileManagerApplication : Application() {
         private set
     lateinit var serverMode: ServerModeController
         private set
-    lateinit var aiSettings: AiSettings
-        private set
     lateinit var plugins: PluginRepository
         private set
     lateinit var secureFolder: SecureFolderManager
@@ -121,7 +118,9 @@ class FileManagerApplication : Application() {
         terminals = TerminalSessionManager(privilege)
         wifiTransfer = WifiTransferController(io)
         serverMode = ServerModeController(wifiTransfer)
-        aiSettings = AiSettings(this).also { runCatching { it.load() } }
+        // The built-in third-party AI assistant was removed (DroidCommand AI is the only AI that connects).
+        // Earlier versions kept its endpoint and API key here; do not leave that secret on the device.
+        runCatching { deleteSharedPreferences("fm_ai_settings") }
         plugins = PluginRepository(this, privilege)
         secureFolder = SecureFolderManager(this)
         thumbnails = ThumbnailLoader(cacheDir)

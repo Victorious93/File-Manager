@@ -23,7 +23,10 @@ import org.junit.runner.RunWith
 class ViewModelThreadingTest {
     companion object {
         @BeforeClass @JvmStatic
-        fun grant() = Smoke.grantStorage()
+        fun grant() {
+            Smoke.grantStorage()
+            Smoke.useDualPane()
+        }
     }
 
     private class RecordingIo(private val d: FileIo) : FileIo by d {

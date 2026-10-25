@@ -1,9 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.VictoriousFileManager" parent="android:Theme.Material.Light.NoActionBar">
+    <!-- Base theme (light widgets). The launch window is dark in light mode too, so the splash and the
+         frames before Compose draws are never white; white status-bar icons match that window and
+         enableEdgeToEdge() flips them once the real UI is up. values-night swaps the parent for the dark
+         Material theme. The public name is split off so values-v31 can add the splash attribute. -->
+    <style name="Base.Theme.VictoriousFileManager" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
-        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowBackground">@color/launch_background</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+    <style name="Theme.VictoriousFileManager" parent="Base.Theme.VictoriousFileManager" />
+    <!-- MainActivity's manifest theme: only the launch window carries the logo. onCreate switches to
+         Theme.VictoriousFileManager before the window is built, so the logo is not left behind the UI
+         (it would show through during keyboard resizes). -->
+    <style name="Theme.VictoriousFileManager.Starting" parent="Theme.VictoriousFileManager">
+        <item name="android:windowBackground">@drawable/launch_window</item>
     </style>
     <!-- Translucent window for PanelActivity: the host app stays visible behind the sheet. -->
     <style name="Theme.VictorFiles.Panel" parent="Theme.VictoriousFileManager">

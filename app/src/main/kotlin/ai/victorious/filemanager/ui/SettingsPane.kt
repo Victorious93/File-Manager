@@ -90,7 +90,6 @@ fun SettingsPane(onEvent: (UiEvent) -> Unit = {}) {
 
         PowerOpsSection(onEvent)
 
-        AiSettingsSection(onEvent)
         SecureFolderSettingsSection()
         ArchivePasswordsSection(onEvent)
 
@@ -109,51 +108,6 @@ fun SettingsPane(onEvent: (UiEvent) -> Unit = {}) {
         Text("Fleet node: ${app.nodeId} (external_node)", style = MaterialTheme.typography.bodySmall)
 
         BackupRestoreSection(onEvent)
-    }
-}
-
-@Composable
-private fun AiSettingsSection(onEvent: (UiEvent) -> Unit) {
-    val app = LocalContext.current.applicationContext as FileManagerApplication
-    val ai = app.aiSettings
-    val enabled by ai.enabled.collectAsState()
-    var baseUrl by remember { mutableStateOf(runCatching { ai.baseUrl }.getOrDefault("")) }
-    var model by remember { mutableStateOf(runCatching { ai.model }.getOrDefault("")) }
-    var key by remember { mutableStateOf("") }
-    var hasKey by remember { mutableStateOf(runCatching { ai.hasApiKey }.getOrDefault(false)) }
-
-    Text("AI assistant", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
-    Text(
-        "Explain / Suggest edit in the code editor via your own OpenAI-compatible endpoint. Off by default. " +
-            "Nothing is bundled; settings and key are stored encrypted (Android Keystore). Code is only sent after you confirm.",
-        style = MaterialTheme.typography.bodySmall,
-    )
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text("Enable AI assistant", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-        Switch(checked = enabled, onCheckedChange = { ai.setEnabled(it) })
-    }
-    OutlinedTextField(baseUrl, { baseUrl = it }, label = { Text("Base URL (e.g. https://host/v1)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(model, { model = it }, label = { Text("Model") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(
-        key, { key = it },
-        label = { Text(if (hasKey) "API key (saved — leave blank to keep)" else "API key") },
-        singleLine = true,
-        visualTransformation = PasswordVisualTransformation(),
-        modifier = Modifier.fillMaxWidth(),
-    )
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(onClick = {
-            val url = baseUrl.trim()
-            if (url.isNotEmpty() && !(url.startsWith("https://") || url.startsWith("http://"))) {
-                onEvent(UiEvent.ShowMessage("Base URL must start with https://"))
-                return@Button
-            }
-            ai.save(url, model, key.ifBlank { null })
-            key = ""
-            hasKey = ai.hasApiKey
-            onEvent(UiEvent.ShowMessage(if (url.startsWith("http://")) "Saved (warning: plain HTTP is not encrypted)" else "AI settings saved"))
-        }) { Text("Save") }
-        OutlinedButton(enabled = hasKey, onClick = { ai.clearKey(); hasKey = false; onEvent(UiEvent.ShowMessage("API key removed")) }) { Text("Remove key") }
     }
 }
 
@@ -221,6 +175,16 @@ private fun AppearanceSection() {
             enabled = dynamicSupported,
             onCheckedChange = { on -> theme.update { it.copy(dynamicColor = on) } },
         )
+    }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("Two file panes", style = MaterialTheme.typography.titleSmall)
+            Text(
+                "Show two folders at once. Off: one list, and Copy/Move use Paste here.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        Switch(checked = prefs.dualPane, onCheckedChange = { on -> theme.update { it.copy(dualPane = on) } })
     }
     if (!(prefs.dynamicColor && dynamicSupported)) {
         Text("Accent", style = MaterialTheme.typography.titleSmall)

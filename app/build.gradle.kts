@@ -12,8 +12,8 @@ android {
         applicationId = "ai.victorious.filemanager"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.1.1"
         // Optional signing-cert pins for bridge callers, e.g.
         // -PfleetCallerCertPins="ai.droidcommand.app=<sha256hex>;ai.droidcommand.app.debug=<sha256hex>"
         // Empty (default) = package-name allowlist only. See docs/FLEET_BRIDGE.md.

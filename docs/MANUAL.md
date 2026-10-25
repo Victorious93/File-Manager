@@ -22,7 +22,7 @@ Contents:
 File Manager is a full Android file manager with power tools: two panes with tabs, batch file
 operations with undo, search, bookmarks, a trash, editors (text, code, hex, diff), archives, APK
 tools, a readable Java view of app code, a terminal, root/Shizuku tools, network and cloud drives,
-Wi-Fi transfer, media viewers, an encrypted secure folder, an optional AI assistant and plugins.
+Wi-Fi transfer, media viewers, an encrypted secure folder and plugins.
 
 **It works completely on its own.** You never need any other app installed.
 
@@ -112,10 +112,13 @@ When both are on, the app uses **Root first, then Shizuku, then normal** access.
 The main screen has a navigation bar: **Files, Search, Bookmarks, Apps, Tools, Trash, Settings**.
 On wide screens (600 dp and up) it becomes a rail on the left.
 
-### 3.1 Dual pane and tabs
+### 3.1 One pane or two, and tabs
 
-- The **Files** tab shows two panes. On wide windows they sit side by side; on phones they stack.
-- Tap a pane to make it the **focused pane**. Tools and copy/move use it.
+- The **Files** tab opens with **one** file list. Tap the split-screen button in the top bar (or
+  **Settings → Appearance → Two file panes**) to show **two** panes. On wide windows they sit side by
+  side; on phones they stack. The choice is remembered.
+- With two panes, tap a pane to make it the **focused pane**. Tools and copy/move use it. The pane you
+  are not looking at keeps its folder and tabs, so switching back is instant.
 - Each pane has tabs: tap **+** to open a new tab, tap a tab to switch, tap its ✕ to close it.
 - Tap a folder to open it; tap a file to open it in the matching viewer.
 - Use the **create** button to make a **New file** or **New folder** in the current folder.
@@ -126,7 +129,9 @@ On wide screens (600 dp and up) it becomes a rail on the left.
 
 1. Long-press an item (or use **Select** in its menu) to start selecting; tap more items to add them.
 2. Use the bottom bar:
-   - **Copy** / **Move** — to the folder open in the *other* pane.
+   - **Copy** / **Move** — with two panes, to the folder open in the *other* pane. With one pane they
+     *stage* the selection and show a **Paste here** bar: open the destination folder and tap **Paste
+     here**. A copy stays staged so you can paste it in more places; a move is used up. **✕** drops it.
    - **Delete** — moves items to the Trash.
    - **Rename** — one item opens a simple rename; two or more open **Batch rename**.
    - **Zip selected** — creates `name.zip` in the current folder.
@@ -198,7 +203,8 @@ Long-press a file to choose how to open it.
 - Supported: ZIP/JAR/APK (list, extract, password-protected ZIP), 7z, TAR (plain, `.tar.gz`/`.tgz`,
   `.tar.bz2`, `.tar.xz`), single compressed files (`.gz`, `.bz2`, `.xz`), and RAR (list and extract
   only, including password RAR).
-- Extraction goes to the folder in the *other* pane. Paths that try to escape the folder are
+- Extraction goes to the folder in the *other* pane, or to the folder on screen when only one pane is
+  shown. Paths that try to escape the folder are
   blocked.
 - Create: **Zip selected** in the bottom bar, or **Tools → Create password ZIP** for AES-256.
 
@@ -242,7 +248,6 @@ hints, apply `mapping.txt`), **Extract installed apps**.
    switch back.
 2. Search inside the Java text, copy it, or export the class as `.java`.
 3. **Export all .java** writes a whole dex to a folder.
-4. The AI assistant can explain decompiled Java (see 3.17).
 
 ### 3.11 Terminal
 
@@ -309,14 +314,18 @@ hints, apply `mapping.txt`), **Extract installed apps**.
 5. Warning: removing the screen lock or changing biometrics can make vault files unreadable. Move
    files out first.
 
-### 3.17 AI assistant (optional)
+### 3.17 AI: DroidCommand AI only
 
-1. **Settings → AI assistant**: enable it and enter a Base URL (OpenAI-compatible), model and your
-   API key. Nothing is bundled; it is off by default.
-2. In the code editor, select code (or nothing for the whole file), tap ✨, choose **Explain** or
-   **Suggest edit**.
-3. A dialog shows where the text goes and how big it is. **Nothing is sent until you tap Send.**
-4. For suggestions, review the diff and tap **Accept** or **Reject**.
+File Manager has **no AI of its own and connects to no AI service** (there is no place to enter an
+endpoint or API key). The only AI that can connect is **DroidCommand AI**, the fleet hub, and it
+connects *to* this app through the local fleet bridge:
+
+1. **Settings → Fleet → Allow external control** is **off** by default. Turn it on only if you want
+   DroidCommand AI to be able to reach this app.
+2. Only DroidCommand AI's packages (`ai.droidcommand.app` and its `.debug` build) are accepted as
+   callers. Any other app is refused with `unauthorized_caller`.
+3. Today the bridge only answers read-only status and capabilities; it does not expose your files.
+   Details: `docs/FLEET_BRIDGE.md`.
 
 ### 3.18 Plugins and scripts
 
@@ -348,7 +357,7 @@ These are the permissions declared in the app's manifest.
 
 | Permission | Why |
 |---|---|
-| `INTERNET` | Network shares, cloud drives, Wi-Fi transfer server, optional AI assistant |
+| `INTERNET` | Network shares, cloud drives, Wi-Fi transfer server |
 | `ACCESS_NETWORK_STATE` | Check connectivity / find the Wi-Fi address for transfer |
 | `READ_EXTERNAL_STORAGE`, `WRITE_EXTERNAL_STORAGE` (Android 12 and lower only) | Browse and change files on older Android |
 | `MANAGE_EXTERNAL_STORAGE` | "All files access" on Android 11+, needed for a real file manager |
@@ -534,11 +543,11 @@ screen lock or biometrics. This cannot be recovered.
 ## 7. Privacy and data handling
 
 - **No accounts, no analytics.** The app works offline; it only uses the network for features you
-  set up (network shares, cloud, Wi-Fi transfer, AI assistant).
-- **Secrets are encrypted.** Network passwords and keys, cloud tokens, S3 keys and AI settings are
+  set up (network shares, cloud, Wi-Fi transfer).
+- **Secrets are encrypted.** Network passwords and keys, cloud tokens and S3 keys are
   stored in EncryptedSharedPreferences (Android Keystore) and are never logged.
-- **AI assistant** is off by default, uses only the endpoint you enter, masks likely secrets before
-  sending, and sends nothing until you confirm. Responses are not logged.
+- **No third-party AI.** The app never sends your files or code to an AI service. The only AI that can
+  connect is DroidCommand AI, to this app, through the fleet bridge (off by default).
 - **Wi-Fi transfer** serves only while running, on your local network, with an optional PIN.
 - **Secure folder** files are encrypted at rest with a key that never leaves the device's
   Keystore, are stored in app-private storage and excluded from backup.

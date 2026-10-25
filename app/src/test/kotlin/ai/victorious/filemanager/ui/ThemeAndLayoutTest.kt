@@ -41,6 +41,19 @@ class ThemeAndLayoutTest {
         assertEquals(Color.Black, amoled.background)
     }
 
+    @Test fun oneFilePaneIsTheDefault() {
+        assertFalse(ThemePrefs().dualPane)
+        assertTrue(ThemePrefs(dualPane = true).dualPane)
+    }
+
+    @Test fun transfersGoToTheOtherPaneOnlyWhenBothPanesAreOnScreen() {
+        assertEquals("/b", transferDir(dualPane = true, focusedPane = 0, leftPath = "/a", rightPath = "/b"))
+        assertEquals("/a", transferDir(dualPane = true, focusedPane = 1, leftPath = "/a", rightPath = "/b"))
+        // Single pane: the hidden pane's folder is never a destination the user can see.
+        assertEquals("/a", transferDir(dualPane = false, focusedPane = 0, leftPath = "/a", rightPath = "/b"))
+        assertEquals("/b", transferDir(dualPane = false, focusedPane = 1, leftPath = "/a", rightPath = "/b"))
+    }
+
     @Test fun adaptiveBreakpoints() {
         assertFalse(isWideWindow(411f)) // phone portrait
         assertTrue(isWideWindow(600f)) // small tablet / unfolded foldable

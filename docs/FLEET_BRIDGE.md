@@ -64,6 +64,14 @@ SHA-256 (lowercase hex). A uid is allowed if any of its packages is allowlisted
 
 Allowlist: `ai.droidcommand.app`, `ai.droidcommand.app.debug`.
 
+**DroidCommand AI is the only AI that can connect.** This app has no AI client of its own (the former
+bring-your-own-endpoint editor assistant was removed), so the only AI path is DroidCommand commanding
+this node over this bridge, with external control off until the user turns it on.
+
+Pairing note for the hub: the bind action and package must match this app's current id. They are
+`ai.victorious.filemanager.action.BRIDGE` and `ai.victorious.filemanager` (debug
+`ai.victorious.filemanager.debug`). The intermediate id `ai.victorious.victorfiles` is gone.
+
 ### Certificate pinning (optional, build-time)
 
 No hashes are hard-coded. Pins come from the Gradle property
