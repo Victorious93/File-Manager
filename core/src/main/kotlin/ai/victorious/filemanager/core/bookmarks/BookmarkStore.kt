@@ -3,9 +3,9 @@ package ai.victorious.filemanager.core.bookmarks
 import ai.victorious.filemanager.core.path.PathHelpers
 import kotlinx.serialization.Serializable
 import ai.victorious.filemanager.core.fs.FileIo
+import ai.victorious.filemanager.core.fs.JsonStateFile
 import ai.victorious.filemanager.core.fs.NioFileIo
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
+import kotlinx.serialization.builtins.ListSerializer
 import java.util.UUID
 
 @Serializable
@@ -22,7 +22,7 @@ class BookmarkStore(
     private val ids: () -> String = { UUID.randomUUID().toString() },
     private val clock: () -> Long = { System.currentTimeMillis() },
 ) {
-    private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
+    private val state = JsonStateFile(io, storeFile, ListSerializer(Bookmark.serializer()), emptyList(), clock)
 
     fun list(): List<Bookmark> = load().sortedBy { it.label.lowercase() }
 
@@ -49,16 +49,7 @@ class BookmarkStore(
         return load().any { it.path == normalized }
     }
 
-    private fun load(): List<Bookmark> {
-        if (!io.exists(storeFile)) return emptyList()
-        val text = io.readText(storeFile)
-        if (text.isBlank()) return emptyList()
-        return json.decodeFromString(text)
-    }
+    private fun load(): List<Bookmark> = state.load()
 
-    private fun save(entries: List<Bookmark>) {
-        val parent = PathHelpers.parentOf(storeFile)
-        if (parent != null && !io.exists(parent)) io.mkdirs(parent)
-        io.writeText(storeFile, json.encodeToString(entries))
-    }
+    private fun save(entries: List<Bookmark>) = state.save(entries)
 }
