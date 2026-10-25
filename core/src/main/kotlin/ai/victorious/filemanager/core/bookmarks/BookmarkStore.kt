@@ -24,9 +24,9 @@ class BookmarkStore(
 ) {
     private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
 
-    fun list(): List<Bookmark> = load().sortedBy { it.label.lowercase() }
+    @Synchronized fun list(): List<Bookmark> = load().sortedBy { it.label.lowercase() }
 
-    fun add(path: String, label: String? = null): Bookmark {
+    @Synchronized fun add(path: String, label: String? = null): Bookmark {
         val normalized = PathHelpers.normalize(path)
         val existing = load()
         existing.find { it.path == normalized }?.let { return it }
@@ -40,21 +40,21 @@ class BookmarkStore(
         return bookmark
     }
 
-    fun remove(id: String) {
+    @Synchronized fun remove(id: String) {
         save(load().filterNot { it.id == id })
     }
 
     /** Replaces every bookmark (used by config.import after confirmation). */
-    fun replaceAll(entries: List<Bookmark>) {
+    @Synchronized fun replaceAll(entries: List<Bookmark>) {
         save(entries.distinctBy { it.id })
     }
 
-    fun isBookmarked(path: String): Boolean {
+    @Synchronized fun isBookmarked(path: String): Boolean {
         val normalized = PathHelpers.normalize(path)
         return load().any { it.path == normalized }
     }
 
-    private fun load(): List<Bookmark> {
+    @Synchronized private fun load(): List<Bookmark> {
         if (!io.exists(storeFile)) return emptyList()
         val text = io.readText(storeFile)
         if (text.isBlank()) return emptyList()
