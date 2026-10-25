@@ -1,11 +1,10 @@
 package ai.victorious.filemanager.core.trash
 
 import ai.victorious.filemanager.core.fs.FileIo
+import ai.victorious.filemanager.core.fs.JsonStateFile
 import ai.victorious.filemanager.core.path.PathHelpers
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.SerializationException
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
+import kotlinx.serialization.builtins.ListSerializer
 import java.util.UUID
 
 @Serializable
@@ -34,9 +33,7 @@ class TrashStore(
      */
     private val payloadDirFor: (path: String) -> String? = { null },
 ) {
-    private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
-    private val indexPath get() = PathHelpers.join(trashRoot, "index.json")
-    private val tmpIndexPath get() = PathHelpers.join(trashRoot, "index.json.tmp")
+    private val index = JsonStateFile(io, PathHelpers.join(trashRoot, "index.json"), ListSerializer(TrashEntry.serializer()), emptyList(), clock)
     private val itemsDir get() = PathHelpers.join(trashRoot, "items")
 
     init {
@@ -126,49 +123,16 @@ class TrashStore(
     private fun ensureLayout() {
         if (!io.exists(trashRoot)) io.mkdirs(trashRoot)
         if (!io.exists(itemsDir)) io.mkdirs(itemsDir)
-        if (!io.exists(indexPath)) {
-            // Dying between "drop the old index" and "rename the new one" in saveIndex leaves a
-            // complete .tmp behind; promote it rather than starting from an empty index.
-            if (io.exists(tmpIndexPath) && runCatching { decode(io.readText(tmpIndexPath)) }.isSuccess) {
-                io.rename(tmpIndexPath, indexPath)
-            } else {
-                io.writeText(indexPath, json.encodeToString(emptyList<TrashEntry>()))
-            }
-        }
+        if (!index.exists()) index.save(emptyList())
     }
-
-    private fun decode(text: String): List<TrashEntry> =
-        if (text.isBlank()) emptyList() else json.decodeFromString(text)
 
     private fun loadIndex(): List<TrashEntry> {
         ensureLayout()
-        return try {
-            decode(io.readText(indexPath))
-        } catch (e: SerializationException) {
-            // An unreadable index must not make every later delete throw. Keep it for recovery and
-            // carry on with an empty one (payloads stay in the items folder until "empty trash").
-            quarantineIndex()
-            emptyList()
-        }
+        return index.load()
     }
 
-    private fun quarantineIndex() {
-        val taken = io.childNames(trashRoot)
-        var name = "index.json.corrupt-${clock()}"
-        var n = 1
-        while (name in taken) name = "index.json.corrupt-${clock()}-${n++}"
-        io.rename(indexPath, PathHelpers.join(trashRoot, name))
-        io.writeText(indexPath, json.encodeToString(emptyList<TrashEntry>()))
-    }
-
-    /**
-     * Writes the new index beside the old one and only then swaps it in, so a write that dies
-     * part-way (disk full, process killed) can never truncate the index that is already there.
-     */
     private fun saveIndex(entries: List<TrashEntry>) {
         ensureLayout()
-        io.writeText(tmpIndexPath, json.encodeToString(entries))
-        io.deleteRecursively(indexPath) // FileIo.rename refuses to overwrite
-        io.rename(tmpIndexPath, indexPath)
+        index.save(entries)
     }
 }

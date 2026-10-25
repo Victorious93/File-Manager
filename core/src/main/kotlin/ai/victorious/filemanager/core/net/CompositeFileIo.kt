@@ -111,6 +111,14 @@ class CompositeFileIo(
     }
 
     override fun move(from: String, to: String) {
+        // Local to local is a rename. Copy-then-delete (still right across local/remote, and across
+        // connections) needs free space equal to the item, takes as long as a copy, and leaves two
+        // copies if interrupted. Remote-to-remote stays copy+delete: not every backend's rename can
+        // change folders (Google Drive's only changes the name).
+        if (backend(from) == null && backend(to) == null) {
+            local.move(from, to)
+            return
+        }
         copy(from, to)
         deleteRecursively(from)
     }

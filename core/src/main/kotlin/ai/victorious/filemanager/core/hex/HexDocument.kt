@@ -41,6 +41,9 @@ class HexDocument(private val original: ByteArray) {
     val rowCount: Int get() = (size + BYTES_PER_ROW - 1) / BYTES_PER_ROW
 
     fun saveTo(file: File) {
+        // Patches are byte offsets into the file as it was loaded; if it grew or shrank since, writing
+        // them would corrupt it (and seek+write past the end pads the file with zeros).
+        require(file.length() == original.size.toLong()) { "The file changed since it was opened; reopen it before saving" }
         RandomAccessFile(file, "rw").use { raf ->
             for ((offset, value) in patches.toSortedMap()) {
                 raf.seek(offset.toLong()); raf.write(value.toInt())

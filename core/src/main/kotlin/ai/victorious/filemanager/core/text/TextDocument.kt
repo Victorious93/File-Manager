@@ -57,10 +57,11 @@ object TextFiles {
     /** Writes atomically via a sibling temp file so a failed save never truncates the original. */
     fun save(file: File, text: String) {
         val tmp = File(file.parentFile, ".${file.name}.saving")
-        tmp.writeText(text, Charsets.UTF_8)
-        if (!tmp.renameTo(file)) {
-            file.writeText(text, Charsets.UTF_8)
-            tmp.delete()
+        try {
+            tmp.writeText(text, Charsets.UTF_8)
+            if (!tmp.renameTo(file)) file.writeText(text, Charsets.UTF_8)
+        } finally {
+            tmp.delete() // no-op after a successful rename; otherwise don't leave a hidden stray file
         }
     }
 }

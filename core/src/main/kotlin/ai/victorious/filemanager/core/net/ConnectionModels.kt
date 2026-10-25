@@ -115,9 +115,25 @@ object ConnectionUriParser {
         }
         val host = m.groups["host"]!!.value.trim('[', ']')
         val port = m.groups["port"]?.value?.toIntOrNull() ?: protocol.defaultPort
-        val user = m.groups["user"]?.value.orEmpty()
-        val pass = m.groups["pass"]?.value
-        val path = m.groups["path"]?.value ?: "/"
+        // Userinfo and path are percent-encoded in a URI ("p@ss" can only appear as "p%40ss").
+        val user = percentDecode(m.groups["user"]?.value.orEmpty())
+        val pass = m.groups["pass"]?.value?.let(::percentDecode)
+        val path = percentDecode(m.groups["path"]?.value ?: "/")
         return Parsed(protocol, host, port, user, pass, path, https)
+    }
+
+    /** %XX (UTF-8) only: unlike URLDecoder, '+' stays '+', and a '%' not followed by two hex digits stays literal. */
+    internal fun percentDecode(s: String): String {
+        if ('%' !in s) return s
+        val bytes = s.toByteArray(Charsets.UTF_8)
+        val out = java.io.ByteArrayOutputStream(bytes.size)
+        var i = 0
+        while (i < bytes.size) {
+            val b = bytes[i].toInt()
+            val hi = if (b == '%'.code && i + 2 < bytes.size) Character.digit(bytes[i + 1].toInt().toChar(), 16) else -1
+            val lo = if (hi >= 0) Character.digit(bytes[i + 2].toInt().toChar(), 16) else -1
+            if (hi >= 0 && lo >= 0) { out.write(hi * 16 + lo); i += 3 } else { out.write(b); i++ }
+        }
+        return String(out.toByteArray(), Charsets.UTF_8)
     }
 }
