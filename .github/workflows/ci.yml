@@ -274,8 +274,8 @@ jobs:
           Debug-signed pre-release built by CI from commit ${GITHUB_SHA}. Sideload only.
           **Not device-tested**: CI ran unit tests, lint and an emulator smoke test, nothing else.
 
-          Package \`ai.victorious.filemanager\` (debug build installs as \`ai.victorious.filemanager.debug\`).
-          Pre-releases published earlier under \`ai.victorious.victorfiles\` are a different app id; uninstall them first.
+          Package \`ai.victorious.filemanager\` (this debug build installs as \`ai.victorious.filemanager.debug\`).
+          The app is named VictorFiles; its package id stays \`ai.victorious.filemanager\`.
           Verify the download with \`sha256sum -c SHA256SUMS\`.
           NOTES
           gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \

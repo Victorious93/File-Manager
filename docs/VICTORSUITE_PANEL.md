@@ -1,7 +1,7 @@
 # VictorSuite file panel (VictorFiles side)
 
 VictorSuite's right-hand drawer shows a file manager window. VictorFiles supplies that window as a
-right-edge sheet: `ai.victorious.victorfiles.panel.PanelActivity`.
+right-edge sheet: `ai.victorious.filemanager.panel.PanelActivity`.
 
 ## Why a sheet activity and not an embedded view
 
@@ -14,9 +14,9 @@ returns to the host on back, scrim tap, or a drag back to the right from its inn
 
 | Item | Value |
 |---|---|
-| Component | `ai.victorious.victorfiles/.panel.PanelActivity` (debug: `ai.victorious.victorfiles.debug`) |
-| Action | `ai.victorious.victorfiles.action.PANEL` (category `DEFAULT`) |
-| Extra (optional) | `ai.victorious.victorfiles.extra.OPEN_PATH` (String): folder to open |
+| Component | `ai.victorious.filemanager/.panel.PanelActivity` (debug: `ai.victorious.filemanager.debug`) |
+| Action | `ai.victorious.filemanager.action.PANEL` (category `DEFAULT`) |
+| Extra (optional) | `ai.victorious.filemanager.extra.OPEN_PATH` (String): folder to open |
 | Launch flags | Do **not** add `FLAG_ACTIVITY_NEW_TASK`: the sheet should stack over the host in the host's task. |
 | Launch mode | `singleTop`, excluded from recents |
 

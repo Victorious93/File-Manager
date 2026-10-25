@@ -7,7 +7,9 @@
 
 Dual-pane power-user file manager for the Victorious fleet.
 
-**Package id:** `ai.victorious.filemanager` (debug: `ai.victorious.filemanager.debug`)
+**Package id:** `ai.victorious.filemanager` (the app is named VictorFiles; the package id is unchanged)
+
+> **Package note:** `app/build.gradle.kts` uses `ai.victorious.filemanager`, matching the fleet-manifest ROADMAP target and what DroidCommand AI and VictorSuite look for.
 
 **Status:** blocked (CI stack) *(from [fleet-manifest ROADMAP](https://github.com/Victorious93/fleet-manifest/blob/main/ROADMAP.md))*
 
@@ -36,13 +38,13 @@ This app is an MT Manager–class product: **it works fully on its own**. It is 
 
 ## Features (Phases 1–7)
 
-See also `docs/BATCH_RENAME.md`, `docs/BROWSING.md`, `docs/APK_TOOLS.md`, `docs/POWER_TOOLS.md`, `docs/NETWORK.md`, `docs/FLEET_BRIDGE.md`, `docs/PLUGINS.md`, and `docs/SECURE_FOLDER.md`.
+See also `docs/BATCH_RENAME.md`, `docs/BROWSING.md`, `docs/APK_TOOLS.md`, `docs/POWER_TOOLS.md`, `docs/NETWORK.md`, `docs/AI_ASSISTANT.md`, `docs/PLUGINS.md`, and `docs/SECURE_FOLDER.md`.
 
 ### Phase 1 includes
 
 
 - Kotlin + Jetpack Compose + Material 3
-- One file pane by default; optional dual panes (side-by-side on wide screens, stacked on phones) with per-pane tabs, switchable from the top bar or Settings
+- Dual panes (side-by-side on wide screens, stacked on phones) with per-pane tabs
 - File operations: **copy, move, delete, rename**
 - Sequential **operation queue** with **undo**
 - Search (local name match)
@@ -64,7 +66,7 @@ Debug builds use `ai.victorious.filemanager.debug`.
 - **Phase 6** — smali assemble, ARSC strings, APKS/XAPK, v4/verify, extract installed apps  
 - **Phase 7** — Root (libsu), Shizuku, built-in terminal, app manager backup/restore (`docs/POWER_TOOLS.md`)
 - **Phase 8** — Network connections (FTP/FTPS/SFTP/SMB/WebDAV), Wi-Fi transfer (`docs/NETWORK.md`)
-- **Phase 9** — declarative plugins + script runner (`docs/PLUGINS.md`), biometric-locked encrypted secure folder (`docs/SECURE_FOLDER.md`)
+- **Phase 9** — AI assistant in the code editor with your own endpoint (`docs/AI_ASSISTANT.md`), declarative plugins + script runner (`docs/PLUGINS.md`), biometric-locked encrypted secure folder (`docs/SECURE_FOLDER.md`)
 
 ## Build
 
@@ -87,12 +89,6 @@ On device, grant **all-files access** (Android 11+) for snappy local storage bro
 | `:app` | Android UI (Compose) + optional Messenger bound service |
 
 Unit tests live in `:core` so queue/undo/trash/fleet JSON are verified without an emulator.
-
-## AI
-
-There is no AI built into this app and it connects to no AI service. The only AI that can connect is
-**DroidCommand AI**, the fleet hub, and it connects *to* this app through the local fleet bridge below
-(off by default; only DroidCommand's packages are accepted as callers). See `docs/FLEET_BRIDGE.md`.
 
 ## Fleet notes (optional, pending owner choice)
 
