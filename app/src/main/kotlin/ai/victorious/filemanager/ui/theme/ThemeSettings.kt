@@ -34,6 +34,11 @@ class ThemeSettings(context: Context) {
         accent = enumOr(prefs.getString("accent", null), Accent.BLUE),
     )
 
+    /** Re-reads SharedPreferences (after a settings import). */
+    fun reload() {
+        _state.value = read()
+    }
+
     fun update(transform: (ThemePrefs) -> ThemePrefs) {
         val next = transform(_state.value)
         prefs.edit()

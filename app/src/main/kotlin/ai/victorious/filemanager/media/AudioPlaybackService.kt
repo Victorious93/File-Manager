@@ -1,44 +1,34 @@
 package ai.victorious.filemanager.media
 
 import android.content.Intent
-import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 
 /**
- * Background audio playback via Media3. The platform [MediaSessionService] + Media3's default media
- * notification provider give us lock-screen / notification transport controls and background
- * playback for free; the in-app [ai.victorious.filemanager.ui.AudioPlayerScreen] drives this through
- * a MediaController. Written from scratch; no MT/NP code involved.
+ * Media Pro session service: hosts the shared [MediaProEngine] player in a MediaSession so
+ * background play, lock-screen and notification controls work for audio and video.
  */
+@UnstableApi
 class AudioPlaybackService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
 
     override fun onCreate() {
         super.onCreate()
-        val player = ExoPlayer.Builder(this)
-            .setHandleAudioBecomingNoisy(true) // pause when headphones unplugged
-            .build()
-        mediaSession = MediaSession.Builder(this, player).build()
+        mediaSession = MediaSession.Builder(this, MediaProEngine.createPlayer(this)).build()
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = mediaSession
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         val player = mediaSession?.player
-        // If nothing is playing when the task is swiped away, stop the service so no empty
-        // notification lingers.
-        if (player == null || !player.playWhenReady || player.mediaItemCount == 0) {
-            stopSelf()
-        }
+        if (player == null || !player.playWhenReady || player.mediaItemCount == 0) stopSelf()
     }
 
     override fun onDestroy() {
-        mediaSession?.run {
-            player.release()
-            release()
-        }
+        mediaSession?.release()
         mediaSession = null
+        MediaProEngine.releasePlayer()
         super.onDestroy()
     }
 }

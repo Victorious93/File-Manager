@@ -1,0 +1,15 @@
+FFmpeg LGPL notice (Media3 decoder extension)
+=============================================
+
+This app may optionally ship a dynamically linked FFmpeg-based Media3 audio
+decoder (androidx.media3 decoder_ffmpeg) built with only LGPL-compatible
+decoders enabled (e.g. vorbis, opus, flac). No GPL-only codecs (e.g. libx264,
+libx265, GPL libpostproc features) are enabled in the intended build.
+
+FFmpeg is licensed under LGPL 2.1 or later for the configuration we use.
+Source for the corresponding FFmpeg release (6.0 recommended by Media3) is
+available from https://ffmpeg.org/ and was built via Media3's
+libraries/decoder_ffmpeg/src/main/jni/build_ffmpeg.sh.
+
+If this APK does not include libffmpegJNI / android-libs natives, the FFmpeg
+extension is not packaged in this build — see docs/FFMPEG_MEDIA.md.
