@@ -1,12 +1,16 @@
 package ai.victorious.filemanager.core.archive
 
 import java.io.File
+import java.io.OutputStream
+import java.util.zip.GZIPOutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import org.apache.commons.compress.archivers.sevenz.SevenZOutputFile
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
+import org.apache.commons.compress.compressors.bzip2.BZip2CompressorOutputStream
 import org.apache.commons.compress.compressors.gzip.GzipCompressorOutputStream
+import org.apache.commons.compress.compressors.xz.XZCompressorOutputStream
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -73,6 +77,103 @@ class ArchivesTest {
         val dest = File(tmp.root, "t")
         assertEquals(1, Archives.extract(archive, dest))
         assertEquals("tarred", File(dest, "t.txt").readText())
+    }
+
+    private fun tarball(name: String, wrap: (OutputStream) -> OutputStream): File {
+        val archive = File(tmp.root, name)
+        TarArchiveOutputStream(wrap(archive.outputStream())).use { tar ->
+            for ((entry, text) in listOf("dir/one.txt" to "first", "two.txt" to "second")) {
+                val data = text.toByteArray()
+                tar.putArchiveEntry(TarArchiveEntry(entry).apply { size = data.size.toLong() })
+                tar.write(data); tar.closeArchiveEntry()
+            }
+        }
+        return archive
+    }
+
+    @Test fun tarBz2ListAndExtract() {
+        val archive = tarball("a.tar.bz2", ::BZip2CompressorOutputStream)
+        assertEquals(ArchiveFormat.TAR_BZ2, Archives.format(archive))
+        assertEquals(setOf("dir/one.txt", "two.txt"), Archives.list(archive).map { it.name }.toSet())
+        val dest = File(tmp.root, "tb")
+        assertEquals(2, Archives.extract(archive, dest))
+        assertEquals("first", File(dest, "dir/one.txt").readText())
+        assertEquals("second", File(dest, "two.txt").readText())
+    }
+
+    @Test fun tarXzListAndExtract() {
+        val archive = tarball("a.tar.xz", ::XZCompressorOutputStream)
+        assertEquals(ArchiveFormat.TAR_XZ, Archives.format(archive))
+        assertEquals(setOf("dir/one.txt", "two.txt"), Archives.list(archive).map { it.name }.toSet())
+        val dest = File(tmp.root, "tx")
+        assertEquals(2, Archives.extract(archive, dest))
+        assertEquals("first", File(dest, "dir/one.txt").readText())
+    }
+
+    @Test fun compressedTarballIsRecognisedWhateverItIsCalled() {
+        // Detection looks inside the stream, not at the extension.
+        assertEquals(ArchiveFormat.TAR_GZ, Archives.format(tarball("backup.bin", ::GzipCompressorOutputStream)))
+        assertEquals(ArchiveFormat.TAR_XZ, Archives.format(tarball("backup2.bin", ::XZCompressorOutputStream)))
+    }
+
+    @Test fun plainGzipIsASingleFileNotACorruptTarball() {
+        // Used to be treated as TAR_GZ and fail with "Corrupted TAR archive".
+        val archive = File(tmp.root, "notes.txt.gz")
+        GZIPOutputStream(archive.outputStream()).use { it.write("hello gzip\n".repeat(100).toByteArray()) }
+        assertEquals(ArchiveFormat.GZ, Archives.format(archive))
+        val items = Archives.list(archive)
+        assertEquals(listOf("notes.txt"), items.map { it.name })
+        assertEquals(-1L, items.single().size) // unknown without decompressing
+        assertEquals(archive.length(), items.single().compressedSize)
+
+        val dest = File(tmp.root, "g")
+        assertEquals(1, Archives.extract(archive, dest))
+        assertEquals("hello gzip\n".repeat(100), File(dest, "notes.txt").readText())
+    }
+
+    @Test fun singleFileBz2AndXz() {
+        val text = "some log line\n".repeat(200)
+        val bz = File(tmp.root, "app.log.bz2").also { f -> BZip2CompressorOutputStream(f.outputStream()).use { it.write(text.toByteArray()) } }
+        val xz = File(tmp.root, "dump.sql.xz").also { f -> XZCompressorOutputStream(f.outputStream()).use { it.write(text.toByteArray()) } }
+        assertEquals(ArchiveFormat.BZ2, Archives.format(bz))
+        assertEquals(ArchiveFormat.XZ, Archives.format(xz))
+        assertEquals(1, Archives.extract(bz, File(tmp.root, "b")))
+        assertEquals(1, Archives.extract(xz, File(tmp.root, "x")))
+        assertEquals(text, File(tmp.root, "b/app.log").readText())
+        assertEquals(text, File(tmp.root, "x/dump.sql").readText())
+    }
+
+    @Test fun multiMemberGzipIsReadToTheEnd() {
+        // pigz / bgzip / `cat a.gz b.gz` produce several members; `gzip -d` reads them all.
+        val archive = File(tmp.root, "both.txt.gz")
+        archive.outputStream().use { out ->
+            for (part in listOf("AAA-", "BBB")) {
+                val m = java.io.ByteArrayOutputStream()
+                GZIPOutputStream(m).use { it.write(part.toByteArray()) }
+                out.write(m.toByteArray())
+            }
+        }
+        Archives.extract(archive, File(tmp.root, "m"))
+        assertEquals("AAA-BBB", File(tmp.root, "m/both.txt").readText())
+    }
+
+    @Test fun truncatedStreamFailsAndLeavesNoPartialFile() {
+        val rnd = java.util.Random(7)
+        val payload = ByteArray(300_000).also { rnd.nextBytes(it) } // incompressible, so cutting it really truncates
+        val full = File(tmp.root, "full.bin.gz").also { f -> GZIPOutputStream(f.outputStream()).use { it.write(payload) } }
+        val cut = File(tmp.root, "cut.bin.gz").also { it.writeBytes(full.readBytes().copyOf((full.length() / 2).toInt())) }
+        val dest = File(tmp.root, "t")
+        assertTrue(runCatching { Archives.extract(cut, dest) }.isFailure)
+        assertFalse("a half-decompressed file must not be left behind", File(dest, "cut.bin").exists())
+    }
+
+    @Test fun decompressedNameStripsOnlyTheCompressionSuffix() {
+        assertEquals("a.txt", Archives.decompressedName("a.txt.gz"))
+        assertEquals("A.TXT", Archives.decompressedName("A.TXT.GZ"))
+        assertEquals("dump.sql", Archives.decompressedName("dump.sql.bz2"))
+        assertEquals("disk.img", Archives.decompressedName("disk.img.xz"))
+        assertEquals("noext.out", Archives.decompressedName("noext"))
+        assertEquals(".gz.out", Archives.decompressedName(".gz")) // never an empty / dot-only name
     }
 
     private fun rarFixture(name: String): File {

@@ -13,6 +13,11 @@ class FileKindTest {
     @Test fun byExtension() {
         assertEquals(FileKind.IMAGE, FileKinds.byName("a.JPG"))
         assertEquals(FileKind.ARCHIVE, FileKinds.byName("b.tar.gz"))
+        for (name in listOf("b.tar.bz2", "b.tbz2", "b.tar.xz", "b.txz", "log.gz", "log.bz2", "log.xz")) {
+            assertEquals(name, FileKind.ARCHIVE, FileKinds.byName(name))
+        }
+        assertEquals("tbz2", FileKinds.extension("B.TAR.BZ2"))
+        assertEquals("txz", FileKinds.extension("b.tar.xz"))
         assertEquals(FileKind.AUDIO, FileKinds.byName("c.mp3"))
         assertEquals(FileKind.VIDEO, FileKinds.byName("d.mp4"))
         assertEquals(FileKind.TEXT, FileKinds.byName("e.kt"))
