@@ -55,7 +55,7 @@ fun defaultMode(file: File): ViewerMode = when (FileKinds.detect(file)) {
     FileKind.BINARY -> ViewerMode.HEX
 }
 
-enum class Dest { FILES, SEARCH, BOOKMARKS, APPS, TOOLS, TRASH, SETTINGS }
+enum class Dest { FILES, SEARCH, BOOKMARKS, APPS, NOTES, TOOLS, TRASH, SETTINGS }
 
 data class TabState(
     val id: String,
