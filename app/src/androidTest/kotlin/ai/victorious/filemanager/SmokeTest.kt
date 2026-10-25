@@ -301,7 +301,8 @@ class SmokeTest {
     fun wifiTransferStartsServesAndStops() {
         Smoke.event(rule, UiEvent.Open(0, root.absolutePath))
         openTool("Wi-Fi file transfer")
-        rule.onNode(Smoke.clickable("Start")).performClick()
+        // Server mode replaced the single "Start" button with Web / FTP / SFTP; Web is the LAN HTTP server this test exercises.
+        rule.onNode(Smoke.clickable("Web")).performClick()
         Smoke.waitText(rule, "URL: http://", substring = true)
         val ctrl = Smoke.app.wifiTransfer
         assertTrue(ctrl.isRunning)
