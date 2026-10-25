@@ -1,5 +1,8 @@
 package ai.victorious.filemanager.ui.theme
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.ColorScheme
@@ -9,8 +12,11 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 
 private val Teal = Color(0xFF2BB5A0)
 
@@ -68,10 +74,11 @@ internal fun isDark(mode: ThemeMode, systemDark: Boolean) = when (mode) {
  */
 internal fun schemeFor(prefs: ThemePrefs, systemDark: Boolean, dynamic: ColorScheme?): ColorScheme {
     val dark = isDark(prefs.mode, systemDark)
-    val base = dynamic ?: if (dark) {
-        DarkColors.copy(primary = Color(prefs.accent.dark), onPrimary = Color(0xFF0B1220))
-    } else {
-        LightColors.copy(primary = Color(prefs.accent.light), onPrimary = Color.White)
+    val base = dynamic ?: when {
+        // Named themes bring their own primary; the accent presets only recolor Classic.
+        prefs.palette != Palette.CLASSIC -> paletteScheme(prefs.palette, dark)
+        dark -> DarkColors.copy(primary = Color(prefs.accent.dark), onPrimary = Color(0xFF0B1220))
+        else -> LightColors.copy(primary = Color(prefs.accent.light), onPrimary = Color.White)
     }
     return if (prefs.mode == ThemeMode.AMOLED) base.amoled() else base
 }
@@ -87,5 +94,24 @@ fun VictoriousTheme(
         val ctx = LocalContext.current
         if (dark) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx)
     } else null
+    // enableEdgeToEdge() picks status/navigation bar icon colours from the *system* dark mode. The app's own
+    // Light/Dark/AMOLED setting can differ from it (Dark on a light-mode phone), which left dark icons on a
+    // dark screen, so follow the mode actually shown.
+    val view = LocalView.current
+    if (!view.isInEditMode) {
+        SideEffect {
+            val window = view.context.findActivity()?.window ?: return@SideEffect
+            WindowCompat.getInsetsController(window, view).apply {
+                isAppearanceLightStatusBars = !dark
+                isAppearanceLightNavigationBars = !dark
+            }
+        }
+    }
     MaterialTheme(colorScheme = schemeFor(prefs, systemDark, dynamic), content = content)
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }

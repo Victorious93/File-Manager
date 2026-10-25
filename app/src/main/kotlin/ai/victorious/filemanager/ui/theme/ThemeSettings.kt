@@ -22,6 +22,8 @@ data class ThemePrefs(
     val accent: Accent = Accent.BLUE,
     /** Show two file panes at once. Off by default: one list on screen, Copy/Move use Paste. */
     val dualPane: Boolean = false,
+    /** Colour theme. [Accent] only applies to [Palette.CLASSIC]; dynamic color overrides every palette. */
+    val palette: Palette = Palette.CLASSIC,
 )
 
 /** Persists [ThemePrefs] (appearance and layout) in plain SharedPreferences (nothing secret) and exposes them as a flow. */
@@ -35,6 +37,7 @@ class ThemeSettings(context: Context) {
         dynamicColor = prefs.getBoolean("dynamic", false),
         accent = enumOr(prefs.getString("accent", null), Accent.BLUE),
         dualPane = prefs.getBoolean("dual_pane", false),
+        palette = enumOr(prefs.getString("palette", null), Palette.CLASSIC),
     )
 
     /** Re-reads SharedPreferences (after a settings import). */
@@ -49,6 +52,7 @@ class ThemeSettings(context: Context) {
             .putBoolean("dynamic", next.dynamicColor)
             .putString("accent", next.accent.name)
             .putBoolean("dual_pane", next.dualPane)
+            .putString("palette", next.palette.name)
             .apply()
         _state.value = next
     }
