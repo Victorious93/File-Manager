@@ -25,6 +25,8 @@ import ai.victorious.filemanager.secure.SecureFolderManager
 import ai.victorious.filemanager.media.ThumbnailLoader
 import ai.victorious.filemanager.core.javadec.DecompileService
 import android.app.Application
+import androidx.annotation.OptIn
+import androidx.media3.common.util.UnstableApi
 import java.io.File
 import java.security.SecureRandom
 
@@ -65,6 +67,10 @@ class FileManagerApplication : Application() {
         private set
     lateinit var connections: ConnectionRepository
         private set
+    /** Saved archive passwords (Keystore-encrypted, noBackupFilesDir). Created lazily; main-thread safe to read the reference only. */
+    val archivePasswords: ai.victorious.filemanager.core.archive.ArchivePasswordStore by lazy {
+        ai.victorious.filemanager.archive.ArchivePasswords.create(this)
+    }
     lateinit var wifiTransfer: WifiTransferController
         private set
     lateinit var aiSettings: AiSettings
@@ -78,6 +84,7 @@ class FileManagerApplication : Application() {
     lateinit var decompiler: DecompileService
         private set
 
+    @OptIn(markerClass = [UnstableApi::class])
     override fun onCreate() {
         super.onCreate()
         if (BuildConfig.DEBUG) enableDebugStrictMode()
@@ -139,6 +146,8 @@ class FileManagerApplication : Application() {
             // UNIFIED_BACKUP default: remote callers can never export/import settings.
             configRemoteAllowed = false,
             confirmationBroker = confirmations,
+            // Media Pro player; idle -> no_session. Keyboard debug (pinned) is scoped to media.*.
+            media = ai.victorious.filemanager.media.MediaProEngine.also { it.init(this) },
         )
     }
 

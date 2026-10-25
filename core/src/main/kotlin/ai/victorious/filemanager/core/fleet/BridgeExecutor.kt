@@ -32,6 +32,7 @@ class BridgeExecutor(
     configBackup: NodeConfigBackup? = null,
     configRemoteAllowed: Boolean = false,
     confirmationBroker: ConfirmationBroker? = null,
+    media: ai.victorious.filemanager.core.media.pro.MediaRemote? = null,
 ) {
     /** Frozen fleet envelope v1 (capabilities.get, remote.command, macro.*, node.status.get). */
     val envelope = EnvelopeExecutor(
@@ -47,6 +48,7 @@ class BridgeExecutor(
         configBackup = configBackup,
         configRemoteAllowed = configRemoteAllowed,
         broker = confirmationBroker,
+        media = media,
         legacyStatus = { status(externalControlEnabled()) },
     )
 
