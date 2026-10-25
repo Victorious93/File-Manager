@@ -15,8 +15,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -138,8 +136,12 @@ internal fun FolderSyncScreen(defaultDir: String, onClose: () -> Unit, onEvent: 
                 FolderSyncWorker.schedule(context, id, scheduleHours.toLongOrNull() ?: 24)
                 onEvent(UiEvent.ShowMessage("Scheduled job $id"))
             }) { Text("Save + schedule WorkManager job") }
-            LazyColumn(Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                items(preview) { Text(it, style = MaterialTheme.typography.bodySmall) }
+            // Not a LazyColumn: this Column already scrolls, and a nested lazy list crashes on infinite height.
+            Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                preview.take(PREVIEW_LIMIT).forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+                if (preview.size > PREVIEW_LIMIT) {
+                    Text("… ${preview.size - PREVIEW_LIMIT} more", style = MaterialTheme.typography.bodySmall)
+                }
             }
         }
     }
@@ -165,3 +167,5 @@ private fun openSides(
 }
 
 private data class Quadruple<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
+
+private const val PREVIEW_LIMIT = 500

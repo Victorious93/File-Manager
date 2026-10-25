@@ -178,7 +178,8 @@ class SmokeTest {
         Smoke.waitIdle(rule)
         Smoke.waitFor(rule, "in trash") { Smoke.app.trash.list().any { it.originalPath == renamed } }
         rule.onNodeWithContentDescription("Undo").performClick()
-        Smoke.waitFor(rule, "delete undone") { File(a, "renamed.txt").isFile }
+        // Restore can copy across filesystems, so the file appears before its bytes do; wait for the content.
+        Smoke.waitFor(rule, "delete undone") { File(a, "renamed.txt").let { it.isFile && it.readText() == "hello" } }
         assertEquals("hello", File(a, "renamed.txt").readText())
     }
 
