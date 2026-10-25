@@ -67,4 +67,39 @@ class FileSplitTest {
         assertEquals(null, FileSplit.parseSize("0"))
         assertEquals(null, FileSplit.parseSize("-5"))
     }
+
+    @Test fun aLoneBMeansBytesNotMegabytes() {
+        // "512b" used to match as a bare number with an optional trailing b, so it fell into the MB default.
+        assertEquals(512L, FileSplit.parseSize("512b"))
+        assertEquals(512L, FileSplit.parseSize("512B"))
+        assertEquals(512L, FileSplit.parseSize(" 512 b "))
+        assertEquals(1L, FileSplit.parseSize("1b"))
+    }
+
+    @Test fun everyUnitIsBinaryAndTheBIsOptionalAfterAPrefix() {
+        val kb = 1024L
+        val mb = kb * 1024
+        val gb = mb * 1024
+        for ((suffixes, bytes) in listOf(listOf("k", "kb", "KB", "Kb") to kb, listOf("m", "mb", "MB") to mb, listOf("g", "gb", "GB") to gb)) {
+            for (s in suffixes) assertEquals("2$s", 2 * bytes, FileSplit.parseSize("2$s"))
+        }
+        assertEquals("a bare number is megabytes", 2 * mb, FileSplit.parseSize("2"))
+    }
+
+    @Test fun sizesThatAreNotWholeBytesOrNotASizeAreRejected() {
+        assertEquals("half a byte", null, FileSplit.parseSize("0.5b"))
+        assertEquals("1.5 bytes is not a size", null, FileSplit.parseSize("1.5b"))
+        assertEquals("0b", null, FileSplit.parseSize("0b"))
+        assertEquals("unit without a number", null, FileSplit.parseSize("b"))
+        assertEquals(null, FileSplit.parseSize("mb"))
+        assertEquals("doubled suffix", null, FileSplit.parseSize("5bb"))
+        assertEquals("unit before number", null, FileSplit.parseSize("mb5"))
+        assertEquals("fractions of a larger unit are still fine", 512L, FileSplit.parseSize("0.5k"))
+    }
+
+    @Test fun aTypedByteSizeSplitsIntoThatManyBytes() {
+        val src = sample(2_000)
+        val parts = FileSplit.split(src, FileSplit.parseSize("512b")!!)
+        assertEquals(listOf(512L, 512L, 512L, 464L), parts.map { it.length() })
+    }
 }

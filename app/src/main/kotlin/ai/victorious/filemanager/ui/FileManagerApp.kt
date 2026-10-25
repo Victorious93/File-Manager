@@ -1042,7 +1042,7 @@ private fun SplitDialog(file: File, onDismiss: () -> Unit, onConfirm: (Long) -> 
     val parts = size?.let { (length + it - 1) / it }
     val max = ai.victorious.filemanager.core.ops.FileSplit.MAX_PARTS
     val error = when {
-        size == null -> "Enter a size like 100, 50MB, 1.5GB, 700k (bare numbers are MB)"
+        size == null -> "Enter a size like 100, 50MB, 1.5GB, 700k, 512b (bare numbers are MB)"
         parts!! < 2 -> "Part size is not smaller than the file (${length} bytes)"
         parts > max -> "$parts parts is over the $max limit; use a larger size"
         else -> null

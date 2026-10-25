@@ -12,14 +12,25 @@ object FileSplit {
     private const val BUF = 64 * 1024
     private val PART_RE = Regex("""^(.+)\.(\d{3})$""")
 
+    /** number, then nothing (MB), a prefix k/m/g with an optional b (KB/MB/GB), or a lone b (bytes). */
+    private val SIZE_RE = Regex("""^\s*(\d+(?:\.\d+)?)\s*(?:([kmg])b?|(b))?\s*$""", RegexOption.IGNORE_CASE)
+
     /**
-     * Parses a part size such as "50", "50mb", "1.5 GB", "700k" (bare numbers are MB).
-     * Returns null for blank, non-positive, or unparseable input. Units are binary (1 MB = 1024*1024).
+     * Parses a part size such as "50", "50mb", "1.5 GB", "700k", "512b" (bare numbers are MB, a lone "b" is bytes).
+     * Returns null for blank, non-positive, or unparseable input, and for a fractional number of bytes.
+     * Units are binary (1 MB = 1024*1024).
      */
     fun parseSize(text: String): Long? {
-        val m = Regex("""^\s*(\d+(?:\.\d+)?)\s*([kmg]?)b?\s*$""", RegexOption.IGNORE_CASE).matchEntire(text) ?: return null
+        val m = SIZE_RE.matchEntire(text) ?: return null
         val n = m.groupValues[1].toDoubleOrNull() ?: return null
-        val mult = when (m.groupValues[2].lowercase()) { "k" -> 1024.0; "g" -> 1024.0 * 1024 * 1024; else -> 1024.0 * 1024 }
+        val inBytes = m.groupValues[3].isNotEmpty()
+        if (inBytes && n % 1.0 != 0.0) return null
+        val mult = when {
+            inBytes -> 1.0
+            m.groupValues[2].equals("k", ignoreCase = true) -> 1024.0
+            m.groupValues[2].equals("g", ignoreCase = true) -> 1024.0 * 1024 * 1024
+            else -> 1024.0 * 1024 // "m", or no unit at all
+        }
         val bytes = n * mult
         return if (bytes >= 1 && bytes < Long.MAX_VALUE) bytes.toLong() else null
     }
