@@ -47,4 +47,13 @@ class TextDocumentTest {
         val f = tmp.newFile("bom.txt").apply { writeBytes(byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte(), 0x41)) }
         assertEquals("A", TextFiles.load(f))
     }
+
+    @Test fun failedSaveLeavesNoTempFileBehind() {
+        val dir = tmp.newFolder("docs")
+        val target = java.io.File(dir, "notes.txt").apply { mkdir() }
+        java.io.File(target, "inner").writeText("x") // a non-empty folder where the file should be: the save must fail
+
+        assertTrue(runCatching { TextFiles.save(target, "hello") }.isFailure)
+        assertEquals(listOf("notes.txt"), dir.list()!!.toList())
+    }
 }
