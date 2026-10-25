@@ -1,6 +1,30 @@
+<!-- victorious-fleet-readme-refresh:start -->
 <p align="center">
   <img src="assets/logo.png" alt="File-Manager logo" width="200">
 </p>
+
+# File-Manager
+
+Dual-pane power-user file manager for the Victorious fleet.
+
+**Package id:** `ai.victorious.victorfiles`
+
+> **Package note:** Code (`app/build.gradle.kts`) uses `ai.victorious.victorfiles`. ROADMAP target rename is `ai.victorious.filemanager` — not applied in code yet.
+
+**Status:** blocked (CI stack) *(from [fleet-manifest ROADMAP](https://github.com/Victorious93/fleet-manifest/blob/main/ROADMAP.md))*
+
+## Install / build
+
+Kotlin Gradle (`app/build.gradle.kts`). Typical: `./gradlew :app:assembleDebug`.
+
+_Steps above are taken from this repo’s build files / existing docs; anything not exercised in this refresh is unlabeled as verified on a device._
+
+## Victorious fleet
+
+- Monorepo: [https://github.com/Victorious93/victorious-fleet](https://github.com/Victorious93/victorious-fleet)
+- Fleet site: [https://victorious-framework.pages.dev](https://victorious-framework.pages.dev)
+
+<!-- victorious-fleet-readme-refresh:end -->
 
 <p align="center">
   <img src="docs/assets/logo.png" alt="VictorFiles logo" width="240">
