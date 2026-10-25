@@ -77,7 +77,7 @@
             android:theme="@style/Theme.VictorFiles.Panel"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
-                <action android:name="ai.victorious.victorfiles.action.PANEL" />
+                <action android:name="ai.victorious.filemanager.action.PANEL" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>

@@ -121,7 +121,7 @@ class PanelActivity : FragmentActivity() {
     }
 
     companion object {
-        const val ACTION_PANEL = "ai.victorious.victorfiles.action.PANEL"
+        const val ACTION_PANEL = "ai.victorious.filemanager.action.PANEL"
     }
 }
 
