@@ -14,7 +14,7 @@ This app is an MT Manager–class product: **it works fully on its own**. It is 
 
 ## Features (Phases 1–7)
 
-See also `docs/BATCH_RENAME.md`, `docs/BROWSING.md`, `docs/APK_TOOLS.md`, `docs/POWER_TOOLS.md`, `docs/NETWORK.md`, `docs/AI_ASSISTANT.md`, `docs/PLUGINS.md`, and `docs/SECURE_FOLDER.md`.
+See also `docs/BATCH_RENAME.md`, `docs/BROWSING.md`, `docs/APK_TOOLS.md`, `docs/POWER_TOOLS.md`, `docs/NETWORK.md`, `docs/AI_ASSISTANT.md`, `docs/PLUGINS.md`, `docs/SECURE_FOLDER.md`, and `docs/PATCH_PRESETS.md`.
 
 ### Phase 1 includes
 
@@ -145,3 +145,12 @@ See [docs/PHASE10.md](docs/PHASE10.md).
 Binary AndroidManifest editor, ARSC string edits inside a sealed APK, one-tap APK mod
 (rebuild → sign → verify → install), and a real PTY terminal (Termux/jackpal Apache-2.0
 modules, with pipe fallback). See [docs/APK_DEEP_EDIT.md](docs/APK_DEEP_EDIT.md).
+
+## Phase 15: APK patch presets
+
+One-tap **static** APK patch presets (manifest flags, pattern-based signature/license
+neutralization, log inject, toast removal) with an explicit **authorization gate** — the user
+must confirm they own or are authorized to modify the APK (package + signing cert) before any
+apply. Preview diffs, rebuild → re-sign → verify, undo, and optional install. No runtime hooks,
+no vendor target lists, no third-party APK tooling. See [docs/PATCH_PRESETS.md](docs/PATCH_PRESETS.md).
+
