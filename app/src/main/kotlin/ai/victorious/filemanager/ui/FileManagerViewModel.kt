@@ -128,7 +128,12 @@ data class UiState(
     val showTerminal: Boolean = false,
     val showNetwork: Boolean = false,
     val showWifiTransfer: Boolean = false,
+    /** Items staged by Copy/Move while one pane is shown, waiting for "Paste here". */
+    val clipboard: Clipboard? = null,
 )
+
+/** [move] true = cut (the sources are moved when pasted), false = copy. */
+data class Clipboard(val move: Boolean, val sources: List<String>)
 
 /** Signing request from the Sign APK dialog. Passwords live only in memory for this call. */
 data class SignOptions(
@@ -152,8 +157,12 @@ sealed interface UiEvent {
     data class CloseTab(val pane: Int, val index: Int) : UiEvent
     data class NewTab(val pane: Int, val path: String? = null) : UiEvent
     data class GoUp(val pane: Int) : UiEvent
+    /** Copy the selection to the other pane, or, with one pane shown, stage it for [PasteHere]. */
     data object CopyToOther : UiEvent
+    /** Move the selection to the other pane, or, with one pane shown, stage it for [PasteHere]. */
     data object MoveToOther : UiEvent
+    data object PasteHere : UiEvent
+    data object ClearClipboard : UiEvent
     data object DeleteSelected : UiEvent
     data object RequestRename : UiEvent
     data class ConfirmRename(val newName: String) : UiEvent
@@ -322,8 +331,10 @@ class FileManagerViewModel(
             is UiEvent.CloseTab -> closeTab(event.pane, event.index)
             is UiEvent.NewTab -> newTab(event.pane, event.path)
             is UiEvent.GoUp -> goUp(event.pane)
-            UiEvent.CopyToOther -> runOp(OpKind.COPY)
-            UiEvent.MoveToOther -> runOp(OpKind.MOVE)
+            UiEvent.CopyToOther -> if (dualPane) runOp(OpKind.COPY) else stage(move = false)
+            UiEvent.MoveToOther -> if (dualPane) runOp(OpKind.MOVE) else stage(move = true)
+            UiEvent.PasteHere -> pasteHere()
+            UiEvent.ClearClipboard -> _ui.update { it.copy(clipboard = null) }
             UiEvent.DeleteSelected -> runOp(OpKind.DELETE)
             UiEvent.RequestRename -> requestRename()
             is UiEvent.ConfirmRename -> confirmRename(event.newName)
@@ -608,18 +619,62 @@ class FileManagerViewModel(
         return pane(state, other).active.path
     }
 
+    private fun focusedPaneDir(): String = pane(_ui.value, _ui.value.focusedPane).active.path
+
+    /** True when both panes are on screen, so "the other pane" is something the user can see. */
+    private val dualPane: Boolean get() = app.themeSettings.state.value.dualPane
+
     private fun runOp(kind: OpKind) {
         val sources = selectedSources()
         if (sources.isEmpty()) {
             snack("Select files first")
             return
         }
+        runQueued(kind, sources, destination = { otherPaneDir() }, clearSelection = true)
+    }
+
+    /** One pane shown: Copy/Move remember the selection and wait for [pasteHere] in whatever folder is opened next. */
+    private fun stage(move: Boolean) {
+        val sources = selectedSources()
+        if (sources.isEmpty()) {
+            snack("Select files first")
+            return
+        }
+        updatePane(_ui.value.focusedPane) { it.copy(selected = emptySet()) }
+        _ui.update { it.copy(clipboard = Clipboard(move, sources)) }
+        snack("${if (move) "Cut" else "Copied"} ${sources.size} item(s). Open a folder and tap Paste here.")
+    }
+
+    private fun pasteHere() {
+        val clip = _ui.value.clipboard
+        if (clip == null) {
+            snack("Nothing to paste")
+            return
+        }
+        runQueued(
+            if (clip.move) OpKind.MOVE else OpKind.COPY,
+            clip.sources,
+            destination = { focusedPaneDir() },
+            clearSelection = false,
+        ) {
+            // A cut is spent once pasted; a copy stays staged so it can be pasted in more places.
+            if (clip.move) _ui.update { it.copy(clipboard = null) }
+        }
+    }
+
+    private fun runQueued(
+        kind: OpKind,
+        sources: List<String>,
+        destination: () -> String,
+        clearSelection: Boolean,
+        onSuccess: () -> Unit = {},
+    ) {
         viewModelScope.launch {
             _ui.update { it.copy(busy = true) }
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     when (kind) {
-                        OpKind.COPY, OpKind.MOVE -> app.queue.enqueue(kind, sources, otherPaneDir())
+                        OpKind.COPY, OpKind.MOVE -> app.queue.enqueue(kind, sources, destination())
                         OpKind.DELETE -> app.queue.enqueue(kind, sources)
                         OpKind.RENAME, OpKind.BATCH_RENAME, OpKind.CREATE_FOLDER, OpKind.CREATE_FILE -> error("not a selection op")
                     }
@@ -630,7 +685,7 @@ class FileManagerViewModel(
             // (move/delete) or done with (copy), and a separate update left a window where a quick
             // next tap toggled a stale selection.
             _ui.update { s ->
-                val cleared = if (result.isSuccess) {
+                val cleared = if (result.isSuccess && clearSelection) {
                     if (s.focusedPane == 0) s.copy(left = s.left.copy(selected = emptySet()))
                     else s.copy(right = s.right.copy(selected = emptySet()))
                 } else s
@@ -638,6 +693,7 @@ class FileManagerViewModel(
             }
             result.fold(
                 onSuccess = {
+                    onSuccess()
                     refreshAll()
                     snack(it.message)
                 },

@@ -13,8 +13,6 @@ Phase 13 adds a readable-Java decompiler on top of the existing DEX/smali browse
   (opens in the text editor), or **Export all .java** for a whole dex/package to a folder.
 - **String constants** — list every `const-string` literal in a dex, with a filter.
 - **Dex <-> dex compare** — class-list and method-signature diff between two `classesN.dex`.
-- **AI "Explain"** — the existing AI assistant runs on the decompiled Java (nothing is sent
-  until you confirm host + size, same as the code editor).
 
 ## Engine
 - **jadx** (`io.github.skylot:jadx-core` + `jadx-dex-input`, Apache-2.0). jadx is pure JVM,

@@ -20,9 +20,11 @@ data class ThemePrefs(
     val mode: ThemeMode = ThemeMode.SYSTEM,
     val dynamicColor: Boolean = false,
     val accent: Accent = Accent.BLUE,
+    /** Show two file panes at once. Off by default: one list on screen, Copy/Move use Paste. */
+    val dualPane: Boolean = false,
 )
 
-/** Persists [ThemePrefs] in plain SharedPreferences (nothing secret) and exposes them as a flow. */
+/** Persists [ThemePrefs] (appearance and layout) in plain SharedPreferences (nothing secret) and exposes them as a flow. */
 class ThemeSettings(context: Context) {
     private val prefs = context.getSharedPreferences("fm_theme", Context.MODE_PRIVATE)
     private val _state = MutableStateFlow(read())
@@ -32,6 +34,7 @@ class ThemeSettings(context: Context) {
         mode = enumOr(prefs.getString("mode", null), ThemeMode.SYSTEM),
         dynamicColor = prefs.getBoolean("dynamic", false),
         accent = enumOr(prefs.getString("accent", null), Accent.BLUE),
+        dualPane = prefs.getBoolean("dual_pane", false),
     )
 
     fun update(transform: (ThemePrefs) -> ThemePrefs) {
@@ -40,6 +43,7 @@ class ThemeSettings(context: Context) {
             .putString("mode", next.mode.name)
             .putBoolean("dynamic", next.dynamicColor)
             .putString("accent", next.accent.name)
+            .putBoolean("dual_pane", next.dualPane)
             .apply()
         _state.value = next
     }

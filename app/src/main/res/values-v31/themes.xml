@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+ draws its own splash from the theme; without this it falls back to a window colour
+         it chooses itself. Stated explicitly so the splash is the same colour as the launch window. -->
+    <style name="Theme.VictoriousFileManager" parent="Base.Theme.VictoriousFileManager">
+        <item name="android:windowSplashScreenBackground">@color/launch_background</item>
+    </style>
+</resources>

@@ -56,6 +56,7 @@ import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.RestoreFromTrash
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Splitscreen
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.automirrored.outlined.Undo
 import androidx.compose.material3.AlertDialog
@@ -89,6 +90,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -119,6 +121,8 @@ fun FileManagerApp(
         onEvent(UiEvent.DismissSnackbar)
     }
     val context = LocalContext.current
+    val themeSettings = (context.applicationContext as ai.victorious.filemanager.FileManagerApplication).themeSettings
+    val dualPane = themeSettings.state.collectAsState().value.dualPane
     var showCreate by remember { mutableStateOf(false) }
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -174,7 +178,7 @@ fun FileManagerApp(
     }
     val viewer = state.viewer
     if (viewer != null) {
-        val otherDir = if (state.focusedPane == 0) state.right.active.path else state.left.active.path
+        val otherDir = transferDir(dualPane, state.focusedPane, state.left.active.path, state.right.active.path)
         Box(Modifier.fillMaxSize()) {
             ViewerHost(
                 request = viewer,
@@ -224,6 +228,12 @@ fun FileManagerApp(
                 },
                 actions = {
                     if (state.destination == Dest.FILES) {
+                        IconButton(onClick = { themeSettings.update { it.copy(dualPane = !it.dualPane) } }) {
+                            Icon(
+                                Icons.Outlined.Splitscreen,
+                                contentDescription = if (dualPane) "Show one pane" else "Show two panes",
+                            )
+                        }
                         val path = pane(state).active.path
                         val bookmarked = state.bookmarks.any { it.path == path }
                         IconButton(onClick = { onEvent(UiEvent.ToggleBookmark) }) {
@@ -245,6 +255,7 @@ fun FileManagerApp(
         bottomBar = {
             Column {
                 if (state.destination == Dest.FILES) {
+                    state.clipboard?.let { ClipboardBar(it, onEvent) }
                     BottomAppBar(
                         actions = {
                             IconButton(onClick = { onEvent(UiEvent.CopyToOther) }) {
@@ -337,7 +348,9 @@ fun FileManagerApp(
                 )
             }
             when (state.destination) {
-                Dest.FILES -> DualPane(state, onEvent, onCreate = { showCreate = true })
+                Dest.FILES ->
+                    if (dualPane) DualPane(state, onEvent, onCreate = { showCreate = true })
+                    else SinglePane(state, onEvent, onCreate = { showCreate = true })
                 Dest.SEARCH -> SearchPane(state, onEvent)
                 Dest.BOOKMARKS -> BookmarksPane(state, onEvent)
                 Dest.APPS -> {
@@ -411,6 +424,31 @@ private fun PermissionBanner(onGrant: () -> Unit) {
             }
             Spacer(Modifier.width(8.dp))
             FilledTonalButton(onClick = onGrant) { Text("Grant") }
+        }
+    }
+}
+
+/** One file list filling the screen: the focused pane. The other pane keeps its folder and tabs, hidden. */
+@Composable
+private fun SinglePane(state: UiState, onEvent: (UiEvent) -> Unit, onCreate: () -> Unit) {
+    val index = state.focusedPane
+    FilePane(index, pane(state), true, state.listing, onEvent, onCreate, Modifier.fillMaxSize())
+}
+
+/** Shown while Copy/Move has staged items: paste them into whatever folder is open, or drop them. */
+@Composable
+private fun ClipboardBar(clip: Clipboard, onEvent: (UiEvent) -> Unit) {
+    Surface(tonalElevation = 3.dp, modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "${if (clip.move) "Cut" else "Copied"} ${clip.sources.size} item(s)",
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            TextButton(onClick = { onEvent(UiEvent.PasteHere) }) { Text("Paste here") }
+            IconButton(onClick = { onEvent(UiEvent.ClearClipboard) }) {
+                Icon(Icons.Outlined.Close, contentDescription = "Clear clipboard")
+            }
         }
     }
 }

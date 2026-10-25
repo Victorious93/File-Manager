@@ -43,7 +43,10 @@ import org.junit.runner.RunWith
 class SmokeTest {
     companion object {
         @BeforeClass @JvmStatic
-        fun grant() = Smoke.grantStorage()
+        fun grant() {
+            Smoke.grantStorage()
+            Smoke.useDualPane()
+        }
     }
 
     @get:Rule
@@ -247,8 +250,7 @@ class SmokeTest {
         nav("Settings")
         Smoke.waitText(rule, "Privilege")
         rule.onNodeWithText("Root (su / Magisk)").assertExists()
-        rule.onNodeWithText("AI assistant").assertExists()
-        rule.onNodeWithText("Enable AI assistant").assertExists()
+        rule.onAllNodesWithText("AI assistant").assertCountEquals(0) // DroidCommand AI is the only AI
         rule.onNodeWithText("Secure folder").assertExists()
     }
 

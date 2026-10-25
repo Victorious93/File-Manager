@@ -22,6 +22,8 @@ class MainActivity : FragmentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Leave the logo launch window (manifest theme) for the normal theme before the window is built.
+        setTheme(R.style.Theme_VictoriousFileManager)
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         // Listing happens in onResume (always follows onCreate), off the main thread.

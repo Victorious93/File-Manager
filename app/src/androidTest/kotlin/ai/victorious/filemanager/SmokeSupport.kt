@@ -40,6 +40,14 @@ object Smoke {
         shell("appops set $pkg MANAGE_EXTERNAL_STORAGE allow")
     }
 
+    /**
+     * The app opens with one file pane. Most smoke tests drive both panes (copy to "the other pane",
+     * left/right folders), so they opt in to the two-pane layout the way a user does in Settings.
+     */
+    fun useDualPane(on: Boolean = true) {
+        app.themeSettings.update { it.copy(dualPane = on) }
+    }
+
     fun fixtureRoot(name: String): File {
         val root = File(Environment.getExternalStorageDirectory(), "FMSmoke/$name")
         root.deleteRecursively()

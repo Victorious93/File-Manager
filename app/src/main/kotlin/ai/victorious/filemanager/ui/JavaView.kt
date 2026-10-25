@@ -55,7 +55,6 @@ fun JavaClassView(target: File, source: DexSource, cls: DexClassInfo, onEvent: (
     var origin by remember(cls, source) { mutableStateOf<DecompileOrigin?>(null) }
     var error by remember(cls, source) { mutableStateOf<String?>(null) }
     var query by remember(cls, source) { mutableStateOf("") }
-    var showAi by remember(cls, source) { mutableStateOf(false) }
 
     LaunchedEffect(cls, source) {
         error = null; code = null
@@ -81,7 +80,6 @@ fun JavaClassView(target: File, source: DexSource, cls: DexClassInfo, onEvent: (
                         .onFailure { onEvent(UiEvent.ShowMessage(it.message ?: "Export failed")) }
                 }
             }) { Text("Export .java") }
-            TextButton(onClick = { showAi = !showAi }) { Text(if (showAi) "Hide AI" else "Explain") }
         }
         origin?.let {
             val tag = when (it) {
@@ -90,16 +88,6 @@ fun JavaClassView(target: File, source: DexSource, cls: DexClassInfo, onEvent: (
                 DecompileOrigin.DECOMPILED -> "jadx"
             }
             Text("  $tag · ${java.length} chars", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 8.dp))
-        }
-        if (showAi) {
-            AiPanel(
-                fileName = cls.javaName.substringAfterLast('.') + ".java",
-                language = "java",
-                fullText = java,
-                selection = null,
-                onApply = { /* decompiled Java is read-only */ },
-                onClose = { showAi = false },
-            )
         }
         OutlinedTextField(query, { query = it }, label = { Text("Search in Java") }, singleLine = true,
             modifier = Modifier.fillMaxWidth().padding(8.dp))
