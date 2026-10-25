@@ -141,6 +141,7 @@ dependencies {
     implementation(libs.okhttp)
     // Phase 12 — media viewers + widgets (all Apache-2.0)
     implementation(libs.media3.exoplayer)
+    implementation(project(":ffmpeg-decoder"))
     implementation(libs.media3.ui)
     implementation(libs.media3.session)
     implementation(libs.media3.common)

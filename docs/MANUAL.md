@@ -570,3 +570,12 @@ draggable force-directed layout (pinch to zoom, drag nodes).
 Profiles tab: edit steps, reorder, and optional schedule (WorkManager). Schedules are off until
 you set once/daily/weekly. Apply still asks for confirmation.
 
+
+
+## Media — system volume + FFmpeg
+
+In the player **Options** sheet you can let `media.volume` also change the system media
+stream (`STREAM_MUSIC`). Optional FFmpeg audio decoding (LGPL) is documented in
+`docs/FFMPEG_MEDIA.md` — only packaged when natives were built and the Media3 decoder
+module is on the classpath.
+

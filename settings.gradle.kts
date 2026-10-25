@@ -18,3 +18,4 @@ dependencyResolutionManagement {
 rootProject.name = "VictorFiles"
 include(":core")
 include(":app")
+include(":ffmpeg-decoder")
