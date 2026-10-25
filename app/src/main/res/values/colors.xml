@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Colour of the launch window and the Android 12+ splash. Never white, whatever the system
+         theme: the launcher icon's own background is black, so it blends in. Change it here only. -->
+    <color name="launch_background">#000000</color>
+</resources>

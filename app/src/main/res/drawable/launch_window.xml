@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launch window for Android 11 and older (Android 12+ draws its own splash from the launcher icon).
+     The logo art is a black tile, so it sits on launch_background with no visible edge. 288dp is the
+     size the system splash uses, so the logo is the same size on every Android version. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/launch_background" />
+    <item
+        android:width="288dp"
+        android:height="288dp"
+        android:drawable="@mipmap/ic_launcher_foreground"
+        android:gravity="center" />
+</layer-list>
