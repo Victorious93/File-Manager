@@ -22,6 +22,15 @@ Built from scratch. Open-source clients only (licenses allow redistribution).
 - Shows URL + QR (ZXing) and an optional PIN.
 - PC browser can list, download, and upload into the focused folder.
 - Stops when the user taps Stop.
+- **PIN guessing is throttled per client.** The PIN is only four digits, so after 5 wrong PINs in a row a
+  client (identified by IP address) gets `429 Too Many Requests` with a `Retry-After` header for 60 s,
+  doubling on each repeat up to 15 min. While locked out, even the correct PIN is refused.
+  - Only a *wrong* PIN counts as a guess. Opening the page with no PIN is not a guess, and a correct PIN
+    clears that client's record.
+  - Lockouts are per client, never server-wide, so another device on the network cannot lock the owner out.
+  - The state is in memory; each time the server is started it gets a new PIN and a clean slate.
+- File and folder names are percent-encoded in links and in the upload form's action, so names containing
+  `%`, `?`, `#` or spaces download and upload correctly.
 
 ## Cloud drives
 

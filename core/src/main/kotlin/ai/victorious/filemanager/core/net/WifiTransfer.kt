@@ -26,6 +26,8 @@ data class WifiHttpRequest(
     val bodyFileName: String? = null,
     /** Upload already spooled to disk by the HTTP server (streamed, not held in memory). */
     val bodyFile: java.io.File? = null,
+    /** Who is asking (the socket's remote address); wrong-PIN attempts are limited per client. */
+    val clientId: String? = null,
 )
 
 data class WifiHttpResponse(
@@ -44,13 +46,27 @@ class WifiTransferRouter(
     private val io: FileIo,
     private val rootPath: String,
     private val pin: String?,
+    private val limiter: PinAttemptLimiter = PinAttemptLimiter(),
 ) {
     fun handle(req: WifiHttpRequest): WifiHttpResponse {
         if (!pin.isNullOrEmpty()) {
+            val client = req.clientId ?: "unknown"
+            // Refuse a locked-out client before looking at its PIN, or the lock would still reveal a right guess.
+            val wait = limiter.retryAfterSeconds(client)
+            if (wait > 0) {
+                return WifiHttpResponse(
+                    429, "text/plain; charset=utf-8",
+                    "Too many wrong PINs. Try again in $wait s.".toByteArray(),
+                    mapOf("Retry-After" to wait.toString()),
+                )
+            }
             val provided = req.pinHeader ?: req.query["pin"]
-            if (provided != pin) {
+            if (provided == null || !java.security.MessageDigest.isEqual(provided.toByteArray(), pin.toByteArray())) {
+                // Opening the page without a PIN is not a guess; only a wrong one counts.
+                if (provided != null) limiter.recordFailure(client)
                 return text(401, "PIN required or invalid")
             }
+            limiter.recordSuccess(client)
         }
         // req.path is the already-decoded URI path (NanoHTTPD decodes it, and strips the query), so a
         // '%' or '?' here is part of a file name: decoding or splitting again would corrupt it.
@@ -171,6 +187,7 @@ class WifiTransferServer(
             pinHeader = session.headers["x-wifi-pin"] ?: session.headers["x-pin"],
             bodyFileName = fileName,
             bodyFile = bodyFile,
+            clientId = session.headers["remote-addr"],
         )
         val res = try {
             router.handle(req)

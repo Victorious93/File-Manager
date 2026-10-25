@@ -132,6 +132,21 @@ class WifiTransferServerTest {
     }
 
     @Test
+    fun guessingThePinIsThrottledOverHttp() = withServer(pin = "4321") { base, _, root ->
+        File(root, "a.txt").writeText("data")
+        repeat(5) { assertEquals(401, get("$base/a.txt?pin=${"000$it"}").first) }
+
+        // Locked out: even the right PIN is refused, with a hint of when to come back.
+        val c = URL("$base/a.txt?pin=4321").openConnection() as HttpURLConnection
+        try {
+            assertEquals(429, c.responseCode)
+            assertTrue("Retry-After was ${c.getHeaderField("Retry-After")}", c.getHeaderField("Retry-After").toLong() in 1..60)
+        } finally {
+            c.disconnect()
+        }
+    }
+
+    @Test
     fun pinIsRequiredOnEveryRequestAndAcceptedAsHeaderOrQuery() = withServer(pin = "4321") { base, _, root ->
         File(root, "a.txt").writeText("data")
         assertEquals(401, get("$base/a.txt").first)
