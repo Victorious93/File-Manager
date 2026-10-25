@@ -11,6 +11,7 @@ import ai.victorious.filemanager.core.bookmarks.Bookmark
 import ai.victorious.filemanager.core.fs.FileEntry
 import ai.victorious.filemanager.core.fs.FileIo
 import ai.victorious.filemanager.core.ops.OpKind
+import ai.victorious.filemanager.core.ops.processAllOrThrow
 import ai.victorious.filemanager.core.rename.BatchRename
 import ai.victorious.filemanager.core.rename.RenamePlan
 import ai.victorious.filemanager.core.rename.RenameSpec
@@ -578,7 +579,7 @@ class FileManagerViewModel(
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     app.queue.enqueue(if (folder) OpKind.CREATE_FOLDER else OpKind.CREATE_FILE, listOf(dir), newName = name)
-                    app.queue.processAll().last()
+                    app.queue.processAllOrThrow()
                 }
             }
             _ui.update { it.copy(busy = false) }
@@ -622,7 +623,7 @@ class FileManagerViewModel(
                         OpKind.DELETE -> app.queue.enqueue(kind, sources)
                         OpKind.RENAME, OpKind.BATCH_RENAME, OpKind.CREATE_FOLDER, OpKind.CREATE_FILE -> error("not a selection op")
                     }
-                    app.queue.processAll().last()
+                    app.queue.processAllOrThrow()
                 }
             }
             // Clear the selection in the same state update that ends `busy`: the sources are gone
@@ -640,7 +641,11 @@ class FileManagerViewModel(
                     refreshAll()
                     snack(it.message)
                 },
-                onFailure = { snack(it.message ?: "Operation failed") },
+                // A batch that failed part-way has still changed files (and is undoable): refresh.
+                onFailure = {
+                    refreshAll()
+                    snack(it.message ?: "Operation failed")
+                },
             )
         }
     }
@@ -760,7 +765,7 @@ class FileManagerViewModel(
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     app.queue.enqueueBatchRename(plan.renames)
-                    app.queue.processAll().last()
+                    app.queue.processAllOrThrow()
                 }
             }
             _ui.update { it.copy(busy = false) }
@@ -782,7 +787,7 @@ class FileManagerViewModel(
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     app.queue.enqueue(OpKind.RENAME, listOf(target), newName = newName)
-                    app.queue.processAll().last()
+                    app.queue.processAllOrThrow()
                 }
             }
             // The renamed path no longer exists; drop it from the selection with `busy` so a

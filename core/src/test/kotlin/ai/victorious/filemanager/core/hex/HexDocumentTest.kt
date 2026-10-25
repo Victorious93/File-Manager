@@ -51,4 +51,15 @@ class HexDocumentTest {
         assertNull(Hex.parseByte(""))
         assertEquals("0A", Hex.byte(10))
     }
+
+    @Test fun saveRefusesAFileThatChangedSizeSinceItWasOpened() {
+        val f = tmp.newFile("c.bin").apply { writeBytes(byteArrayOf(1, 2, 3, 4)) }
+        val doc = HexDocument.load(f)
+        doc.set(3, 9)
+        f.writeBytes(byteArrayOf(1, 2)) // truncated behind the editor's back
+
+        assertTrue(runCatching { doc.saveTo(f) }.isFailure)
+        assertEquals("seek+write past the end used to grow the file with zero padding", 2L, f.length())
+        assertTrue("edits are kept so the user can still save elsewhere", doc.isDirty)
+    }
 }

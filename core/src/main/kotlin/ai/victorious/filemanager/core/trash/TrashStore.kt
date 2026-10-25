@@ -1,10 +1,10 @@
 package ai.victorious.filemanager.core.trash
 
 import ai.victorious.filemanager.core.fs.FileIo
+import ai.victorious.filemanager.core.fs.JsonStateFile
 import ai.victorious.filemanager.core.path.PathHelpers
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
+import kotlinx.serialization.builtins.ListSerializer
 import java.util.UUID
 
 @Serializable
@@ -17,6 +17,10 @@ data class TrashEntry(
     val deletedAtEpochMs: Long,
 )
 
+/**
+ * Soft-delete store. Every public method is synchronized: they read-modify-write one shared index file,
+ * and the queue, the trash screen and refreshes all reach it from different IO threads.
+ */
 class TrashStore(
     private val io: FileIo,
     private val trashRoot: String,
@@ -29,16 +33,17 @@ class TrashStore(
      */
     private val payloadDirFor: (path: String) -> String? = { null },
 ) {
-    private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
-    private val indexPath get() = PathHelpers.join(trashRoot, "index.json")
+    private val index = JsonStateFile(io, PathHelpers.join(trashRoot, "index.json"), ListSerializer(TrashEntry.serializer()), emptyList(), clock)
     private val itemsDir get() = PathHelpers.join(trashRoot, "items")
 
     init {
         ensureLayout()
     }
 
+    @Synchronized
     fun list(): List<TrashEntry> = loadIndex().sortedByDescending { it.deletedAtEpochMs }
 
+    @Synchronized
     fun moveToTrash(path: String): String {
         val normalized = PathHelpers.normalize(path)
         require(io.exists(normalized)) { "Missing: $normalized" }
@@ -71,6 +76,7 @@ class TrashStore(
         return id
     }
 
+    @Synchronized
     fun restore(id: String): String {
         val entries = loadIndex()
         val entry = entries.find { it.id == id } ?: throw IllegalArgumentException("Unknown trash id: $id")
@@ -84,8 +90,10 @@ class TrashStore(
         return dest
     }
 
+    @Synchronized
     fun restoreAll(): List<String> = list().map { restore(it.id) }
 
+    @Synchronized
     fun empty() {
         loadIndex().forEach { io.deleteRecursively(it.trashPayloadPath) }
         saveIndex(emptyList())
@@ -96,6 +104,7 @@ class TrashStore(
         }
     }
 
+    @Synchronized
     fun permanentlyDelete(id: String) {
         val entries = loadIndex()
         val entry = entries.find { it.id == id } ?: return
@@ -114,20 +123,16 @@ class TrashStore(
     private fun ensureLayout() {
         if (!io.exists(trashRoot)) io.mkdirs(trashRoot)
         if (!io.exists(itemsDir)) io.mkdirs(itemsDir)
-        if (!io.exists(indexPath)) {
-            io.writeText(indexPath, json.encodeToString(emptyList<TrashEntry>()))
-        }
+        if (!index.exists()) index.save(emptyList())
     }
 
     private fun loadIndex(): List<TrashEntry> {
         ensureLayout()
-        val text = io.readText(indexPath)
-        if (text.isBlank()) return emptyList()
-        return json.decodeFromString(text)
+        return index.load()
     }
 
     private fun saveIndex(entries: List<TrashEntry>) {
         ensureLayout()
-        io.writeText(indexPath, json.encodeToString(entries))
+        index.save(entries)
     }
 }

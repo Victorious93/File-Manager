@@ -4,8 +4,14 @@
 |---|---|---|---|---|
 | ZIP / JAR / APK | ✓ | ✓ (AES/ZipCrypto password via zip4j) | ✓ (plain + AES-256) | java.util.zip, zip4j (Apache-2.0) |
 | 7z | ✓ | ✓ | – | Apache Commons Compress (Apache-2.0) + XZ for Java (public domain) |
-| TAR / TAR.GZ | ✓ | ✓ | – | Apache Commons Compress (Apache-2.0) |
+| TAR / TAR.GZ / TAR.BZ2 / TAR.XZ (also `.tgz`, `.tbz2`, `.txz`) | ✓ | ✓ | – | Apache Commons Compress (Apache-2.0) + XZ for Java (public domain) |
+| Single file `.gz` / `.bz2` / `.xz` (e.g. `app.log.gz`) | ✓ (one entry, size unknown) | ✓ | – | Apache Commons Compress + XZ for Java |
 | RAR 1.5 – 7 (RAR4, RAR5, solid) | ✓ | ✓ (password prompt) | **never** | junrar 8.1.2 (UnRAR licence) |
+
+Compressed formats are recognised by content, not by extension: a `.gz`/`.bz2`/`.xz` is a tarball only if
+the decompressed stream starts like one (or the name says `.tar.*`/`.tgz`/`.tbz2`/`.txz`), otherwise it is a
+single compressed file named after the archive without its suffix. Multi-member streams (pigz, bgzip) are read to
+the end. A truncated or corrupt stream fails the extraction and does not leave a half-written file behind.
 
 Every extractor goes through `Archives.safeTarget`, so `../` and absolute entry names
 cannot escape the destination folder (zip-slip). A RAR fixture with `..\` names

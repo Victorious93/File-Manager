@@ -1,5 +1,7 @@
 package ai.victorious.filemanager.core.search
 
+import ai.victorious.filemanager.core.fs.FileIoException
+import ai.victorious.filemanager.core.fs.FileIo
 import ai.victorious.filemanager.core.bookmarks.BookmarkStore
 import ai.victorious.filemanager.core.fs.NioFileIo
 import org.junit.Assert.assertEquals
@@ -45,5 +47,35 @@ class FileSearchAndBookmarksTest {
         store.remove(first.id)
         assertTrue(store.list().isEmpty())
         assertFalse(store.isBookmarked("/sdcard/Download"))
+    }
+
+    @Test
+    fun tornBookmarkFileDoesNotBlockAddingAndIsKeptForRecovery() {
+        val file = File(tmp.root, "bookmarks.json").apply { writeText("[{\"id\":\"1\",\"pa") } // crash mid-write
+        val store = BookmarkStore(file.absolutePath, NioFileIo())
+
+        assertTrue(store.list().isEmpty())
+        store.add("/sdcard/Download")
+
+        assertEquals(listOf("/sdcard/Download"), store.list().map { it.path })
+        assertTrue("the unreadable file is set aside, not destroyed", tmp.root.list()!!.any { it.startsWith("bookmarks.json.corrupt") })
+    }
+
+    @Test
+    fun failedBookmarkWriteLeavesThePreviousListIntact() {
+        val path = File(tmp.root, "bookmarks.json").absolutePath
+        val good = BookmarkStore(path, NioFileIo())
+        good.add("/sdcard/Music")
+
+        val nio = NioFileIo()
+        val dying = object : FileIo by nio {
+            override fun writeText(path: String, text: String) {
+                nio.writeText(path, text.take(10)) // disk full part-way through
+                throw FileIoException("disk full")
+            }
+        }
+        assertTrue(runCatching { BookmarkStore(path, dying).add("/sdcard/Movies") }.isFailure)
+
+        assertEquals(listOf("/sdcard/Music"), good.list().map { it.path })
     }
 }

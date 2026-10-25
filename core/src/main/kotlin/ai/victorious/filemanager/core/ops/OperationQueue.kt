@@ -82,6 +82,10 @@ class OperationQueue(
             val completed = execute(op)
             undoStack.addLast(completed)
             OpResult(op.id, OpStatus.SUCCEEDED, successMessage(op, completed), completed)
+        } catch (p: PartialFailure) {
+            // Items finished before the failing one are real changes on disk: keep them undoable.
+            undoStack.addLast(p.completed)
+            OpResult(op.id, OpStatus.FAILED, p.describe(), p.completed)
         } catch (t: Throwable) {
             OpResult(op.id, OpStatus.FAILED, t.message ?: t::class.simpleName ?: "failed")
         } finally {
@@ -121,6 +125,9 @@ class OperationQueue(
                     if (PathHelpers.isSelfOrDescendant(dest, src)) {
                         throw IllegalArgumentException("Cannot ${op.kind.name.lowercase()} a folder into itself")
                     }
+                }
+                if (op.kind == OpKind.MOVE && op.sources.all { PathHelpers.parentOf(it) == dest }) {
+                    throw IllegalArgumentException("Already in that folder")
                 }
             }
             OpKind.DELETE -> op.sources.forEach {
@@ -215,7 +222,14 @@ class OperationQueue(
             val unique = PathHelpers.uniqueChildName(names, desired)
             names += unique
             val dest = PathHelpers.join(destDir, unique)
-            io.copy(src, dest)
+            val absentBefore = !io.exists(dest)
+            try {
+                io.copy(src, dest)
+            } catch (t: Throwable) {
+                // Drop the half-written copy, but only if this call is what put it there.
+                if (absentBefore) runCatching { io.deleteRecursively(dest) }
+                throw partial(op, src, created.size, CompletedOp(op, createdPaths = created.toList()), t)
+            }
             created += dest
         }
         return CompletedOp(op, createdPaths = created)
@@ -226,19 +240,56 @@ class OperationQueue(
         val pairs = mutableListOf<Pair<String, String>>()
         val names = io.childNames(destDir).toMutableSet()
         for (src in op.sources) {
+            // Already in the destination: a "move" is a no-op, not a rename to "name (1)".
+            if (PathHelpers.parentOf(src) == destDir) continue
             val desired = PathHelpers.fileName(src)
             val unique = PathHelpers.uniqueChildName(names, desired)
             names += unique
             val dest = PathHelpers.join(destDir, unique)
-            io.move(src, dest)
+            try {
+                io.move(src, dest)
+            } catch (t: Throwable) {
+                throw partial(op, src, pairs.size, CompletedOp(op, movedPairs = pairs.toList()), t)
+            }
             pairs += src to dest
         }
         return CompletedOp(op, movedPairs = pairs)
     }
 
     private fun deleteOp(op: FileOperation): CompletedOp {
-        val ids = op.sources.map { trash.moveToTrash(it) }
+        val ids = mutableListOf<String>()
+        for (src in op.sources) {
+            try {
+                ids += trash.moveToTrash(src)
+            } catch (t: Throwable) {
+                throw partial(op, src, ids.size, CompletedOp(op, trashIds = ids.toList()), t)
+            }
+        }
         return CompletedOp(op, trashIds = ids)
+    }
+
+    /** The failure to throw for [failed]: a plain [cause] if nothing finished yet, else a [PartialFailure]. */
+    private fun partial(op: FileOperation, failed: String, done: Int, completed: CompletedOp, cause: Throwable): Throwable =
+        if (done == 0) cause else PartialFailure(op, failed, done, completed, cause)
+
+    /** An operation that changed some of its items before failing on [failed]. */
+    private class PartialFailure(
+        val op: FileOperation,
+        val failed: String,
+        val done: Int,
+        val completed: CompletedOp,
+        cause: Throwable,
+    ) : RuntimeException(cause) {
+        fun describe(): String {
+            val progress = "$done of ${op.sources.size} item(s)"
+            val what = when (op.kind) {
+                OpKind.COPY -> "Copied $progress"
+                OpKind.DELETE -> "Moved $progress to trash"
+                else -> "Moved $progress"
+            }
+            val reason = cause?.message ?: cause?.javaClass?.simpleName ?: "failed"
+            return "$what; failed on ${PathHelpers.fileName(failed)}: $reason"
+        }
     }
 
     private fun renameOp(op: FileOperation): CompletedOp {

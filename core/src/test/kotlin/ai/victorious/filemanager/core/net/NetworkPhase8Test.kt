@@ -132,8 +132,8 @@ class NetworkPhase8Test {
         assertTrue(html, html.contains("href=\"/my%20file.txt?pin=4321\""))
         assertTrue(html, html.contains("href=\"/sub?pin=4321\""))
         assertTrue(html, html.contains("action=\"/?pin=4321\""))
-        // following a generated link works
-        val dl = router.handle(WifiHttpRequest("GET", "/my%20file.txt", mapOf("pin" to "4321"), pinHeader = null))
+        // following a generated link works (the server hands the router the decoded path)
+        val dl = router.handle(WifiHttpRequest("GET", "/my file.txt", mapOf("pin" to "4321"), pinHeader = null))
         assertEquals(200, dl.status)
         assertEquals("x", dl.file!!.readText())
     }
@@ -144,11 +144,46 @@ class NetworkPhase8Test {
         val outside = tmp.newFolder("outside")
         val router = WifiTransferRouter(NioFileIo(), dir.absolutePath, pin = null)
         assertEquals(400, router.handle(WifiHttpRequest("GET", "/../outside", emptyMap(), null)).status)
-        assertEquals(400, router.handle(WifiHttpRequest("GET", "/%2E%2E/outside", emptyMap(), null)).status)
+        // Percent-encoded forms (%2E%2E, %2f, %5c) arrive decoded; WifiTransferServerTest covers them over HTTP.
+        assertEquals(400, router.handle(WifiHttpRequest("GET", "/sub/../../outside", emptyMap(), null)).status)
+        assertEquals(400, router.handle(WifiHttpRequest("GET", "/..\\outside", emptyMap(), null)).status)
         val spool = tmp.newFile("spool").apply { writeText("big upload") }
         assertEquals(400, router.handle(WifiHttpRequest("POST", "/../outside", emptyMap(), null, bodyFileName = "x.txt", bodyFile = spool)).status)
         assertFalse(java.io.File(outside, "x.txt").exists())
         assertEquals(201, router.handle(WifiHttpRequest("POST", "/", emptyMap(), null, bodyFileName = "x.txt", bodyFile = spool)).status)
         assertEquals("big upload", java.io.File(dir, "x.txt").readText())
+    }
+
+    @Test
+    fun connectionUri_percentDecodesCredentialsAndPath() {
+        // "p@ss:w/d" cannot appear raw in a URI, so it arrives encoded and used to be passed on encoded.
+        val p = ConnectionUriParser.parse("sftp://bob%40corp:p%40ss%3Aw%2Fd@example.com/dir%20x/file%2B1")
+        assertEquals("bob@corp", p.username)
+        assertEquals("p@ss:w/d", p.password)
+        assertEquals("/dir x/file+1", p.path)
+        // '+' is not a space in a URI, and a stray '%' stays literal.
+        val q = ConnectionUriParser.parse("ftp://u:a+b%zz@h/")
+        assertEquals("a+b%zz", q.password)
+    }
+
+    @Test
+    fun credentialRedactor_coversHeadersApiKeysAndQuotedValues() {
+        val secrets = mapOf(
+            "Authorization: Bearer ya29.A0AbC-token" to "ya29.A0AbC-token",
+            "Authorization: Basic dXNlcjpwYXNz" to "dXNlcjpwYXNz",
+            "x-api-key: AKIAEXAMPLEKEY123" to "AKIAEXAMPLEKEY123",
+            "api_key=abc123def" to "abc123def",
+            "passphrase=hunter22" to "hunter22",
+            "s3SecretKey: wJalrXUtn" to "wJalrXUtn",
+            "{\"password\": \"my secret pass\"}" to "secret pass",
+            "sftp://bob:p@ssw0rd@host/dir" to "ssw0rd",
+        )
+        for ((line, secret) in secrets) {
+            val red = CredentialRedactor.redact(line)
+            assertFalse("leaked '$secret' in: $red", red.contains(secret))
+            assertTrue("no marker in: $red", red.contains("***"))
+        }
+        // Ordinary text is left alone.
+        assertEquals("Connection refused: host=example.com port=22", CredentialRedactor.redact("Connection refused: host=example.com port=22"))
     }
 }
