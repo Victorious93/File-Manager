@@ -84,7 +84,8 @@ class SinglePaneSmokeTest {
 
         open(b)
         Smoke.clickAndExpect(rule, rule.onNode(Smoke.clickable("Paste here")), "pasted into b") {
-            File(b, "note.txt").isFile && File(a, "note.txt").isFile
+            // A copy creates the destination before it writes it, so existence alone can catch it still empty.
+            File(b, "note.txt").let { it.isFile && it.readText() == "hi" } && File(a, "note.txt").isFile
         }
         assertEquals("hi", File(b, "note.txt").readText())
         assertNotNull("a copy stays staged so it can be pasted again", Smoke.vm(rule).ui.value.clipboard)
