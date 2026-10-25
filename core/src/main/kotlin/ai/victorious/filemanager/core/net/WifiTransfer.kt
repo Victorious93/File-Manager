@@ -86,7 +86,7 @@ class WifiTransferRouter(
             }
             val html = """<!DOCTYPE html>
 <html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>VictorFiles — ${escape(rel.ifEmpty { "/" })}</title>
+<title>VictorFiles — ${escape(if (rel.isEmpty()) "/" else "/$rel")}</title>
 <style>
 body{font-family:system-ui,sans-serif;margin:1.5rem;background:#0f1115;color:#e8eaed}
 a{color:#8ab4f8;text-decoration:none} a:hover{text-decoration:underline}
@@ -96,7 +96,7 @@ li{padding:.4rem .6rem;border-bottom:1px solid #2a2f3a}
 form{margin-top:1.5rem;padding:1rem;background:#1a1d24;border-radius:8px}
 button,input[type=submit]{background:#8ab4f8;color:#0f1115;border:0;padding:.5rem 1rem;border-radius:6px}
 </style></head><body>
-<h1>Index of /${escape(rel.ifEmpty { "/" })}</h1>
+<h1>Index of ${escape(if (rel.isEmpty()) "/" else "/$rel")}</h1>
 <ul>$links</ul>
 <form method="POST" enctype="multipart/form-data" action="/${escape(rel)}$q">
 <label>Upload into this folder<br/><input type="file" name="file"/></label>
