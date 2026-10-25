@@ -52,7 +52,9 @@ class WifiTransferRouter(
                 return text(401, "PIN required or invalid")
             }
         }
-        val rel = req.path.trimStart('/').substringBefore('?')
+        // req.path is the already-decoded URI path (NanoHTTPD decodes it, and strips the query), so a
+        // '%' or '?' here is part of a file name: decoding or splitting again would corrupt it.
+        val rel = req.path.trimStart('/')
         // Browsers cannot send the PIN header, so links/forms carry ?pin= forward; without it
         // every click after the QR-code landing page answered 401.
         val q = if (!pin.isNullOrEmpty()) "?pin=" + java.net.URLEncoder.encode(pin, "UTF-8") else ""
@@ -63,29 +65,31 @@ class WifiTransferRouter(
         }
     }
 
-    /** Maps a URL path under the shared root; null for anything that is not plain child names. */
+    /** Maps a decoded URL path under the shared root; null for anything that is not plain child names. */
     private fun resolve(rel: String): String? {
         var cur = rootPath
-        for (raw in rel.split('/').filter { it.isNotEmpty() }) {
-            val part = runCatching { java.net.URLDecoder.decode(raw.replace("+", "%2B"), "UTF-8") }.getOrNull() ?: return null
+        for (part in rel.split('/').filter { it.isNotEmpty() }) {
             if (!PathHelpers.isValidFileName(part)) return null
             cur = PathHelpers.join(cur, part)
         }
         return cur
     }
 
+    /** Percent-encodes each segment of a decoded relative path for use in an href / form action. */
+    private fun encodePath(rel: String): String = rel.split('/').filter { it.isNotEmpty() }
+        .joinToString("/") { java.net.URLEncoder.encode(it, "UTF-8").replace("+", "%20") }
+
     private fun downloadOrList(rel: String, q: String = ""): WifiHttpResponse {
         val path = resolve(rel) ?: return text(400, "Bad path")
         if (!io.exists(path)) return text(404, "Not found")
         if (io.isDirectory(path)) {
             val links = io.list(path).joinToString("\n") { e ->
-                val href = (if (rel.isEmpty()) e.name else "$rel/${e.name}").split('/')
-                    .joinToString("/") { java.net.URLEncoder.encode(it, "UTF-8").replace("+", "%20") }
+                val href = encodePath(if (rel.isEmpty()) e.name else "$rel/${e.name}")
                 val mark = if (e.isDirectory) "/" else ""
                 """<li><a href="/$href$q">${escape(e.name)}$mark</a></li>"""
             }
             val html = """<!DOCTYPE html><html><body><h1>Index of /${escape(rel)}</h1><ul>$links</ul>
-<form method="POST" enctype="multipart/form-data" action="/${escape(rel)}$q">
+<form method="POST" enctype="multipart/form-data" action="/${encodePath(rel)}$q">
 <input type="file" name="file"/><button type="submit">Upload</button></form></body></html>"""
             return WifiHttpResponse(200, "text/html; charset=utf-8", html.toByteArray())
         }
