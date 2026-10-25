@@ -47,6 +47,18 @@ class BatchRenameTest {
     }
 
     @Test
+    fun badReplacementReferenceIsReportedNotSilentlyIgnored() {
+        val d = tmp.newFolder()
+        listOf("a.txt", "b.txt").forEach { File(d, it).writeText("x") }
+        // $1 with no capture group in the pattern: used to make every file look "unchanged".
+        val p = plan(d, listOf("a.txt", "b.txt"), RenameSpec(find = "a", replace = "$1", regex = true))
+        assertTrue("expected an error, got $p", p.error != null)
+        assertFalse(p.isApplicable)
+        val dangling = plan(d, listOf("a.txt"), RenameSpec(find = "a", replace = "x\\", regex = true))
+        assertTrue("expected an error, got $dangling", dangling.error != null)
+    }
+
+    @Test
     fun invalidRegexReportsErrorNotCrash() {
         val d = tmp.newFolder()
         File(d, "a.txt").writeText("x")

@@ -62,10 +62,18 @@ object BatchRename {
             return RenamePlan(emptyList(), "Invalid pattern: ${e.description}")
         }
 
-        val proposed = normalized.mapIndexed { index, path ->
-            val oldName = PathHelpers.fileName(path)
-            val newName = runCatching { transform(oldName, index, spec, pattern) }.getOrElse { oldName }
-            Triple(path, oldName, newName)
+        val proposed = try {
+            normalized.mapIndexed { index, path ->
+                val oldName = PathHelpers.fileName(path)
+                Triple(path, oldName, transform(oldName, index, spec, pattern))
+            }
+        } catch (e: RuntimeException) {
+            // Raised lazily on the first match, e.g. "$1" with no group 1 ("No group 1") or a
+            // dangling "\" ("character to be escaped is missing"). Silently treating it as
+            // "nothing to rename" left the user staring at an all-unchanged preview.
+            return RenamePlan(emptyList(), "Invalid replacement: ${e.message ?: e.javaClass.simpleName}")
+        } catch (e: StackOverflowError) {
+            return RenamePlan(emptyList(), "Pattern is too complex for these names")
         }
 
         // A directory entry will be vacated if its owner is renamed to something else.

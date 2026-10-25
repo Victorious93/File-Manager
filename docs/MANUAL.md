@@ -195,8 +195,9 @@ Long-press a file to choose how to open it.
 ### 3.8 Archives
 
 - Open an archive by tapping it, or long-press → **Open as archive**.
-- Supported: ZIP/JAR/APK (list, extract, password-protected ZIP), 7z, TAR/TAR.GZ, and RAR (list
-  and extract only, including password RAR).
+- Supported: ZIP/JAR/APK (list, extract, password-protected ZIP), 7z, TAR (plain, `.tar.gz`/`.tgz`,
+  `.tar.bz2`, `.tar.xz`), single compressed files (`.gz`, `.bz2`, `.xz`), and RAR (list and extract
+  only, including password RAR).
 - Extraction goes to the folder in the *other* pane. Paths that try to escape the folder are
   blocked.
 - Create: **Zip selected** in the bottom bar, or **Tools → Create password ZIP** for AES-256.

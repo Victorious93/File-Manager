@@ -132,8 +132,8 @@ class NetworkPhase8Test {
         assertTrue(html, html.contains("href=\"/my%20file.txt?pin=4321\""))
         assertTrue(html, html.contains("href=\"/sub?pin=4321\""))
         assertTrue(html, html.contains("action=\"/?pin=4321\""))
-        // following a generated link works
-        val dl = router.handle(WifiHttpRequest("GET", "/my%20file.txt", mapOf("pin" to "4321"), pinHeader = null))
+        // following a generated link works (the server hands the router the decoded path)
+        val dl = router.handle(WifiHttpRequest("GET", "/my file.txt", mapOf("pin" to "4321"), pinHeader = null))
         assertEquals(200, dl.status)
         assertEquals("x", dl.file!!.readText())
     }
@@ -144,7 +144,9 @@ class NetworkPhase8Test {
         val outside = tmp.newFolder("outside")
         val router = WifiTransferRouter(NioFileIo(), dir.absolutePath, pin = null)
         assertEquals(400, router.handle(WifiHttpRequest("GET", "/../outside", emptyMap(), null)).status)
-        assertEquals(400, router.handle(WifiHttpRequest("GET", "/%2E%2E/outside", emptyMap(), null)).status)
+        // Percent-encoded forms (%2E%2E, %2f, %5c) arrive decoded; WifiTransferServerTest covers them over HTTP.
+        assertEquals(400, router.handle(WifiHttpRequest("GET", "/sub/../../outside", emptyMap(), null)).status)
+        assertEquals(400, router.handle(WifiHttpRequest("GET", "/..\\outside", emptyMap(), null)).status)
         val spool = tmp.newFile("spool").apply { writeText("big upload") }
         assertEquals(400, router.handle(WifiHttpRequest("POST", "/../outside", emptyMap(), null, bodyFileName = "x.txt", bodyFile = spool)).status)
         assertFalse(java.io.File(outside, "x.txt").exists())

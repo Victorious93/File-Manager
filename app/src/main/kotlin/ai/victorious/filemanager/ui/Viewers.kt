@@ -619,7 +619,7 @@ private fun ArchiveScreen(file: File, extractTo: File, onClose: () -> Unit, onMe
                             .padding(horizontal = 12.dp, vertical = 8.dp),
                     ) {
                         Text(item.name, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        if (!item.isDirectory) Text("${item.size} B", style = MaterialTheme.typography.bodySmall)
+                        if (!item.isDirectory && item.size >= 0) Text("${item.size} B", style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }

@@ -10,18 +10,21 @@ import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
 import org.apache.commons.compress.archivers.sevenz.SevenZFile
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
+import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream
 import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream
+import org.apache.commons.compress.compressors.xz.XZCompressorInputStream
 
 data class ArchiveItem(val name: String, val isDirectory: Boolean, val size: Long, val compressedSize: Long)
 
-enum class ArchiveFormat { ZIP, SEVEN_Z, TAR, TAR_GZ, RAR, UNKNOWN }
+/** [GZ]/[BZ2]/[XZ] are a single compressed file (`notes.txt.gz`); the `TAR_*` ones are a compressed tarball. */
+enum class ArchiveFormat { ZIP, SEVEN_Z, TAR, TAR_GZ, TAR_BZ2, TAR_XZ, GZ, BZ2, XZ, RAR, UNKNOWN }
 
 class UnsupportedArchiveException(message: String) : IOException(message)
 
 /**
  * Archive listing/extraction.
  * ZIP (also JAR/APK): java.util.zip. 7z: Apache Commons Compress + XZ (pure Java).
- * TAR / TAR.GZ: Commons Compress. RAR (RAR 1.5 – 7, incl. RAR5, solid, password): junrar,
+ * TAR / TAR.GZ / TAR.BZ2 / TAR.XZ, and single-file .gz / .bz2 / .xz: Commons Compress (+ XZ for Java). RAR (RAR 1.5 – 7, incl. RAR5, solid, password): junrar,
  * extraction only. junrar is distributed under the UnRAR license: the code may not be used to
  * develop a RAR (WinRAR) compatible archiver. This app never creates RAR archives.
  */
@@ -34,7 +37,9 @@ object Archives {
             starts(0x50, 0x4B) -> ArchiveFormat.ZIP
             starts(0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C) -> ArchiveFormat.SEVEN_Z
             starts(0x52, 0x61, 0x72, 0x21) -> ArchiveFormat.RAR
-            starts(0x1F, 0x8B) -> ArchiveFormat.TAR_GZ
+            starts(0x1F, 0x8B) -> if (holdsTar(file, ArchiveFormat.GZ)) ArchiveFormat.TAR_GZ else ArchiveFormat.GZ
+            starts(0x42, 0x5A, 0x68) -> if (holdsTar(file, ArchiveFormat.BZ2)) ArchiveFormat.TAR_BZ2 else ArchiveFormat.BZ2
+            starts(0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00) -> if (holdsTar(file, ArchiveFormat.XZ)) ArchiveFormat.TAR_XZ else ArchiveFormat.XZ
             FileKinds.extension(file.name) == "tar" -> ArchiveFormat.TAR
             else -> ArchiveFormat.UNKNOWN
         }
@@ -47,9 +52,12 @@ object Archives {
         ArchiveFormat.SEVEN_Z -> SevenZFile.builder().setFile(file).get().use { z ->
             z.entries.map { ArchiveItem(it.name, it.isDirectory, if (it.hasStream()) it.size else 0, -1) }
         }
-        ArchiveFormat.TAR, ArchiveFormat.TAR_GZ -> tarStream(file).use { tar ->
+        ArchiveFormat.TAR, ArchiveFormat.TAR_GZ, ArchiveFormat.TAR_BZ2, ArchiveFormat.TAR_XZ -> tarStream(file).use { tar ->
             generateSequence { tar.nextEntry }.map { ArchiveItem(it.name, it.isDirectory, it.size, -1) }.toList()
         }
+        // Size is -1 (unknown): the only way to learn it is to decompress the whole file.
+        ArchiveFormat.GZ, ArchiveFormat.BZ2, ArchiveFormat.XZ ->
+            listOf(ArchiveItem(decompressedName(file.name), false, -1, file.length()))
         ArchiveFormat.RAR -> rar(file, null) { a ->
             if (a.hasBrokenHeaders() || (a.fileHeaders.isEmpty() && a.mainHeader == null)) throw IOException("Corrupt or truncated RAR")
             a.fileHeaders.map { h -> ArchiveItem(rarName(h), h.isDirectory, h.fullUnpackSize, h.fullPackSize) }
@@ -93,7 +101,8 @@ object Archives {
     fun extract(file: File, destDir: File): Int {
         destDir.mkdirs()
         var count = 0
-        when (format(file)) {
+        val kind = format(file)
+        when (kind) {
             ArchiveFormat.ZIP -> ZipFile(file).use { zip ->
                 for (e in zip.entries()) {
                     if (write(destDir, e.name, e.isDirectory) { zip.getInputStream(e) }) count++
@@ -107,13 +116,15 @@ object Archives {
                     e = z.nextEntry
                 }
             }
-            ArchiveFormat.TAR, ArchiveFormat.TAR_GZ -> tarStream(file).use { tar ->
+            ArchiveFormat.TAR, ArchiveFormat.TAR_GZ, ArchiveFormat.TAR_BZ2, ArchiveFormat.TAR_XZ -> tarStream(file).use { tar ->
                 var e = tar.nextEntry
                 while (e != null) {
                     if (write(destDir, e.name, e.isDirectory) { NonClosing(tar) }) count++
                     e = tar.nextEntry
                 }
             }
+            ArchiveFormat.GZ, ArchiveFormat.BZ2, ArchiveFormat.XZ ->
+                if (write(destDir, decompressedName(file.name), false) { decompress(kind, BufferedInputStream(file.inputStream())) }) count++
             ArchiveFormat.RAR -> count = extractRar(file, destDir)
             else -> list(file) // throws the right message
         }
@@ -133,13 +144,62 @@ object Archives {
         val target = safeTarget(destDir, name)
         if (isDir) { target.mkdirs(); return false }
         target.parentFile?.mkdirs()
-        open().use { input -> target.outputStream().use { input.copyTo(it) } }
+        val existed = target.exists()
+        try {
+            open().use { input -> target.outputStream().use { input.copyTo(it) } }
+        } catch (t: Throwable) {
+            // A truncated/corrupt stream (interrupted download) must not leave a plausible-looking partial file.
+            if (!existed) target.delete()
+            throw t
+        }
         return true
     }
 
-    private fun tarStream(file: File): TarArchiveInputStream {
-        val raw = BufferedInputStream(file.inputStream())
-        return if (format(file) == ArchiveFormat.TAR_GZ) TarArchiveInputStream(GzipCompressorInputStream(raw)) else TarArchiveInputStream(raw)
+    private fun tarStream(file: File): TarArchiveInputStream =
+        TarArchiveInputStream(decompress(format(file), BufferedInputStream(file.inputStream())))
+
+    /**
+     * Wraps [raw] in the decompressor for [format] (identity for plain TAR). Concatenated members are
+     * read to the end, as `gzip -d` / `bzip2 -d` / `xz -d` do, so multi-member files (pigz, bgzip) are not cut short.
+     */
+    private fun decompress(format: ArchiveFormat, raw: InputStream): InputStream = when (format) {
+        ArchiveFormat.TAR_GZ, ArchiveFormat.GZ -> GzipCompressorInputStream(raw, true)
+        ArchiveFormat.TAR_BZ2, ArchiveFormat.BZ2 -> BZip2CompressorInputStream(raw, true)
+        ArchiveFormat.TAR_XZ, ArchiveFormat.XZ -> XZCompressorInputStream(raw, true)
+        else -> raw
+    }
+
+    private val COMPRESSION_SUFFIXES = listOf(".gz", ".bz2", ".xz")
+
+    /** `notes.txt.gz` -> `notes.txt`; a name without a known suffix gets `.out` so it never overwrites the archive. */
+    fun decompressedName(archiveName: String): String {
+        val lower = archiveName.lowercase()
+        val suffix = COMPRESSION_SUFFIXES.firstOrNull { lower.endsWith(it) }
+        val stem = suffix?.let { archiveName.dropLast(it.length) }
+        return stem?.takeIf { it.isNotBlank() && it != "." && it != ".." } ?: "$archiveName.out"
+    }
+
+    /**
+     * True when the decompressed stream of [file] is a tarball. POSIX/GNU tars carry a "ustar" magic;
+     * ancient v7 tars do not, so a `.tar.*` / `.tgz` / `.tbz2` / `.txz` name is trusted as well.
+     */
+    private fun holdsTar(file: File, compression: ArchiveFormat): Boolean {
+        val head = runCatching {
+            decompress(compression, BufferedInputStream(file.inputStream())).use { s ->
+                val buf = ByteArray(512)
+                var n = 0
+                while (n < buf.size) {
+                    val r = s.read(buf, n, buf.size - n)
+                    if (r < 0) break
+                    n += r
+                }
+                buf.copyOf(n)
+            }
+        }.getOrNull()
+        if (head != null && TarArchiveInputStream.matches(head, head.size)) return true
+        val name = file.name.lowercase()
+        return name.endsWith(".tgz") || name.endsWith(".tbz2") || name.endsWith(".tbz") || name.endsWith(".txz") ||
+            COMPRESSION_SUFFIXES.any { name.endsWith(".tar$it") }
     }
 
     /**

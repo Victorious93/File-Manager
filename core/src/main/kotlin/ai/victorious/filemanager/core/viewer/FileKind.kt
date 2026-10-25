@@ -14,7 +14,7 @@ object FileKinds {
     private val image = setOf("png", "jpg", "jpeg", "gif", "webp", "bmp", "heic", "heif", "ico")
     private val audio = setOf("mp3", "m4a", "aac", "ogg", "oga", "opus", "flac", "wav", "amr", "mid", "midi")
     private val video = setOf("mp4", "m4v", "mkv", "webm", "3gp", "mov", "avi", "ts")
-    val archiveExtensions = setOf("zip", "jar", "apk", "7z", "tar", "gz", "tgz", "rar")
+    val archiveExtensions = setOf("zip", "jar", "apk", "7z", "tar", "gz", "tgz", "bz2", "tbz2", "tbz", "xz", "txz", "rar")
 
     /** Phase 12: viewers added for these kinds. */
     val documentExtensions = setOf("pdf")
@@ -26,6 +26,8 @@ object FileKinds {
     fun extension(name: String): String {
         val lower = name.lowercase()
         if (lower.endsWith(".tar.gz")) return "tgz"
+        if (lower.endsWith(".tar.bz2")) return "tbz2"
+        if (lower.endsWith(".tar.xz")) return "txz"
         return lower.substringAfterLast('.', "")
     }
 

@@ -6,7 +6,7 @@ enum class FileCategory(val token: String, val label: String, val extensions: Se
     VIDEO("video", "Videos", setOf("mp4", "m4v", "mkv", "webm", "3gp", "mov", "avi", "wmv", "flv")),
     AUDIO("audio", "Audio", setOf("mp3", "m4a", "aac", "ogg", "oga", "opus", "flac", "wav", "amr", "mid", "midi")),
     DOCUMENT("doc", "Documents", setOf("pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "txt", "md", "rtf", "csv", "epub")),
-    ARCHIVE("archive", "Archives", setOf("zip", "7z", "rar", "tar", "gz", "tgz", "bz2", "xz", "jar")),
+    ARCHIVE("archive", "Archives", setOf("zip", "7z", "rar", "tar", "gz", "tgz", "bz2", "tbz2", "tbz", "xz", "txz", "jar")),
     APK("apk", "APKs", setOf("apk", "apks", "xapk", "apkm", "aab"));
 
     fun matches(lowerName: String): Boolean = lowerName.substringAfterLast('.', "") in extensions

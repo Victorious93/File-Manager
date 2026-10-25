@@ -1,5 +1,7 @@
 package ai.victorious.filemanager.core.ops
 
+import ai.victorious.filemanager.core.fs.FileIo
+import ai.victorious.filemanager.core.fs.FileIoException
 import ai.victorious.filemanager.core.fs.NioFileIo
 import ai.victorious.filemanager.core.trash.TrashStore
 import org.junit.Assert.assertEquals
@@ -187,6 +189,107 @@ class OperationQueueTest {
         threads.forEach { it.start() }
         threads.forEach { it.join() }
         assertEquals(80, right.listFiles()!!.count { it.name.startsWith("t") })
+    }
+
+    @Test
+    fun movingIntoTheFolderTheFileIsAlreadyInDoesNotRenameIt() {
+        // Both panes start on the same folder, so "Move to other pane" hits this constantly.
+        val src = File(left, "alpha.txt")
+        val q = newQueue()
+        runCatching { q.enqueue(OpKind.MOVE, listOf(src.absolutePath), left.absolutePath) }
+        q.processAll()
+        assertTrue(src.exists())
+        assertFalse(File(left, "alpha (1).txt").exists())
+        assertEquals("alpha", src.readText())
+    }
+
+    @Test
+    fun moveSkipsItemsAlreadyInTheDestination() {
+        File(right, "gamma.txt").writeText("gamma")
+        val q = newQueue()
+        q.enqueue(OpKind.MOVE, listOf(File(left, "alpha.txt").absolutePath, File(right, "gamma.txt").absolutePath), left.absolutePath)
+        assertEquals(OpStatus.SUCCEEDED, q.processNext().status)
+        assertEquals("alpha", File(left, "alpha.txt").readText())
+        assertFalse(File(left, "alpha (1).txt").exists())
+        assertEquals("gamma", File(left, "gamma.txt").readText())
+        assertFalse(File(right, "gamma.txt").exists())
+
+        q.undoLast()
+        assertEquals("gamma", File(right, "gamma.txt").readText())
+        assertEquals("alpha", File(left, "alpha.txt").readText())
+    }
+
+    @Test
+    fun failedCopyKeepsTheItemsAlreadyCopiedUndoable() {
+        val q = newQueue()
+        q.enqueue(OpKind.COPY, listOf(File(left, "alpha.txt").absolutePath, File(left, "beta.txt").absolutePath), right.absolutePath)
+        File(left, "beta.txt").delete() // vanishes between validation and execution
+        val result = q.processNext()
+        assertEquals(OpStatus.FAILED, result.status)
+        assertTrue(result.message, result.message.contains("beta.txt"))
+        assertTrue(File(right, "alpha.txt").exists())
+        assertTrue("the part that did complete must stay undoable", q.snapshot().canUndo)
+
+        assertEquals(OpStatus.UNDONE, q.undoLast().status)
+        assertFalse(File(right, "alpha.txt").exists())
+    }
+
+    @Test
+    fun failedMoveKeepsTheItemsAlreadyMovedUndoable() {
+        val q = newQueue()
+        q.enqueue(OpKind.MOVE, listOf(File(left, "alpha.txt").absolutePath, File(left, "beta.txt").absolutePath), right.absolutePath)
+        File(left, "beta.txt").delete()
+        assertEquals(OpStatus.FAILED, q.processNext().status)
+        assertTrue(File(right, "alpha.txt").exists())
+        assertTrue(q.snapshot().canUndo)
+
+        q.undoLast()
+        assertEquals("alpha", File(left, "alpha.txt").readText())
+        assertFalse(File(right, "alpha.txt").exists())
+    }
+
+    @Test
+    fun failedDeleteKeepsTheItemsAlreadyTrashedUndoable() {
+        val q = newQueue()
+        q.enqueue(OpKind.DELETE, listOf(File(left, "alpha.txt").absolutePath, File(left, "beta.txt").absolutePath))
+        File(left, "beta.txt").delete()
+        assertEquals(OpStatus.FAILED, q.processNext().status)
+        assertFalse(File(left, "alpha.txt").exists())
+        assertTrue(q.snapshot().canUndo)
+
+        q.undoLast()
+        assertEquals("alpha", File(left, "alpha.txt").readText())
+        assertTrue(trash.list().isEmpty())
+    }
+
+    @Test
+    fun processAllOrThrowSurfacesFailuresAndToleratesAnEmptyQueue() {
+        val q = newQueue()
+        assertEquals(OpStatus.CANCELLED, q.processAllOrThrow().status)
+
+        q.enqueue(OpKind.RENAME, listOf(File(left, "alpha.txt").absolutePath), newName = "gamma.txt")
+        assertEquals(OpStatus.SUCCEEDED, q.processAllOrThrow().status)
+
+        q.enqueue(OpKind.RENAME, listOf(File(left, "beta.txt").absolutePath), newName = "delta.txt")
+        File(left, "beta.txt").delete()
+        val failure = runCatching { q.processAllOrThrow() }.exceptionOrNull()
+        assertTrue("expected OperationFailedException, got $failure", failure is OperationFailedException)
+        assertTrue(failure!!.message!!.contains("Missing"))
+    }
+
+    @Test
+    fun failedCopyDoesNotLeaveAPartialDestinationFile() {
+        val flaky = object : FileIo by io {
+            override fun copy(from: String, to: String) {
+                File(to).writeText("par") // half-written before the disk filled up
+                throw FileIoException("disk full")
+            }
+        }
+        val q = OperationQueue(flaky, trash, ids = { "op-1" })
+        q.enqueue(OpKind.COPY, listOf(File(left, "alpha.txt").absolutePath), right.absolutePath)
+        assertEquals(OpStatus.FAILED, q.processNext().status)
+        assertFalse(File(right, "alpha.txt").exists())
+        assertEquals(0, right.list()!!.size)
     }
 
     private fun newQueue(): OperationQueue {
