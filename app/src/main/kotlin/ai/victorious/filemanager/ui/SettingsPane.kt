@@ -2,11 +2,13 @@ package ai.victorious.filemanager.ui
 
 import ai.victorious.filemanager.FileManagerApplication
 import ai.victorious.filemanager.core.priv.PrivilegeBackend
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -184,7 +186,28 @@ private fun AppearanceSection() {
         }
         Switch(checked = prefs.dualPane, onCheckedChange = { on -> theme.update { it.copy(dualPane = on) } })
     }
-    if (!(prefs.dynamicColor && dynamicSupported)) {
+    val dynamicOn = prefs.dynamicColor && dynamicSupported
+    if (!dynamicOn) {
+        Text("Theme", style = MaterialTheme.typography.titleSmall)
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            for (p in ai.victorious.filemanager.ui.theme.Palette.entries) {
+                FilterChip(
+                    selected = prefs.palette == p,
+                    onClick = { theme.update { it.copy(palette = p) } },
+                    label = { Text(p.label) },
+                    leadingIcon = {
+                        androidx.compose.foundation.layout.Box(
+                            Modifier
+                                .size(12.dp)
+                                .background(p.swatch, androidx.compose.foundation.shape.CircleShape),
+                        )
+                    },
+                )
+            }
+        }
+    }
+    // The accent presets only recolor the Classic theme; the others bring their own colors.
+    if (!dynamicOn && prefs.palette == ai.victorious.filemanager.ui.theme.Palette.CLASSIC) {
         Text("Accent", style = MaterialTheme.typography.titleSmall)
         androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             for (a in ai.victorious.filemanager.ui.theme.Accent.entries) {
