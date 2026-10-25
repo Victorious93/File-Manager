@@ -3,11 +3,13 @@ package ai.victorious.filemanager
 import ai.victorious.filemanager.ui.Dest
 import ai.victorious.filemanager.ui.ToolRequest
 import ai.victorious.filemanager.ui.UiEvent
+import ai.victorious.filemanager.ui.theme.Palette
 import ai.victorious.filemanager.ui.theme.ThemeMode
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -40,7 +42,7 @@ class Phase10SmokeTest {
 
     @After fun tearDown() {
         root.deleteRecursively()
-        Smoke.app.themeSettings.update { it.copy(mode = ThemeMode.SYSTEM) }
+        Smoke.app.themeSettings.update { it.copy(mode = ThemeMode.SYSTEM, palette = Palette.CLASSIC) }
     }
 
     @Test fun appearanceSettingsSwitchToAmoled() {
@@ -48,6 +50,18 @@ class Phase10SmokeTest {
         Smoke.waitText(rule, "Appearance")
         rule.onNode(Smoke.clickable("AMOLED black")).performClick()
         Smoke.waitFor(rule, "theme persisted") { Smoke.app.themeSettings.state.value.mode == ThemeMode.AMOLED }
+    }
+
+    @Test fun colourThemeChipsPersistAndOnlyClassicOffersAccents() {
+        Smoke.event(rule, UiEvent.Navigate(Dest.SETTINGS))
+        Smoke.waitText(rule, "Appearance")
+        Smoke.waitText(rule, "Accent") // Classic is the default theme and the only one with accent presets
+        rule.onNode(Smoke.clickable("Cyber")).performScrollTo().performClick()
+        Smoke.waitFor(rule, "theme persisted") { Smoke.app.themeSettings.state.value.palette == Palette.CYBER }
+        rule.waitUntil(5_000) { rule.onAllNodes(hasText("Accent")).fetchSemanticsNodes().isEmpty() }
+        rule.onNode(Smoke.clickable("Classic")).performScrollTo().performClick()
+        Smoke.waitFor(rule, "back to classic") { Smoke.app.themeSettings.state.value.palette == Palette.CLASSIC }
+        Smoke.waitText(rule, "Accent")
     }
 
     @Test fun indexedSearchFindsNewFile() {
