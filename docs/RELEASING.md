@@ -12,4 +12,4 @@ File-Manager-only debug key when the `DEBUG_KEYSTORE_*` secrets are set.
 Leave `release_tag` empty to run plain CI. The tag must look like `v1.2.3` or `v1.2.3-rc.1`.
 
 What a release does **not** claim: it is not device-tested and is not a production-signed build.
-The package is `ai.victorious.victorfiles`; old `ai.victorious.filemanager` installs are a different app.
+The package is `ai.victorious.filemanager` (debug builds: `ai.victorious.filemanager.debug`).
