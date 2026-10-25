@@ -138,16 +138,23 @@ object PluginCommandBuilder {
         }
     }
 
-    private fun render(template: String, file: String?, files: List<String>, dir: String): String {
-        var out = template
-        out = out.replace("{dir}", ShellCommands.quote(dir))
-        out = out.replace("{files}", files.joinToString(" ") { ShellCommands.quote(it) })
-        if (file != null) {
-            out = out.replace("{file}", ShellCommands.quote(file))
-            out = out.replace("{name}", ShellCommands.quote(PathHelpers.fileName(file)))
+    // Same escaping as PLACEHOLDER above (Android's ICU regex rejects a bare "}").
+    private val TOKEN = Regex("\\{(file|files|name|dir)\\}")
+
+    /**
+     * One pass over the template. Substituting token by token (replace "{dir}", then "{files}", ...)
+     * re-scanned values inserted by an earlier step: a folder called "x{file}" got the selected file
+     * pasted into the middle of its quotes, so a file named ";rm -rf ~;" ran as a command.
+     */
+    private fun render(template: String, file: String?, files: List<String>, dir: String): String =
+        TOKEN.replace(template) { m ->
+            when (m.groupValues[1]) {
+                "dir" -> ShellCommands.quote(dir)
+                "files" -> files.joinToString(" ") { ShellCommands.quote(it) }
+                "file" -> if (file != null) ShellCommands.quote(file) else m.value
+                else -> if (file != null) ShellCommands.quote(PathHelpers.fileName(file)) else m.value
+            }
         }
-        return out
-    }
 }
 
 /** A saved user script for the automation runner. Runs once per selected file or once in the folder. */
