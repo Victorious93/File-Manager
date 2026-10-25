@@ -60,4 +60,14 @@ class ShellAndAnsiTest {
         assertEquals(2, spans[0].fg)
         assertEquals(" done", spans[1].text)
     }
+
+    @Test fun listParserKeepsTrailingSpacesInNames() {
+        // trimEnd() on the whole line used to strip them, so the entry named "report " pointed at a file that is not there.
+        val rows = ShellListParser.parse("f|10|5|report \nd|0|1|dir  \n")
+        assertEquals(listOf("report ", "dir  "), rows.map { it.name })
+    }
+
+    @Test fun listParserStillToleratesWindowsLineEndings() {
+        assertEquals(listOf("a.txt"), ShellListParser.parse("f|1|2|a.txt\r\n").map { it.name })
+    }
 }

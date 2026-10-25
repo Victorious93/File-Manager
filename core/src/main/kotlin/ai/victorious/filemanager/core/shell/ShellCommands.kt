@@ -63,7 +63,7 @@ object ShellListParser {
     data class Row(val isDirectory: Boolean, val size: Long, val mtimeSec: Long, val name: String)
 
     fun parse(stdout: String): List<Row> = stdout.lineSequence()
-        .map { it.trimEnd() }
+        .map { it.trimEnd('\r') } // the name is the last field: trimming spaces would change the file name
         .filter { it.isNotEmpty() && it.contains('|') }
         .mapNotNull { line ->
             val parts = line.split('|', limit = 4)
