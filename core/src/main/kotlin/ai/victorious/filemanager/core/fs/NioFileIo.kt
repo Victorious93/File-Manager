@@ -143,18 +143,56 @@ class NioFileIo : FileIo {
         Files.newBufferedWriter(target).use { it.write(text) }
     }
 
-    private fun copyDirectory(src: Path, dst: Path) {
-        Files.walk(src).use { walk ->
-            walk.forEach { current ->
-                val relative = src.relativize(current)
-                val dest = dst.resolve(relative.toString())
-                if (current.isDirectory()) {
-                    Files.createDirectories(dest)
-                } else {
-                    dest.parent?.let { Files.createDirectories(it) }
-                    Files.copy(current, dest, StandardCopyOption.COPY_ATTRIBUTES)
+    /**
+     * Copies a folder's contents. A link to a file already copies as the file (Files.copy follows it), so a link
+     * to a folder copies as that folder too, here and anywhere inside the tree. Files.walk does not follow links,
+     * so it used to see a folder link as one entry and left an empty folder behind.
+     */
+    private fun copyDirectory(src: Path, dst: Path) = copyTree(src, dst, emptySet())
+
+    /** [open] holds the real path of every folder being copied above this one, to recognise a link back into them. */
+    private fun copyTree(src: Path, dst: Path, open: Set<Path>) {
+        Files.createDirectories(dst)
+        // plusElement, not +: a Path is itself an Iterable<Path>, so + would add its name segments one by one.
+        val here = open.plusElement(src.toRealPath())
+        Files.newDirectoryStream(src).use { children ->
+            for (child in children) {
+                val dest = dst.resolve(child.fileName.toString())
+                when {
+                    Files.isSymbolicLink(child) -> copyLink(child, dest, here)
+                    Files.isDirectory(child) -> {
+                        // Only reachable through a followed link; the folder is already being copied further up.
+                        if (child.toRealPath() !in here) copyTree(child, dest, here)
+                    }
+                    else -> Files.copy(child, dest, StandardCopyOption.COPY_ATTRIBUTES)
                 }
             }
+        }
+    }
+
+    private fun copyLink(link: Path, dest: Path, open: Set<Path>) {
+        // toRealPath fails for a link with nothing behind it (dangling, or a cycle of links).
+        val target = runCatching { link.toRealPath() }.getOrNull()
+        when {
+            target == null || (target.isDirectory() && target in open) -> keepAsLink(link, dest)
+            target.isDirectory() -> copyTree(link, dest, open)
+            else -> Files.copy(link, dest, StandardCopyOption.COPY_ATTRIBUTES)
+        }
+    }
+
+    /**
+     * A link that cannot be followed has no content to copy, so it is recreated as a link, with the same target
+     * text. Following a link back into a folder being copied would never end. Some destinations (FAT/exFAT cards,
+     * Android shared storage) cannot hold links at all; the link is then left out rather than failing a copy that
+     * would otherwise succeed, since nothing but the link itself is lost.
+     */
+    private fun keepAsLink(link: Path, dest: Path) {
+        try {
+            Files.createSymbolicLink(dest, Files.readSymbolicLink(link))
+        } catch (_: java.io.IOException) {
+            // not permitted here
+        } catch (_: UnsupportedOperationException) {
+            // file system has no links
         }
     }
 
