@@ -131,6 +131,63 @@ class TrashStoreTest {
         assertTrue(store.list().isEmpty())
     }
 
+    @Test
+    fun tornIndexDoesNotBlockDeletesAndIsKeptForRecovery() {
+        val root = File(tmp.root, "trash")
+        File(root, "index.json").writeText("[{\"id\":\"t-1\",\"originalPa") // crash mid-write
+        val file = File(docs, "n.txt").apply { writeText("x") }
+
+        val id = trash.moveToTrash(file.absolutePath)
+
+        assertFalse(file.exists())
+        assertEquals(listOf(id), trash.list().map { it.id })
+        assertTrue("the unreadable index is set aside, not silently destroyed", root.list()!!.any { it.startsWith("index.json.corrupt") })
+        assertEquals("x", File(trash.restore(id)).readText())
+    }
+
+    @Test
+    fun failedIndexWriteLeavesThePreviousIndexIntact() {
+        val first = File(docs, "first.txt").apply { writeText("1") }
+        val firstId = trash.moveToTrash(first.absolutePath)
+
+        val dying = object : FileIo by io {
+            override fun writeText(path: String, text: String) {
+                if (path.contains("index")) {
+                    io.writeText(path, text.take(12)) // disk full part-way through
+                    throw FileIoException("disk full")
+                }
+                io.writeText(path, text)
+            }
+        }
+        val second = File(docs, "second.txt").apply { writeText("2") }
+        assertTrue(runCatching { TrashStore(dying, File(tmp.root, "trash").absolutePath).moveToTrash(second.absolutePath) }.isFailure)
+
+        assertTrue(second.exists())
+        assertEquals(listOf(firstId), trash.list().map { it.id })
+    }
+
+    @Test
+    fun concurrentTrashingNeverLosesOrPhantomsIndexEntries() {
+        val shared = TrashStore(io, File(tmp.root, "trash-shared").absolutePath)
+        val files = (0 until 8).flatMap { t -> (0 until 8).map { i -> File(docs, "t$t-$i.txt").apply { writeText("$t/$i") } } }
+        val failures = java.util.concurrent.ConcurrentLinkedQueue<Throwable>()
+        val threads = (0 until 8).map { t ->
+            Thread {
+                runCatching {
+                    (0 until 8).forEach { i -> shared.moveToTrash(files[t * 8 + i].absolutePath) }
+                    shared.list() // readers interleave with the other threads' writers
+                }.onFailure { failures += it }
+            }
+        }
+        threads.forEach { it.start() }
+        threads.forEach { it.join() }
+
+        assertTrue("worker failures: $failures", failures.isEmpty())
+        assertTrue(files.none { it.exists() })
+        assertEquals(files.map { it.name }.toSet(), shared.list().map { it.originalName }.toSet())
+        assertEquals(files.size, shared.list().size)
+    }
+
     private var holder: TrashStore? = null
     private fun trashOf(@Suppress("UNUSED_PARAMETER") io: FileIo): TrashStore = holder!!
 }
