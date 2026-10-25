@@ -17,6 +17,17 @@ Built from scratch. No MT Manager code was copied or decompiled.
 - **Request Shizuku permission** button prompts the user when Shizuku is running.
 - Fallback order for elevated ops: **Root → Shizuku → normal**.
 
+### Fleet Shizuku standard (feature/fleet-shizuku-standard)
+
+- **Deps:** `dev.rikka.shizuku:api` + `provider` **13.1.5** (current stable on Maven Central). **Sui** supported via `Sui.init(packageName)`; same binder API.
+- **Manifest:** `rikka.shizuku.ShizukuProvider` exactly per Shizuku-API README (`${applicationId}.shizuku`, exported, `INTERACT_ACROSS_USERS_FULL`), plus `<queries>` for `moe.shizuku.privileged.api`.
+- **Detection / permission:** `ShizukuController` (the only class importing `rikka.shizuku`) uses `Shizuku.pingBinder()`, sticky binder-received / binder-dead / permission-result listeners and `Shizuku.requestPermission()` (`moe.shizuku.manager.permission.API_V23`). Pure state machine `core…priv.ShizukuStateMachine` maps probes to exactly four states: **GRANTED / DENIED / NOT_INSTALLED / NOT_RUNNING**.
+- **UserService:** `PrivilegedUserService` (AIDL `IPrivilegedService`, `destroy()` = 16777114) bound with `Shizuku.bindUserService`, runs in the `:priv` process as shell (or root) uid. Bind and calls are blocking and only made from `Dispatchers.IO`.
+- **Small interface:** `core…priv.PrivilegedOps` (`list`, `readText`, `writeText`, `chmod`, `chown`, `remount`, `installPackage`, `uninstallPackage`). `PrivilegeManager.ops()` picks Root → Shizuku UserService → `UnprivilegedOps` (`PrivilegedOpsSelector`). Unbound service ⇒ falls back, never crashes.
+- **Wired through the UserService:** `ShizukuShellExecutor.exec` now calls the UserService, so `EscalatingFileIo` browsing/reading/writing/copy/move/delete/chmod on `/data`, `/system`, `Android/data|obb`, plus app backup and plugins all use it when Shizuku is the backend. **Settings → Power ops** adds chmod / chown / remount (`/`, `/system`, `/vendor`, `/product`, `/system_ext`, `/odm`) / `pm install -r` / `pm uninstall`.
+- **Security:** `GatedPrivilegedOps` + `ConfirmGate`: every mutation via `ops()` needs a single-use approval for that exact action + target, granted only by the confirm dialog. Command output is never logged or shown; errors carry only the first stderr line. Arguments validated (`PowerCommands`). Permission is only requested from a user tap. Interactive terminal still uses the reflective `newProcess` (UserService has no PTY).
+- **UX:** Material 3 `ShizukuStatusCard` with a neon dot per state, fleet copy from `ShizukuCopy`, one action (Grant access / Open Shizuku / Get Shizuku) and Re-check. Not running ⇒ copy explains starting via Wireless debugging or root; unprivileged browsing keeps working.
+
 ## Terminal
 
 - **Tools → Terminal** (or full-screen session UI).
@@ -40,6 +51,7 @@ Built from scratch. No MT Manager code was copied or decompiled.
 ## Unit tests (`:core`)
 
 - `PrivilegeSelector` fallback + path heuristics + missing-reason copy.
+- `ShizukuStateMachine` four states + transitions, `ShizukuCopy`, `ShellPrivilegedOps` against a fake UserService runner, `ConfirmGate`, `PrivilegedOpsSelector` fallback.
 - `ShellCommands` quoting / builders / package-name validation + `ShellListParser`.
 - `AnsiParser` colours / strip.
 - `AppBackup` naming, manifest JSON round-trip, filter/sort.

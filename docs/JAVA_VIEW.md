@@ -19,7 +19,7 @@ Phase 13 adds a readable-Java decompiler on top of the existing DEX/smali browse
 ## Engine
 - **jadx** (`io.github.skylot:jadx-core` + `jadx-dex-input`, Apache-2.0). jadx is pure JVM,
   so the decompiler wrapper lives in `:core`
-  (`ai.victorious.victorfiles.core.javadec`) and is unit-tested without Android.
+  (`ai.victorious.filemanager.core.javadec`) and is unit-tested without Android.
 - **Android compatibility**: jadx (and its guava transitive) touch newer `java.*` APIs, so the
   app module enables **core library desugaring** (`isCoreLibraryDesugaringEnabled = true`,
   `com.android.tools:desugar_jdk_libs`). minSdk stays **26** — no bump required. Debug builds
