@@ -16,6 +16,17 @@ import ai.victorious.filemanager.core.syntax.Language
 import ai.victorious.filemanager.core.syntax.SyntaxHighlighter
 import ai.victorious.filemanager.core.syntax.TokenType
 import ai.victorious.filemanager.ui.UiEvent
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import androidx.compose.runtime.withFrameMillis
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.rememberLauncherForActivityResult
+import android.net.Uri
+import android.content.Intent
+import ai.victorious.filemanager.core.notes.NoteIo
+import ai.victorious.filemanager.core.notes.ForceDirectedLayout
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -85,8 +96,17 @@ fun NotesVaultPane(onEvent: (UiEvent) -> Unit) {
     val app = context.applicationContext as FileManagerApplication
     val prefs = remember { context.getSharedPreferences("notes_vault", 0) }
     var vaultRoot by remember { mutableStateOf(prefs.getString("root", null)) }
-    val io = remember { FileNoteIo() }
+    var vaultTreeUri by remember { mutableStateOf(prefs.getString("tree_uri", null)) }
     var vault by remember { mutableStateOf<Vault?>(null) }
+    fun noteIo(): NoteIo {
+        val root = vaultRoot
+        val tree = vaultTreeUri
+        return when {
+            root != null && root.startsWith("content:") && tree != null -> SafNoteIo(context, Uri.parse(tree))
+            tree != null && (root == null || root.startsWith("content:")) -> SafNoteIo(context, Uri.parse(tree))
+            else -> FileNoteIo()
+        }
+    }
     var currentPath by remember { mutableStateOf<String?>(null) }
     var body by remember { mutableStateOf("") }
     var dirty by remember { mutableStateOf(false) }
@@ -97,12 +117,16 @@ fun NotesVaultPane(onEvent: (UiEvent) -> Unit) {
     var searchHits by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
     val scope = rememberCoroutineScope()
 
-    fun openVault(root: String) {
-        prefs.edit().putString("root", root).apply()
+    fun openVault(root: String, treeUri: String? = null) {
         vaultRoot = root
-        val v = Vault(io, VaultConfig(root))
+        vaultTreeUri = treeUri
+        prefs.edit().putString("root", root).apply()
+        if (treeUri != null) prefs.edit().putString("tree_uri", treeUri).apply()
+        else prefs.edit().remove("tree_uri").apply()
         scope.launch {
-            withContext(Dispatchers.IO) { v.rebuildIndex() }
+            val v = withContext(Dispatchers.IO) {
+                Vault(noteIo(), VaultConfig(root)).also { it.rebuildIndex() }
+            }
             vault = v
             currentPath = null
             body = ""
@@ -139,6 +163,27 @@ fun NotesVaultPane(onEvent: (UiEvent) -> Unit) {
         Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Notes vault", style = MaterialTheme.typography.titleLarge)
             Text("Pick any folder as a vault. Markdown files become notes with [[wikilinks]], #tags, backlinks and a graph.", style = MaterialTheme.typography.bodyMedium)
+            val treePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
+                if (uri == null) return@rememberLauncherForActivityResult
+                runCatching {
+                    context.contentResolver.takePersistableUriPermission(
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                    )
+                }
+                val path = SafTreePaths.primaryPath(uri)
+                if (path != null) {
+                    File(path).mkdirs()
+                    File(path, "Templates").mkdirs()
+                    File(path, "Daily").mkdirs()
+                    openVault(path, treeUri = uri.toString())
+                } else {
+                    // Pure SAF vault — root is the tree URI; paths are relative.
+                    openVault(uri.toString(), treeUri = uri.toString())
+                }
+                onEvent(UiEvent.ShowMessage("Vault folder granted"))
+            }
+            TextButton(onClick = { treePicker.launch(null) }) { Text("Pick folder (Storage Access Framework)") }
             val candidates = listOf(
                 File(app.getExternalFilesDir(null), "Notes").absolutePath,
                 File(app.filesDir, "Notes").absolutePath,
@@ -186,7 +231,7 @@ fun NotesVaultPane(onEvent: (UiEvent) -> Unit) {
                 }
             }) { Text("Daily") }
             TextButton(enabled = dirty, onClick = { save() }) { Text(if (dirty) "Save*" else "Saved") }
-            TextButton(onClick = { vaultRoot = null; vault = null; prefs.edit().remove("root").apply() }) { Text("Change") }
+            TextButton(onClick = { vaultRoot = null; vaultTreeUri = null; vault = null; prefs.edit().remove("root").remove("tree_uri").apply() }) { Text("Change") }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             NotesPane.entries.forEach { p ->
@@ -221,7 +266,7 @@ fun NotesVaultPane(onEvent: (UiEvent) -> Unit) {
                 val tagCounts = remember(v.index.noteCount()) {
                     v.index.allTitles().associate { t ->
                         val p = v.index.pathForTitle(t)!!
-                        p to WikiLinkParser.tags(runCatching { io.read(p) }.getOrDefault("")).size
+                        p to WikiLinkParser.tags(runCatching { v.open(p) }.getOrDefault("")).size
                     }
                 }
                 val (nodes, edges) = remember(v.index.noteCount()) { NoteGraph.build(v.index, tagCounts) }
@@ -483,40 +528,100 @@ private fun GraphCanvas(nodes: List<GraphNode>, edges: List<GraphEdge>, onOpen: 
     }
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
-    val positions = remember(nodes) {
-        val rnd = Random(nodes.size)
-        nodes.associate { n ->
-            val angle = rnd.nextDouble() * Math.PI * 2
-            val r = 120.0 + rnd.nextDouble() * 180.0
-            n.path to Offset((cos(angle) * r).toFloat() + 400f, (sin(angle) * r).toFloat() + 400f)
-        }.toMutableMap()
+    val layout = remember(nodes, edges) {
+        ForceDirectedLayout(
+            nodeIds = nodes.map { it.path },
+            edges = edges.map { it.from to it.to },
+        )
     }
+    // Drive a few simulation steps while visible.
+    LaunchedEffect(layout) {
+        var temp = 60f
+        while (isActive) {
+            withContext(Dispatchers.Default) { layout.step(2, temp) }
+            temp = (temp * 0.992f).coerceAtLeast(4f)
+            delay(32)
+        }
+    }
+    var dragging by remember { mutableStateOf<String?>(null) }
     val edgeColor = MaterialTheme.colorScheme.outline
     val nodeColor = MaterialTheme.colorScheme.primary
     val textColor = MaterialTheme.colorScheme.onSurface
+    // Snapshot positions each frame for Compose invalidation
+    var tick by remember { mutableStateOf(0) }
+    LaunchedEffect(layout) {
+        while (isActive) {
+            delay(32)
+            tick++
+        }
+    }
+    @Suppress("UNUSED_VARIABLE")
+    val _tick = tick
     Box(
         Modifier.fillMaxSize().pointerInput(Unit) {
             detectTransformGestures { _, pan, zoom, _ ->
-                scale = (scale * zoom).coerceIn(0.3f, 3f)
-                offset += pan
+                if (dragging == null) {
+                    scale = (scale * zoom).coerceIn(0.3f, 3f)
+                    offset += pan
+                }
             }
         },
     ) {
-        Canvas(Modifier.fillMaxSize()) {
+        Canvas(
+            Modifier.fillMaxSize().pointerInput(nodes, scale, offset) {
+                detectDragGestures(
+                    onDragStart = { start ->
+                        val hit = nodes.minByOrNull { n ->
+                            val p = layout.positions[n.path] ?: return@minByOrNull Float.MAX_VALUE
+                            val c = Offset(p.x * scale + offset.x, p.y * scale + offset.y)
+                            (c - start).getDistance()
+                        }
+                        val p = hit?.let { layout.positions[it.path] }
+                        if (hit != null && p != null) {
+                            val c = Offset(p.x * scale + offset.x, p.y * scale + offset.y)
+                            if ((c - start).getDistance() < 48f) {
+                                dragging = hit.path
+                                layout.pinned += hit.path
+                            }
+                        }
+                    },
+                    onDragEnd = {
+                        dragging?.let { layout.release(it) }
+                        dragging = null
+                    },
+                    onDragCancel = {
+                        dragging?.let { layout.release(it) }
+                        dragging = null
+                    },
+                    onDrag = { change, amount ->
+                        change.consume()
+                        val id = dragging ?: return@detectDragGestures
+                        val cur = layout.positions[id] ?: return@detectDragGestures
+                        layout.dragTo(id, cur.x + amount.x / scale, cur.y + amount.y / scale)
+                        tick++
+                    },
+                )
+            },
+        ) {
             val o = offset
             val s = scale
             edges.forEach { e ->
-                val a = positions[e.from] ?: return@forEach
-                val b = positions[e.to] ?: return@forEach
+                val a = layout.positions[e.from] ?: return@forEach
+                val b = layout.positions[e.to] ?: return@forEach
                 drawLine(edgeColor, Offset(a.x * s + o.x, a.y * s + o.y), Offset(b.x * s + o.x, b.y * s + o.y), strokeWidth = 2f)
             }
             nodes.forEach { n ->
-                val p = positions[n.path] ?: return@forEach
+                val p = layout.positions[n.path] ?: return@forEach
                 val c = Offset(p.x * s + o.x, p.y * s + o.y)
                 drawCircle(nodeColor, radius = 18f + n.tagCount * 2f, center = c)
             }
         }
-        // Note picker under the graph (canvas gestures handle pan/zoom; tap a title to open).
+        Text(
+            "Drag nodes · pinch to zoom",
+            Modifier.align(Alignment.TopCenter).padding(8.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = textColor,
+        )
         LazyColumn(Modifier.align(Alignment.BottomStart).height(140.dp).fillMaxWidth().background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)).padding(8.dp)) {
             items(nodes) { n ->
                 Text(n.title, Modifier.fillMaxWidth().clickable { onOpen(n.path) }.padding(4.dp), color = textColor)
