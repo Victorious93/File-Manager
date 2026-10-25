@@ -28,11 +28,11 @@ See also `docs/BATCH_RENAME.md`, `docs/BROWSING.md`, `docs/APK_TOOLS.md`, `docs/
 - Trash (soft-delete into the app trash store; restore / empty / permanent delete)
 - Optional RootForge-style **Messenger** fleet stub (not LIVE control)
 
-`applicationId`: `ai.victorious.victorfiles`  
+`applicationId`: `ai.victorious.filemanager`  
 Version: `0.1.0`  
 `minSdk`: **26** · `targetSdk` / `compileSdk`: **35**
 
-Debug builds use `ai.victorious.victorfiles.debug`.
+Debug builds use `ai.victorious.filemanager.debug`.
 
 ### Later phases (merged)
 
@@ -77,7 +77,7 @@ Until Don confirms the fleet class, Phase 1 ships a **soft Messenger stub** mode
 | Works without DCA | **Yes** | No (`DependencyGuard`) |
 | Shared signing key required | **No** | Yes |
 | Transport | Bound **Messenger** + JSON envelope | AIDL `ICompanionService` / domain AIDL |
-| Action | `ai.victorious.victorfiles.action.BRIDGE` | `ai.droidcommand.companion.ICompanionService` |
+| Action | `ai.victorious.filemanager.action.BRIDGE` | `ai.droidcommand.companion.ICompanionService` |
 | LIVE control | **No** — stubs only | Companion-specific |
 
 ### Messenger stub
