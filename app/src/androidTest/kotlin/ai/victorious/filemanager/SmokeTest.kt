@@ -289,6 +289,8 @@ class SmokeTest {
     @Test
     fun appManagerListsApps() {
         nav("Apps")
+        // App Manager Pro opens on its own "Apps" tab; the installed-app list with User/System/All chips is under "Backup".
+        rule.onNode(Smoke.clickable("Backup")).performClick()
         Smoke.waitText(rule, Smoke.app.packageName, substring = true, timeoutMs = 30_000)
         rule.onNode(Smoke.clickable("All")).performClick()
         Smoke.waitText(rule, " · system", substring = true, timeoutMs = 30_000)
@@ -298,7 +300,8 @@ class SmokeTest {
     fun wifiTransferStartsServesAndStops() {
         Smoke.event(rule, UiEvent.Open(0, root.absolutePath))
         openTool("Wi-Fi file transfer")
-        rule.onNode(Smoke.clickable("Start")).performClick()
+        // Server mode replaced the single "Start" button with Web / FTP / SFTP; Web is the LAN HTTP server this test exercises.
+        rule.onNode(Smoke.clickable("Web")).performClick()
         Smoke.waitText(rule, "URL: http://", substring = true)
         val ctrl = Smoke.app.wifiTransfer
         assertTrue(ctrl.isRunning)
