@@ -95,6 +95,7 @@ sealed interface ToolRequest {
     data class MtNpTools(val path: String, val dir: String) : ToolRequest
     data class FolderSync(val dir: String) : ToolRequest
     data class PhotoTools(val paths: List<String>, val dir: String) : ToolRequest
+    data class PatchPresets(val path: String, val dir: String) : ToolRequest
 }
 
 @Composable
@@ -166,6 +167,13 @@ fun ToolsPane(state: UiState, onEvent: (UiEvent) -> Unit) {
             val apks = files.filter { isApk(it.path) }
             ToolItem(Icons.Outlined.Build, "APK mod", "Manifest / strings / smali → rebuild → sign → verify → install (${apks.size} APK)") {
                 if (apks.size == 1) onEvent(UiEvent.OpenTool(ToolRequest.ApkMod(apks[0].path, dir)))
+                else onEvent(UiEvent.ShowMessage("Select exactly 1 .apk in Files, then come back"))
+            }
+        }
+        item {
+            val apks = files.filter { isApk(it.path) }
+            ToolItem(Icons.Outlined.Build, "APK patch presets", "One-tap static presets with ownership gate (${apks.size} APK)") {
+                if (apks.size == 1) onEvent(UiEvent.OpenTool(ToolRequest.PatchPresets(apks[0].path, dir)))
                 else onEvent(UiEvent.ShowMessage("Select exactly 1 .apk in Files, then come back"))
             }
         }
@@ -268,6 +276,7 @@ fun ToolHost(request: ToolRequest, onClose: () -> Unit, onEvent: (UiEvent) -> Un
         is ToolRequest.MtNpTools -> MtNpScreen(File(request.path), request.dir, onClose, onEvent)
         is ToolRequest.FolderSync -> FolderSyncScreen(request.dir, onClose, onEvent)
         is ToolRequest.PhotoTools -> PhotoToolsScreen(request.paths, request.dir, onClose, onEvent)
+        is ToolRequest.PatchPresets -> PatchPresetsScreen(request.path, request.dir, onClose, onEvent)
     }
 }
 
