@@ -56,7 +56,7 @@ fun defaultMode(file: File): ViewerMode = when (FileKinds.detect(file)) {
     FileKind.BINARY -> ViewerMode.HEX
 }
 
-enum class Dest { FILES, SEARCH, BOOKMARKS, APPS, NOTES, TOOLS, TRASH, SETTINGS }
+enum class Dest { FILES, SEARCH, BOOKMARKS, APPS, NOTES, TOOLS, TRASH, SETTINGS, HOME }
 
 data class TabState(
     val id: String,
@@ -622,7 +622,7 @@ class FileManagerViewModel(
     private fun focusedPaneDir(): String = pane(_ui.value, _ui.value.focusedPane).active.path
 
     /** True when both panes are on screen, so "the other pane" is something the user can see. */
-    private val dualPane: Boolean get() = app.themeSettings.state.value.dualPane
+    private val dualPane: Boolean get() = app.themeSettings.dualPaneNow
 
     private fun runOp(kind: OpKind) {
         val sources = selectedSources()

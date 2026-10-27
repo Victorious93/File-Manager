@@ -120,7 +120,7 @@ class PaletteTest {
     @Test fun themeNamesAreStableBecauseTheyArePersisted() {
         // Renaming an entry silently resets that user's saved choice to Classic.
         assertEquals(
-            listOf("CLASSIC", "CYBER", "TERMINAL", "OCEAN", "EMBER", "ROSE", "GRAPHITE"),
+            listOf("CLASSIC", "CYBER", "TERMINAL", "OCEAN", "EMBER", "ROSE", "GRAPHITE", "NORD", "FOREST", "DRACULA", "SOLARIZED", "LAVENDER", "SUNSET"),
             Palette.entries.map { it.name },
         )
     }

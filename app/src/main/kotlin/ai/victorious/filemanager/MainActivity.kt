@@ -28,6 +28,9 @@ class MainActivity : FragmentActivity() {
         enableEdgeToEdge()
         // Listing happens in onResume (always follows onCreate), off the main thread.
         viewModel.refreshPermissions()
+        if (savedInstanceState == null && (application as FileManagerApplication).themeSettings.state.value.startOnHome) {
+            viewModel.onEvent(ai.victorious.filemanager.ui.UiEvent.Navigate(ai.victorious.filemanager.ui.Dest.HOME))
+        }
         setContent {
             val themePrefs by (application as FileManagerApplication).themeSettings.state.collectAsStateWithLifecycle()
             VictoriousTheme(themePrefs) {
