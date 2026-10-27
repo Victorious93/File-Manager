@@ -15,6 +15,8 @@ import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
@@ -24,6 +26,8 @@ import java.io.File
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -32,7 +36,14 @@ object FolderSyncJobs {
     private val lock = Any()
     private fun file(context: Context) = File(context.filesDir, "folder_sync_jobs.json")
 
+    /** Test hook: told which thread read the jobs file. */
+    @Volatile var onDiskRead: ((Thread) -> Unit)? = null
+
+    /** Reads the saved jobs on the IO dispatcher (safe to call from UI code). */
+    suspend fun load(context: Context): Map<String, SyncJob> = kotlinx.coroutines.withContext(Dispatchers.IO) { all(context) }
+
     fun all(context: Context): Map<String, SyncJob> = synchronized(lock) {
+        onDiskRead?.invoke(Thread.currentThread())
         SyncJobStore.decode(runCatching { file(context).readText() }.getOrDefault(""))
     }
 
@@ -66,16 +77,22 @@ object FolderSyncJobs {
  */
 class FolderSyncWorker(appContext: Context, params: WorkerParameters) : CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result {
+        inputData.getString(KEY_JOB_JSON)?.let { text ->
+            // One-off "Run sync" from the screen: runs here so it survives leaving the screen.
+            val job = SyncJobStore.decodeOne(text) ?: return Result.failure(workDataOf(KEY_SUMMARY to "Invalid sync job"))
+            SyncJobRules.problem(job)?.let { return Result.failure(workDataOf(KEY_SUMMARY to it)) }
+            return FolderSyncJobs.runLock.withLock { runInterruptible(Dispatchers.IO) { runJob(job, manual = true) } }
+        }
         val jobId = inputData.getString(KEY_JOB) ?: return Result.failure()
         val job = FolderSyncJobs.all(applicationContext)[jobId] ?: return Result.failure()
         SyncJobRules.problem(job)?.let { reason ->
             FolderSyncJobs.recordRun(applicationContext, job.copy(lastRunEpochMs = System.currentTimeMillis(), lastResult = "Not run: $reason"))
             return Result.failure()
         }
-        return FolderSyncJobs.runLock.withLock { runJob(job) }
+        return FolderSyncJobs.runLock.withLock { runInterruptible(Dispatchers.IO) { runJob(job, manual = false) } }
     }
 
-    private fun runJob(job: SyncJob): Result {
+    private fun runJob(job: SyncJob, manual: Boolean): Result {
         val app = applicationContext as FileManagerApplication
         val opened = mutableListOf<RemoteBackend>()
         fun side(connectionId: String?): SyncFs =
@@ -92,15 +109,16 @@ class FolderSyncWorker(appContext: Context, params: WorkerParameters) : Coroutin
                 } ?: return@run false
                 runCatching { app.trash.moveToTrash(File(localRoot, rel).absolutePath) }.isSuccess
             })
-            FolderSyncJobs.recordRun(applicationContext, outcome.job)
+            if (!manual) FolderSyncJobs.recordRun(applicationContext, outcome.job)
             Result.success(workDataOf(KEY_SUMMARY to outcome.summary))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             val transient = e !is SyncSafetyStop && (e is IOException || e.cause is IOException ||
                 e.javaClass.name.startsWith("com.jcraft.jsch") || e.javaClass.name.contains("Timeout"))
-            FolderSyncJobs.recordRun(applicationContext, job.copy(lastRunEpochMs = System.currentTimeMillis(),
-                lastResult = "Failed: ${e.message ?: e.javaClass.simpleName}"))
+            val why = "Failed: ${e.message ?: e.javaClass.simpleName}"
+            if (manual) return Result.failure(workDataOf(KEY_SUMMARY to why))
+            FolderSyncJobs.recordRun(applicationContext, job.copy(lastRunEpochMs = System.currentTimeMillis(), lastResult = why))
             if (transient && runAttemptCount < MAX_RETRIES) Result.retry() else Result.failure()
         } finally {
             opened.forEach { runCatching { it.close() } }
@@ -110,6 +128,16 @@ class FolderSyncWorker(appContext: Context, params: WorkerParameters) : Coroutin
     companion object {
         const val KEY_JOB = "job_id"
         const val KEY_SUMMARY = "summary"
+        const val KEY_JOB_JSON = "job_json"
+        const val MANUAL_WORK = "folder_sync_manual"
+
+        /** Starts a one-off sync of [job] (not saved as a scheduled job). Ignored while one is running. */
+        fun runNow(context: Context, job: SyncJob) {
+            val req = OneTimeWorkRequestBuilder<FolderSyncWorker>()
+                .setInputData(workDataOf(KEY_JOB_JSON to SyncJobStore.encodeOne(job.copy(previousBoth = emptySet(), snapshot = emptyMap()))))
+                .build()
+            WorkManager.getInstance(context).enqueueUniqueWork(MANUAL_WORK, ExistingWorkPolicy.KEEP, req)
+        }
         private const val MAX_RETRIES = 3
 
         fun uniqueName(jobId: String) = "folder_sync_$jobId"

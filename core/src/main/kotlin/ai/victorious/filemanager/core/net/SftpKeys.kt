@@ -87,6 +87,18 @@ object SftpKeys {
 
     data class Decoded(val keyText: String, val passphrase: String?)
 
+    /**
+     * The secret to store when a key connection is saved. A new key replaces everything. With no
+     * new key, a typed passphrase is applied to the key already stored (editing only the
+     * passphrase used to be silently ignored). Returns null when nothing should change.
+     */
+    fun secretForSave(existing: String?, newKeyText: String?, newPassphrase: String?): String? {
+        if (!newKeyText.isNullOrBlank()) return encodeSecret(newKeyText, newPassphrase)
+        if (newPassphrase.isNullOrEmpty() || existing.isNullOrEmpty()) return null
+        val old = runCatching { decodeSecret(existing) }.getOrNull() ?: return null
+        return encodeSecret(old.keyText, newPassphrase)
+    }
+
     /** Reverses [encodeSecret]; a bare key (saved before passphrase support) decodes with no passphrase. */
     fun decodeSecret(secret: String): Decoded {
         if (!secret.startsWith(SECRET_PREFIX)) return Decoded(secret, null)
