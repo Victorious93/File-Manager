@@ -75,10 +75,10 @@ class FleetThemeTest {
 
     @Test fun schemeFallsBackToUsersThemeWithoutFleetPalette() {
         val prefs = ThemePrefs(fleetTheme = true)
-        assertEquals(schemeFor(prefs.copy(fleetTheme = false), true, null), schemeFor(prefs, true, null, null))
+        assertEquals(schemeFor(prefs.copy(fleetTheme = false), true, null).toString(), schemeFor(prefs, true, null, null).toString())
         val fleet = ok(FleetThemeContract.parseJson(specJson))
         // Off: the fleet palette is ignored even when available.
-        assertEquals(schemeFor(ThemePrefs(), true, null), schemeFor(ThemePrefs(), true, null, fleet))
+        assertEquals(schemeFor(ThemePrefs(), true, null).toString(), schemeFor(ThemePrefs(), true, null, fleet).toString())
         val s = schemeFor(prefs, false, null, fleet)
         assertEquals(Color(0xFF0B0C12), s.background)
         assertEquals(Color(0xFF00E5FF), s.primary)
