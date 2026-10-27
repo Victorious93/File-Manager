@@ -307,11 +307,15 @@ class SmokeTest {
 
         openBoth(root, root)
         Smoke.waitText(rule, "sub")
-        rule.onAllNodesWithContentDescription("Grid view")[0].performClick()
-        rule.waitUntil(10_000) { rule.onAllNodesWithTag("file-grid").fetchSemanticsNodes().isNotEmpty() }
+        Smoke.clickAndExpect(rule, rule.onAllNodesWithContentDescription("Grid view")[0], "grid view on") {
+            Smoke.app.themeSettings.state.value.gridView
+        }
+        Smoke.waitFor(rule, "grid shown") { rule.onAllNodesWithTag("file-grid").fetchSemanticsNodes().isNotEmpty() }
         Smoke.waitText(rule, "sub")
-        rule.onAllNodesWithContentDescription("List view")[0].performClick()
-        rule.waitUntil(10_000) { rule.onAllNodesWithTag("file-grid").fetchSemanticsNodes().isEmpty() }
+        Smoke.clickAndExpect(rule, rule.onAllNodesWithContentDescription("List view")[0], "grid view off") {
+            !Smoke.app.themeSettings.state.value.gridView
+        }
+        Smoke.waitFor(rule, "grid hidden") { rule.onAllNodesWithTag("file-grid").fetchSemanticsNodes().isEmpty() }
         assertFalse(Smoke.app.themeSettings.state.value.gridView)
 
         // Breadcrumbs: enter sub, then tap the parent crumb to come back.
