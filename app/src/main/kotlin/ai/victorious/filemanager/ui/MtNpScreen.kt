@@ -3,6 +3,8 @@ package ai.victorious.filemanager.ui
 import ai.victorious.filemanager.core.apk.Arsc
 import ai.victorious.filemanager.core.apk.ArscEditor
 import ai.victorious.filemanager.core.apk.ArscLocaleAdder
+import ai.victorious.filemanager.core.apk.ArscStringAdder
+import ai.victorious.filemanager.core.apk.mtnp.StringDecryptEmulator
 import ai.victorious.filemanager.core.apk.ApkMod
 import ai.victorious.filemanager.core.apk.ModPlan
 import ai.victorious.filemanager.FileManagerApplication
@@ -57,7 +59,7 @@ import kotlinx.coroutines.withContext
 @Composable
 internal fun MtNpScreen(target: File, outDir: String, onClose: () -> Unit, onEvent: (UiEvent) -> Unit) {
     var tab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Repair", "Merge/Split", "Decrypt", "DEX strings", "Translate")
+    val tabs = listOf("Repair", "Merge/Split", "Decrypt", "Emulate", "DEX strings", "Add strings", "Translate")
     ToolScaffold("DEX / ARSC tools", onBack = onClose) { modifier ->
         Column(modifier.padding(12.dp)) {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -69,7 +71,9 @@ internal fun MtNpScreen(target: File, outDir: String, onClose: () -> Unit, onEve
                 0 -> RepairTab(target, outDir, onEvent)
                 1 -> MergeSplitTab(target, outDir, onEvent)
                 2 -> DecryptTab(target, outDir, onEvent)
-                3 -> DexStringsTab(target, outDir, onEvent)
+                3 -> EmulateTab(target, outDir, onEvent)
+                4 -> DexStringsTab(target, outDir, onEvent)
+                5 -> AddStringsTab(target, outDir, onEvent)
                 else -> TranslateTab(target, outDir, onEvent)
             }
         }
@@ -131,8 +135,14 @@ private fun MergeSplitTab(target: File, outDir: String, onEvent: (UiEvent) -> Un
     val scope = rememberCoroutineScope()
     var log by remember { mutableStateOf("") }
     var perDex by remember { mutableStateOf("1") }
+    var policy by remember { mutableStateOf(DexMergeSplit.DuplicatePolicy.FIRST) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Merge all classes*.dex in the target, or split the first DEX by class count.", style = MaterialTheme.typography.bodySmall)
+        Text("Merge all classes*.dex (pick duplicate winner), rebalance under 64k methods, or split by class count.", style = MaterialTheme.typography.bodySmall)
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            DexMergeSplit.DuplicatePolicy.entries.forEach { p ->
+                FilterChip(selected = policy == p, onClick = { policy = p }, label = { Text(p.name) })
+            }
+        }
         OutlinedTextField(perDex, { perDex = it }, label = { Text("Classes per DEX (split)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = {
@@ -141,7 +151,7 @@ private fun MergeSplitTab(target: File, outDir: String, onEvent: (UiEvent) -> Un
                         runCatching {
                             val parts = DexTools.listDex(target)
                             require(parts.isNotEmpty()) { "No DEX" }
-                            val merged = DexMergeSplit.merge(parts.map { it.readBytes() })
+                            val merged = DexMergeSplit.merge(parts.map { it.readBytes() }, policy)
                             val out = File(outDir, "${target.nameWithoutExtension}-merged.dex")
                             out.writeBytes(merged.dex)
                             log = "Merged ${parts.size} → ${merged.classCount} classes; skipped ${merged.skippedDuplicates.size}\n→ ${out.name}"
@@ -167,6 +177,28 @@ private fun MergeSplitTab(target: File, outDir: String, onEvent: (UiEvent) -> Un
                         .onFailure { log = it.message ?: "fail"; onEvent(UiEvent.ShowMessage(log)) }
                 }
             }) { Text("Split") }
+            Button(onClick = {
+                scope.launch {
+                    withContext(Dispatchers.IO) {
+                        runCatching {
+                            val parts = DexTools.listDex(target)
+                            require(parts.isNotEmpty()) { "No DEX" }
+                            val dups = DexMergeSplit.findDuplicates(parts.map { it.readBytes() })
+                            val bal = DexMergeSplit.mergeAndRebalance(parts.map { it.readBytes() }, policy)
+                            val dir = File(outDir, "${target.nameWithoutExtension}-rebalanced").apply { mkdirs() }
+                            bal.forEach { File(dir, it.name).writeBytes(it.dex) }
+                            log = buildString {
+                                appendLine("Duplicates: ${dups.size}")
+                                dups.entries.take(10).forEach { (t, idxs) -> appendLine("  $t @ $idxs") }
+                                appendLine("Rebalanced → ${bal.size} DEX (policy=${policy.name})")
+                                bal.forEach { appendLine("  ${it.name}: ${it.classCount} classes, ${it.methodCount} methods") }
+                            }
+                            dir
+                        }
+                    }.onSuccess { onEvent(UiEvent.ShowMessage("Rebalanced")); onEvent(UiEvent.Refresh) }
+                        .onFailure { log = it.message ?: "fail"; onEvent(UiEvent.ShowMessage(log)) }
+                }
+            }) { Text("Rebalance 64k") }
         }
         Text(log, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
     }
@@ -369,6 +401,112 @@ private fun TranslateTab(target: File, outDir: String, onEvent: (UiEvent) -> Uni
                 )
             }
         }
+    }
+}
+
+
+@Composable
+private fun EmulateTab(target: File, outDir: String, onEvent: (UiEvent) -> Unit) {
+    val scope = rememberCoroutineScope()
+    var methods by remember { mutableStateOf<List<StringDecryptEmulator.DecryptorMethod>>(emptyList()) }
+    var selected by remember { mutableStateOf<StringDecryptEmulator.DecryptorMethod?>(null) }
+    var results by remember { mutableStateOf<List<StringDecryptEmulator.EmulationResult>>(emptyList()) }
+    var log by remember { mutableStateOf("Opt-in only. Restricted interpreter: no reflection, IO, or network; instruction + time budgets.") }
+    var writeBack by remember { mutableStateOf(false) }
+    LaunchedEffect(target) {
+        withContext(Dispatchers.Default) {
+            runCatching {
+                val dexes = DexTools.listDex(target).map { DexTools.load(it.readBytes()) }
+                methods = StringDecryptEmulator.findDecryptors(dexes, minCallSites = 1)
+                log = if (methods.isEmpty()) "No likely decryptors found." else "Found ${methods.size} candidate(s)."
+            }.onFailure { log = it.message ?: "scan failed" }
+        }
+    }
+    Column(Modifier.fillMaxSize()) {
+        Text(log, style = MaterialTheme.typography.bodySmall)
+        LazyColumn(Modifier.weight(1f)) {
+            items(methods) { m ->
+                TextButton(onClick = { selected = m; results = emptyList() }) {
+                    Text("${m.signature} sites=${m.callSites} score=${m.score}\n${m.reason}", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            items(results) { r ->
+                Text(
+                    if (r.ok) "${r.arg} → ${r.plaintext}" else "${r.arg} ✗ ${r.error}",
+                    fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(selected = writeBack, onClick = { writeBack = !writeBack }, label = { Text("Write const-string") })
+            Button(enabled = selected != null, onClick = {
+                val meth = selected ?: return@Button
+                scope.launch {
+                    withContext(Dispatchers.Default) {
+                        runCatching {
+                            val sources = DexTools.listDex(target)
+                            val bytes = sources.map { it.readBytes() }
+                            val dexes = bytes.map { DexTools.load(it) }
+                            val emulated = StringDecryptEmulator.emulateCallSites(dexes, meth)
+                            results = emulated
+                            val okMap = emulated.filter { it.ok }.associate { it.arg to it.plaintext!! }
+                            log = "Emulated ${emulated.size}: ${okMap.size} ok"
+                            if (writeBack && okMap.isNotEmpty()) {
+                                val outBytes = StringDecryptEmulator.inlineIntoDex(bytes.first(), meth, okMap)
+                                val out = File(outDir, "${target.nameWithoutExtension}-inlined.dex")
+                                out.writeBytes(outBytes)
+                                log += " → wrote ${out.name}"
+                            }
+                        }
+                    }.onSuccess { onEvent(UiEvent.ShowMessage(log)); if (writeBack) onEvent(UiEvent.Refresh) }
+                        .onFailure { log = it.message ?: "emulate failed"; onEvent(UiEvent.ShowMessage(log)) }
+                }
+            }) { Text("Emulate call sites") }
+        }
+    }
+}
+
+@Composable
+private fun AddStringsTab(target: File, outDir: String, onEvent: (UiEvent) -> Unit) {
+    val app = LocalContext.current.applicationContext as FileManagerApplication
+    val scope = rememberCoroutineScope()
+    var arscLines by remember { mutableStateOf("hello_world\tHello, world") }
+    var dexLines by remember { mutableStateOf("added-dex-constant") }
+    var log by remember { mutableStateOf("Add new ARSC string resources (all configs) and/or DEX string constants, then rebuild + sign.") }
+    val isApk = target.isFile && target.name.endsWith(".apk", true)
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(log, style = MaterialTheme.typography.bodySmall)
+        OutlinedTextField(
+            arscLines, { arscLines = it },
+            label = { Text("New ARSC strings: name<TAB>text per line") },
+            modifier = Modifier.fillMaxWidth(), minLines = 3, maxLines = 6,
+        )
+        OutlinedTextField(
+            dexLines, { dexLines = it },
+            label = { Text("New DEX constants (one per line)") },
+            modifier = Modifier.fillMaxWidth(), minLines = 2, maxLines = 4,
+        )
+        Button(enabled = isApk, onClick = {
+            scope.launch {
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                        val arscMap = ArscStringAdder.fromLines(arscLines)
+                        val dexList = dexLines.lines().map { it.trim() }.filter { it.isNotEmpty() }
+                        require(arscMap.isNotEmpty() || dexList.isNotEmpty()) { "Enter at least one ARSC or DEX string" }
+                        val out = File(outDir, "${target.nameWithoutExtension}-added-strings.apk")
+                        ApkMod.applyTo(
+                            target,
+                            ModPlan(newArscStrings = arscMap, newDexStrings = dexList),
+                            out,
+                            ApkRepository(app).debugKey(),
+                        )
+                        "Added arsc=${arscMap.size} dex=${dexList.size} → ${out.name} (signed)"
+                    }
+                }.onSuccess { log = it; onEvent(UiEvent.ShowMessage(it)); onEvent(UiEvent.Refresh) }
+                    .onFailure { log = it.message ?: "failed"; onEvent(UiEvent.ShowMessage(log)) }
+            }
+        }) { Text(if (isApk) "Add strings → rebuild + sign" else "Open an APK") }
     }
 }
 

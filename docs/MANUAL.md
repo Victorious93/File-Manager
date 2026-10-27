@@ -226,7 +226,7 @@ Long-press an `.apk`:
 
 1. Edit manifest fields: package name, versionCode/versionName, minSdk/targetSdk, permissions,
    debuggable, exported components.
-2. Edit the text of existing strings in `resources.arsc` (adding new strings is not supported).
+2. Edit existing strings in `resources.arsc`, or use **DEX / ARSC tools → Add strings** to create new ones (all locales) and optional DEX constants, then rebuild + sign.
 3. Optionally paste one smali class to replace.
 4. Tap **Rebuild + sign + verify**, then optionally **Install**.
 
@@ -235,6 +235,14 @@ Long-press an `.apk`:
 1. Pick a dex, filter the class list, open a class.
 2. Switch **Method list** / **Whole class smali**, tap **Edit**, save, then **Assemble**.
 3. **String constants** lists every string literal in the dex.
+
+**DEX / ARSC tools** (long-press APK → DEX / ARSC tools):
+
+1. **Repair** — fix DEX magic, checksum (Adler-32), SHA-1 signature, file size; validate the map list; see what was fixed.
+2. **Merge/Split** — merge `classes*.dex` with a duplicate-class winner (first / last / larger), rebalance under the 64k method limit, or split by class count.
+3. **Decrypt** — preview Base64 / XOR / hex literals (apply writes a new DEX).
+4. **Emulate** — find likely string-decryption methods and run a **restricted** interpreter (no reflection, IO, or network; timeouts). Opt-in write-back replaces calls with `const-string`.
+5. **Add strings** — new ARSC string resources (all configs) and/or DEX constants → rebuild + sign.
 
 **Other APK tools** in Tools: **Compare two APKs**, **Smali tools** (search, string-decryption
 hints, apply `mapping.txt`), **Extract installed apps**.
@@ -548,7 +556,7 @@ screen lock or biometrics. This cannot be recovered.
 
 **Where did my deleted file go?** Look in the **Trash** tab and tap **Restore**.
 
-**Can I add new strings in APK mod?** No, only existing string text can change.
+**Can I add new strings in APK mod?** Yes — **DEX / ARSC tools → Add strings** (Phase 16) adds new `string/<name>` resources in every config and optional DEX constants, then rebuilds and signs. The older APK-mod string list still edits existing text only. Compact ARSC tables are not supported.
 
 **Does this need DroidCommand AI?** No. Everything works without it.
 

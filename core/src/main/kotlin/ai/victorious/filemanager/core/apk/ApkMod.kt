@@ -11,8 +11,15 @@ data class ModPlan(
     val smali: List<String> = emptyList(),
     /** Brand-new languages: locale qualifier (e.g. `eo`, `pt-BR`) → resource id → text. */
     val newLocales: Map<String, Map<Int, String>> = emptyMap(),
+    /** Brand-new string resources: name → text, added to every string-type config in resources.arsc. */
+    val newArscStrings: Map<String, String> = emptyMap(),
+    /** New DEX string constants (via a helper class with static final fields). */
+    val newDexStrings: List<String> = emptyList(),
+    /** Helper class type for [newDexStrings], e.g. `Lfm/AddedStrings;`. */
+    val newDexStringsClass: String = "Lfm/AddedStrings;",
 ) {
-    val isEmpty: Boolean get() = manifest.isEmpty && strings.isEmpty() && smali.isEmpty() && newLocales.isEmpty()
+    val isEmpty: Boolean get() = manifest.isEmpty && strings.isEmpty() && smali.isEmpty() &&
+        newLocales.isEmpty() && newArscStrings.isEmpty() && newDexStrings.isEmpty()
 }
 
 data class ModResult(
@@ -55,10 +62,27 @@ object ApkMod {
             for ((locale, texts) in plan.newLocales) bytes = ArscLocaleAdder.addLocale(bytes, locale, texts)
             replacements["resources.arsc"] = bytes
         }
+        if (plan.newArscStrings.isNotEmpty()) {
+            var bytes = replacements["resources.arsc"] ?: ApkResources.read(apk, "resources.arsc")
+            bytes = ArscStringAdder.addStrings(bytes, plan.newArscStrings).bytes
+            replacements["resources.arsc"] = bytes
+        }
+        if (plan.newDexStrings.isNotEmpty()) {
+            val dexBytes = DexTools.listDex(apk).associate { src -> src.displayName to src.readBytes() }.toMutableMap()
+            val host = "classes.dex"
+            val current = dexBytes[host] ?: error("APK has no $host")
+            val updated = ai.victorious.filemanager.core.apk.mtnp.DexStringEdit.addConstantsClass(
+                current, plan.newDexStrings, plan.newDexStringsClass,
+            )
+            dexBytes[host] = updated
+            replacements[host] = updated
+        }
         if (plan.smali.isNotEmpty()) {
             val assembled = plan.smali.map { SmaliAssembler.assembleClass(it) }
             // Group classes by the dex they already live in (or classes.dex if new).
-            val dexBytes = DexTools.listDex(apk).associate { src -> src.displayName to src.readBytes() }.toMutableMap()
+            val dexBytes = DexTools.listDex(apk).associate { src ->
+                src.displayName to (replacements[src.displayName] ?: src.readBytes())
+            }.toMutableMap()
             val defaultDex = "classes.dex"
             for (cls in assembled) {
                 val host = dexBytes.entries.firstOrNull { (_, bytes) ->

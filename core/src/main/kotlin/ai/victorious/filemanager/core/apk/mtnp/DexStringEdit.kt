@@ -82,4 +82,43 @@ object DexStringEdit {
     /** Convenience: apply a single old→new string edit. */
     fun replaceOne(bytes: ByteArray, old: String, new: String): ByteArray =
         replaceStrings(bytes, mapOf(old to new))
+
+
+    /**
+     * Adds [values] as live string constants by inserting (or replacing) a tiny helper class
+     * whose static `<clinit>` loads each string into a field. DexPool keeps referenced strings;
+     * unreferred pool-only appends are stripped on rewrite.
+     *
+     * @param classType e.g. `Lfm/AddedStrings;`
+     */
+    fun addConstantsClass(
+        bytes: ByteArray,
+        values: List<String>,
+        classType: String = "Lfm/AddedStrings;",
+    ): ByteArray {
+        require(values.isNotEmpty()) { "No strings to add" }
+        require(classType.startsWith("L") && classType.endsWith(";")) { "Bad class type" }
+        val fields = values.mapIndexed { i, s ->
+            val esc = s.replace("\\", "\\\\").replace("\"", "\\\"")
+                .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
+            """
+    .field public static final s$i:Ljava/lang/String; = "$esc"
+""".trimEnd()
+        }.joinToString("\n")
+        val smali = """
+.class public $classType
+.super Ljava/lang/Object;
+
+$fields
+""".trimIndent()
+        val cls = ai.victorious.filemanager.core.apk.SmaliAssembler.assembleClass(smali)
+        return DexRepair.repair(
+            ai.victorious.filemanager.core.apk.SmaliAssembler.replaceClass(bytes, cls),
+        ).first
+    }
+
+    /** Convenience: add a single constant via [addConstantsClass]. */
+    fun addConstant(bytes: ByteArray, value: String, classType: String = "Lfm/AddedStrings;"): ByteArray =
+        addConstantsClass(bytes, listOf(value), classType)
+
 }
