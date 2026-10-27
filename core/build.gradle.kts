@@ -30,6 +30,8 @@ dependencies {
     implementation(libs.zip4j)
     implementation(libs.commons.net)
     implementation(libs.jsch)
+    // Ed25519/Ed448 SSH keys on Android (no JDK EdDSA there); JSch's bc.* classes use it. MIT-style licence.
+    implementation(libs.bouncycastle.bcprov)
     implementation(libs.smbj)
     implementation(libs.okhttp)
     implementation(libs.apache.ftpserver)
@@ -45,6 +47,8 @@ dependencies {
     // RAR extraction only (UnRAR license; see docs/ARCHIVES.md). Never used to create RAR archives.
     implementation(libs.junrar)
     testImplementation(libs.junit)
+    // Lets the in-process Apache SSHD test server accept Ed25519 client keys (test only).
+    testImplementation(libs.i2p.eddsa)
     testImplementation(libs.okhttp.mockwebserver)
 }
 

@@ -33,3 +33,14 @@ for the existing assistant. Suggestions are **user-approved** before apply.
 ## Tests
 `MtNpFinishTest` — repair, merge/split, decrypt, DEX string replace, ARSC CSV/XML/AI helpers (uses
 `fixture.apk` when present).
+
+## New language
+`ArscLocaleAdder` adds a brand-new `values-<code>` string table to resources.arsc: texts are
+appended to the global pool (existing indices unchanged), a new `string` type chunk copies the default
+config with language/region set, untranslated entries are left out (fallback to default), and the
+type spec gets the locale-config bit. `ModPlan.newLocales` builds and signs the APK. Tests:
+`Phase6Test` (synthetic table, fallback, two languages, bad input) and `AxmlAndModTest`
+(fixture APK, signed + verified, read back by `aapt2 dump resources`).
+
+Also fixed: `Arsc.decodeConfig` read the config 4 bytes early (it took the config size as the MCC),
+so non-default locales were shown as `mcc…` instead of e.g. `fr`.

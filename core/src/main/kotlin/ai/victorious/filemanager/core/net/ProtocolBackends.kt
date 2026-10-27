@@ -120,9 +120,11 @@ class SftpRemoteBackend(
     private val channel: ChannelSftp
 
     init {
+        SftpKeys.useBouncyCastleEdDsa()
         val jsch = JSch()
-        if (connection.authKind == AuthKind.PRIVATE_KEY && !secret.isNullOrBlank()) {
-            jsch.addIdentity("fm-${connection.id}", secret.toByteArray(), null, null)
+        if (connection.authKind == AuthKind.PRIVATE_KEY) {
+            require(!secret.isNullOrBlank()) { "No private key saved for this connection" }
+            SftpKeys.addIdentity(jsch, "fm-${connection.id}", secret)
         }
         session = jsch.getSession(connection.username, connection.host, connection.port)
         if (connection.authKind == AuthKind.PASSWORD) {
@@ -130,6 +132,7 @@ class SftpRemoteBackend(
         }
         val cfg = Properties()
         cfg["StrictHostKeyChecking"] = "no"
+        if (connection.authKind == AuthKind.PRIVATE_KEY) cfg["PreferredAuthentications"] = "publickey"
         session.setConfig(cfg)
         session.connect(15_000)
         channel = session.openChannel("sftp") as ChannelSftp

@@ -280,6 +280,13 @@ hints, apply `mapping.txt`), **Extract installed apps**.
 
 1. Tap add, choose FTP, FTPS, SFTP, SMB or WebDAV, fill host, port, username, password or private
    key, and save.
+   - **SFTP private key:** choose *Private key*, tap **Pick key file** (or paste the key), and
+     enter the passphrase if the key has one. OpenSSH (`id_ed25519`, `id_rsa`, `id_ecdsa`) and
+     PEM (`BEGIN RSA/EC PRIVATE KEY`, PKCS#8) keys work. The app checks the key before it lets
+     you save and shows its type and fingerprint. A wrong passphrase or a public key (`.pub`)
+     is refused with a clear message.
+   - The key and passphrase are stored encrypted with a key held in the Android Keystore,
+     never in plain files or backups.
 2. Open a connection: it appears as a tab, and you can copy/move between local and remote.
 
 **Cloud drives** (same screen):
@@ -349,8 +356,12 @@ and overrides the theme while it is on.
 
 ### 3.20 Help
 
-This manual is built into the app: open **Settings → Help & manual**, or tap the **?** icon in the
-top bar.
+This manual is built into the app: open **Settings → Help & manual** or **Tools → Help & manual**.
+
+- Type in the search field to find any word; tap a result to jump to it.
+- Tap **Contents** to see the chapter list and jump to a chapter.
+- Links to other sections jump inside the manual; web links open in your browser only when you
+  tap them.
 
 ---
 
@@ -570,6 +581,11 @@ Under APK tools (see `docs/MT_NP_FINISH.md`):
 - **String decrypt** previews XOR/Base64-looking strings; you choose the method before anything changes.
 - **Edit strings** in DEX or resources; **Translation mode** compares locales, exports CSV/XML, and
   can suggest translations through the AI assistant — you approve every change.
+- **Add a new language** (Translation tab): pick a chip or type a code such as `eo` or `pt-BR`,
+  tap **Fill with default strings**, replace the text after each tab with your translation, then
+  tap **Add language and build APK**. You get `<app>-<code>.apk`, signed with the File-Manager
+  debug key. Strings you leave out show in the default language. A language the APK already has
+  is refused; edit it with Apply instead.
 
 
 
@@ -595,9 +611,14 @@ module is on the classpath.
 
 ## Folder sync
 
-Tools → **Folder sync**: pick two folders (or a saved SMB/SFTP/WebDAV connection for side B),
-choose one-way or two-way, conflict policy, dry-run preview, then run. Local deletes go to trash.
-Optional WorkManager schedule for local↔local.
+Tools → **Folder sync**: for each side choose **Local** or any saved connection (SFTP, FTP, SMB,
+WebDAV or a cloud drive) and type the folder path. Choose one-way or two-way and a conflict
+policy, preview with dry-run, then run. Local deletes go to the trash.
+
+**Scheduled sync:** set *Every N hours*, optionally *Wi-Fi only* and *Only while charging*, then
+tap **Save + schedule**. The job runs in the background with Android's WorkManager when those
+conditions are met (remote jobs always wait for a network). Failed network runs retry with
+back-off, and each job in the list shows its last result. Tap **Remove** to stop a schedule.
 
 
 ## Server mode (FTP / SFTP / web)

@@ -1,6 +1,12 @@
 package ai.victorious.filemanager.ui
 
 import ai.victorious.filemanager.FileManagerApplication
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import ai.victorious.filemanager.core.net.SftpKeys
+import androidx.compose.runtime.LaunchedEffect
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.rememberLauncherForActivityResult
 import ai.victorious.filemanager.core.net.AuthKind
 import ai.victorious.filemanager.core.net.ConnectionDraft
 import ai.victorious.filemanager.core.net.CredentialRedactor
@@ -204,6 +210,38 @@ private fun EditConnectionDialog(onDismiss: () -> Unit, onSave: (ConnectionDraft
     var expanded by remember { mutableStateOf(false) }
     var useKey by remember { mutableStateOf(false) }
     var keyPem by remember { mutableStateOf("") }
+    var keyLabel by remember { mutableStateOf("") }
+    var keyPassphrase by remember { mutableStateOf("") }
+    var keyStatus by remember { mutableStateOf<String?>(null) }
+    var keyOk by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val keyPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            val text = runCatching {
+                context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    ?.takeIf { it.size <= MAX_KEY_BYTES }?.toString(Charsets.UTF_8)
+            }.getOrNull()
+            if (text == null) {
+                keyStatus = "Could not read that file (keys are small text files)."
+            } else {
+                keyPem = text
+                keyLabel = displayName(context, uri) ?: "private key"
+                keyStatus = null
+            }
+        }
+    }
+    // Re-check the key whenever it or the passphrase changes (local parse only, nothing sent).
+    LaunchedEffect(keyPem, keyPassphrase) {
+        if (keyPem.isBlank()) { keyStatus = null; keyOk = false; return@LaunchedEffect }
+        val r = withContext(Dispatchers.Default) {
+            runCatching { SftpKeys.inspect(keyPem, keyPassphrase.ifEmpty { null }) }
+        }
+        keyOk = r.isSuccess
+        keyStatus = r.fold(
+            { "${it.algorithm}${if (it.encrypted) " (passphrase OK)" else ""} · ${it.fingerprint}" },
+            { it.message ?: "Invalid key" },
+        )
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -247,10 +285,32 @@ private fun EditConnectionDialog(onDismiss: () -> Unit, onSave: (ConnectionDraft
                     }
                 }
                 if (useKey && protocol == RemoteProtocol.SFTP) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Button(onClick = { keyPicker.launch(arrayOf("*/*")) }) { Text("Pick key file") }
+                        Text(
+                            keyLabel.ifBlank { "OpenSSH, PEM or PuTTY; ed25519, RSA, ECDSA" },
+                            Modifier.padding(start = 8.dp).weight(1f),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
                     OutlinedTextField(
-                        keyPem, { keyPem = it }, label = { Text("Private key (PEM)") },
-                        modifier = Modifier.fillMaxWidth(), minLines = 3,
+                        keyPem, { keyPem = it; if (keyLabel.isBlank()) keyLabel = "pasted key" },
+                        label = { Text("…or paste the private key") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth(), maxLines = 3,
                     )
+                    OutlinedTextField(
+                        keyPassphrase, { keyPassphrase = it }, label = { Text("Key passphrase (if any)") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth(), singleLine = true,
+                    )
+                    keyStatus?.let {
+                        Text(
+                            it, style = MaterialTheme.typography.bodySmall,
+                            color = if (keyOk) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                        )
+                    }
+                    Text("Key and passphrase are stored encrypted with the Android Keystore.", style = MaterialTheme.typography.labelSmall)
                 } else {
                     OutlinedTextField(
                         password, { password = it }, label = { Text("Password") },
@@ -263,6 +323,7 @@ private fun EditConnectionDialog(onDismiss: () -> Unit, onSave: (ConnectionDraft
         confirmButton = {
             TextButton(onClick = {
                 if (host.isBlank()) return@TextButton
+                if (useKey && protocol == RemoteProtocol.SFTP && !keyOk) return@TextButton
                 onSave(
                     ConnectionDraft(
                         name = name,
@@ -271,9 +332,11 @@ private fun EditConnectionDialog(onDismiss: () -> Unit, onSave: (ConnectionDraft
                         port = port.toIntOrNull(),
                         username = user,
                         password = password.takeIf { it.isNotEmpty() },
-                        privateKeyPem = keyPem.takeIf { it.isNotEmpty() },
+                        privateKeyPem = keyPem.takeIf { it.isNotEmpty() && useKey },
+                        keyPassphrase = keyPassphrase.takeIf { it.isNotEmpty() && useKey },
+                        keyLabel = if (useKey) keyLabel else "",
                         initialPath = path.ifBlank { "/" },
-                        authKind = if (useKey) AuthKind.PRIVATE_KEY else AuthKind.PASSWORD,
+                        authKind = if (useKey && protocol == RemoteProtocol.SFTP) AuthKind.PRIVATE_KEY else AuthKind.PASSWORD,
                         share = share,
                         webDavHttps = protocol == RemoteProtocol.WEBDAV,
                     ),
@@ -407,3 +470,12 @@ fun WifiTransferScreen(rootPath: String, onMessage: (String) -> Unit, onClose: (
         }
     }
 }
+
+private const val MAX_KEY_BYTES = 64 * 1024
+
+private fun displayName(context: android.content.Context, uri: android.net.Uri): String? =
+    runCatching {
+        context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+            if (c.moveToFirst()) c.getString(0) else null
+        }
+    }.getOrNull()
