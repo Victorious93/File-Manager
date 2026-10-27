@@ -108,6 +108,30 @@ import androidx.compose.ui.unit.dp
 import java.text.DateFormat
 import java.util.Date
 import java.io.File
+import ai.victorious.filemanager.ui.theme.effectiveDualPane
+import ai.victorious.filemanager.ui.theme.fileCategory
+import ai.victorious.filemanager.ui.theme.Spacing
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
+import androidx.compose.material.icons.outlined.ClearAll
+import androidx.compose.material.icons.outlined.FolderOff
+import androidx.compose.material.icons.outlined.GridView
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.SelectAll
+import androidx.compose.material.icons.automirrored.outlined.ViewList
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.style.TextAlign
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -124,7 +148,11 @@ fun FileManagerApp(
     }
     val context = LocalContext.current
     val themeSettings = (context.applicationContext as ai.victorious.filemanager.FileManagerApplication).themeSettings
-    val dualPane = themeSettings.state.collectAsState().value.dualPane
+    val prefs = themeSettings.state.collectAsState().value
+    val windowLayout = rememberWindowLayout()
+    // Expanded windows (tablets, unfolded foldables) show both panes unless the user opted out.
+    val dualPane = prefs.effectiveDualPane(windowLayout.expanded)
+    LaunchedEffect(windowLayout.expanded) { themeSettings.expandedWindow.value = windowLayout.expanded }
     var showCreate by remember { mutableStateOf(false) }
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -213,6 +241,7 @@ fun FileManagerApp(
                         Text("Victorious", fontWeight = FontWeight.SemiBold)
                         Text(
                             text = when (state.destination) {
+                                Dest.HOME -> "Home"
                                 Dest.FILES -> pane(state).active.path
                                 Dest.SEARCH -> "Search"
                                 Dest.BOOKMARKS -> "Bookmarks"
@@ -231,7 +260,21 @@ fun FileManagerApp(
                 },
                 actions = {
                     if (state.destination == Dest.FILES) {
-                        IconButton(onClick = { themeSettings.update { it.copy(dualPane = !it.dualPane) } }) {
+                        IconButton(onClick = {
+                            themeSettings.update { it.copy(gridView = !it.gridView) }
+                        }) {
+                            Icon(
+                                if (prefs.gridView) Icons.AutoMirrored.Outlined.ViewList else Icons.Outlined.GridView,
+                                contentDescription = if (prefs.gridView) "List view" else "Grid view",
+                            )
+                        }
+                        IconButton(onClick = {
+                            val next = !dualPane
+                            // Turning panes off on a wide window also stops them coming back automatically.
+                            themeSettings.update {
+                                it.copy(dualPane = next, autoDualOnWide = if (!next && windowLayout.expanded) false else it.autoDualOnWide)
+                            }
+                        }) {
                             Icon(
                                 Icons.Outlined.Splitscreen,
                                 contentDescription = if (dualPane) "Show one pane" else "Show two panes",
@@ -258,6 +301,18 @@ fun FileManagerApp(
         bottomBar = {
             Column {
                 if (state.destination == Dest.FILES) {
+                    val focused = pane(state)
+                    AnimatedVisibility(
+                        visible = focused.selected.isNotEmpty(),
+                        enter = expandVertically() + fadeIn(),
+                        exit = shrinkVertically() + fadeOut(),
+                    ) {
+                        SelectionBar(
+                            count = focused.selected.size,
+                            onSelectAll = { onEvent(UiEvent.SelectAll(state.focusedPane)) },
+                            onClear = { onEvent(UiEvent.ClearSelection(state.focusedPane)) },
+                        )
+                    }
                     state.clipboard?.let { ClipboardBar(it, onEvent) }
                     BottomAppBar(
                         actions = {
@@ -298,7 +353,7 @@ fun FileManagerApp(
                 }
                 if (!wideWindow) {
                     NavigationBar {
-                        for (item in NavItems) {
+                        for (item in NavItems.filter { it.compact }) {
                             NavigationBarItem(
                                 selected = state.destination == item.dest,
                                 onClick = { onEvent(UiEvent.Navigate(item.dest)) },
@@ -350,10 +405,12 @@ fun FileManagerApp(
                     },
                 )
             }
-            when (state.destination) {
+            Crossfade(state.destination, label = "destination") { dest ->
+            when (dest) {
+                Dest.HOME -> HomeDashboard(state, onEvent)
                 Dest.FILES ->
-                    if (dualPane) DualPane(state, onEvent, onCreate = { showCreate = true })
-                    else SinglePane(state, onEvent, onCreate = { showCreate = true })
+                    if (dualPane) DualPane(state, prefs.gridView, windowLayout.hinge, onEvent, onCreate = { showCreate = true })
+                    else SinglePane(state, prefs.gridView, onEvent, onCreate = { showCreate = true })
                 Dest.SEARCH -> SearchPane(state, onEvent)
                 Dest.BOOKMARKS -> BookmarksPane(state, onEvent)
                 Dest.APPS -> AppManagerProPane(onEvent = onEvent)
@@ -361,6 +418,7 @@ fun FileManagerApp(
                 Dest.TOOLS -> ToolsPane(state, onEvent)
                 Dest.TRASH -> TrashPane(state, onEvent)
                 Dest.SETTINGS -> SettingsPane(onEvent)
+            }
             }
         }
       }
@@ -431,9 +489,26 @@ private fun PermissionBanner(onGrant: () -> Unit) {
 
 /** One file list filling the screen: the focused pane. The other pane keeps its folder and tabs, hidden. */
 @Composable
-private fun SinglePane(state: UiState, onEvent: (UiEvent) -> Unit, onCreate: () -> Unit) {
+private fun SinglePane(state: UiState, grid: Boolean, onEvent: (UiEvent) -> Unit, onCreate: () -> Unit) {
     val index = state.focusedPane
-    FilePane(index, pane(state), true, state.listing, onEvent, onCreate, Modifier.fillMaxSize())
+    FilePane(index, pane(state), true, state.listing, grid, state.busy, onEvent, onCreate, Modifier.fillMaxSize())
+}
+
+/** Contextual bar while items are selected: how many, select all, clear. Sits above the action bar. */
+@Composable
+private fun SelectionBar(count: Int, onSelectAll: () -> Unit, onClear: () -> Unit) {
+    Surface(color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(start = Spacing.l, end = Spacing.xs), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "$count selected",
+                modifier = Modifier.weight(1f).testTag("selection-count"),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+            IconButton(onClick = onSelectAll) { Icon(Icons.Outlined.SelectAll, contentDescription = "Select all") }
+            IconButton(onClick = onClear) { Icon(Icons.Outlined.ClearAll, contentDescription = "Clear selection") }
+        }
+    }
 }
 
 /** Shown while Copy/Move has staged items: paste them into whatever folder is open, or drop them. */
@@ -455,19 +530,27 @@ private fun ClipboardBar(clip: Clipboard, onEvent: (UiEvent) -> Unit) {
 }
 
 @Composable
-private fun DualPane(state: UiState, onEvent: (UiEvent) -> Unit, onCreate: () -> Unit) {
+private fun DualPane(
+    state: UiState,
+    grid: Boolean,
+    hinge: HingeSplit?,
+    onEvent: (UiEvent) -> Unit,
+    onCreate: () -> Unit,
+) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        if (panesSideBySide(maxWidth.value, maxHeight.value)) {
+        if (hinge != null || panesSideBySide(maxWidth.value, maxHeight.value)) {
+            // On a foldable, split at the hinge so no file row sits under the fold.
+            val leftWeight = hinge?.leftFraction ?: 0.5f
             Row(Modifier.fillMaxSize()) {
-                FilePane(0, state.left, state.focusedPane == 0, state.listing, onEvent, onCreate, Modifier.weight(1f))
-                VerticalDivider()
-                FilePane(1, state.right, state.focusedPane == 1, state.listing, onEvent, onCreate, Modifier.weight(1f))
+                FilePane(0, state.left, state.focusedPane == 0, state.listing, grid, state.busy, onEvent, onCreate, Modifier.weight(leftWeight))
+                if (hinge != null && hinge.gap.value > 0f) Spacer(Modifier.width(hinge.gap)) else VerticalDivider()
+                FilePane(1, state.right, state.focusedPane == 1, state.listing, grid, state.busy, onEvent, onCreate, Modifier.weight(1f - leftWeight))
             }
         } else {
             Column(Modifier.fillMaxSize()) {
-                FilePane(0, state.left, state.focusedPane == 0, state.listing, onEvent, onCreate, Modifier.weight(1f))
+                FilePane(0, state.left, state.focusedPane == 0, state.listing, grid, state.busy, onEvent, onCreate, Modifier.weight(1f))
                 HorizontalDivider()
-                FilePane(1, state.right, state.focusedPane == 1, state.listing, onEvent, onCreate, Modifier.weight(1f))
+                FilePane(1, state.right, state.focusedPane == 1, state.listing, grid, state.busy, onEvent, onCreate, Modifier.weight(1f))
             }
         }
     }
@@ -479,11 +562,13 @@ private fun FilePane(
     pane: PaneState,
     focused: Boolean,
     listing: ai.victorious.filemanager.core.listing.ListingOptions,
+    grid: Boolean,
+    busy: Boolean,
     onEvent: (UiEvent) -> Unit,
     onCreate: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val border = if (focused) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+    val border = if (focused) MaterialTheme.colorScheme.surfaceContainerLow
     else MaterialTheme.colorScheme.surface
     Column(
         modifier
@@ -551,14 +636,7 @@ private fun FilePane(
                 Icon(Icons.Outlined.CreateNewFolder, contentDescription = "New folder or file")
             }
         }
-        Text(
-            pane.active.path,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
-        )
+        BreadcrumbBar(pane.active.path, onOpen = { onEvent(UiEvent.FocusPane(index)); onEvent(UiEvent.Open(index, it)) })
         ListingBar(index, listing, onEvent)
         if (pane.active.error != null) {
             Text(
@@ -569,46 +647,79 @@ private fun FilePane(
             )
         }
         val visibleEntries = remember(pane.active.entries, listing) { listing.apply(pane.active.entries) }
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 12.dp),
-        ) {
-            items(visibleEntries, key = { it.path }) { entry ->
-                FileRow(
-                    entry = entry,
-                    selected = entry.path in pane.selected,
-                    onClick = {
-                        onEvent(UiEvent.FocusPane(index))
-                        if (entry.isDirectory && pane.selected.isEmpty()) {
-                            onEvent(UiEvent.Open(index, entry.path))
-                        } else if (pane.selected.isEmpty()) {
-                            onEvent(UiEvent.OpenFile(entry.path))
-                        } else {
-                            onEvent(UiEvent.Select(index, entry.path, additive = pane.selected.isNotEmpty()))
-                        }
-                    },
-                    onLongClick = {
-                        onEvent(UiEvent.FocusPane(index))
-                        onEvent(UiEvent.Select(index, entry.path, additive = true))
-                    },
-                    menu = if (entry.isDirectory) { dismiss ->
-                        FolderMenuItems(entry.path, onEvent, dismiss)
-                    } else { dismiss ->
-                        OpenWithItems(entry.path, onEvent, dismiss)
-                        SplitJoinMenuItem(entry.path, onEvent, dismiss)
-                        ShareMenuItem(entry.path, onEvent, dismiss)
-                        if (isApk(entry.path)) ApkMenuItems(entry.path, onEvent, dismiss)
-                        if (entry.path.endsWith(".dex", ignoreCase = true)) DexMenuItems(entry.path, onEvent, dismiss)
-                        if (ai.victorious.filemanager.core.apk.ApkBundles.isBundleName(entry.name)) {
-                            BundleMenuItems(entry.path, onEvent, dismiss)
-                        }
-                    },
-                )
+        val open: (FileEntry) -> Unit = { entry ->
+            onEvent(UiEvent.FocusPane(index))
+            if (entry.isDirectory && pane.selected.isEmpty()) {
+                onEvent(UiEvent.Open(index, entry.path))
+            } else if (pane.selected.isEmpty()) {
+                onEvent(UiEvent.OpenFile(entry.path))
+            } else {
+                onEvent(UiEvent.Select(index, entry.path, additive = pane.selected.isNotEmpty()))
+            }
+        }
+        val toggle: (FileEntry) -> Unit = { entry ->
+            onEvent(UiEvent.FocusPane(index))
+            onEvent(UiEvent.Select(index, entry.path, additive = true))
+        }
+        val menuFor: (FileEntry) -> (@Composable (dismiss: () -> Unit) -> Unit) = { entry ->
+            if (entry.isDirectory) { dismiss ->
+                FolderMenuItems(entry.path, onEvent, dismiss)
+            } else { dismiss ->
+                OpenWithItems(entry.path, onEvent, dismiss)
+                SplitJoinMenuItem(entry.path, onEvent, dismiss)
+                ShareMenuItem(entry.path, onEvent, dismiss)
+                if (isApk(entry.path)) ApkMenuItems(entry.path, onEvent, dismiss)
+                if (entry.path.endsWith(".dex", ignoreCase = true)) DexMenuItems(entry.path, onEvent, dismiss)
+                if (ai.victorious.filemanager.core.apk.ApkBundles.isBundleName(entry.name)) {
+                    BundleMenuItems(entry.path, onEvent, dismiss)
+                }
+            }
+        }
+        when {
+            visibleEntries.isEmpty() && pane.active.error == null && !busy -> EmptyState(
+                title = if (listing.filter.isNotEmpty()) "No matches" else "This folder is empty",
+                body = if (listing.filter.isNotEmpty()) "Nothing here matches \"${listing.filter}\"." else "Use New folder or file to add something, or paste here.",
+                icon = Icons.Outlined.FolderOff,
+            )
+            grid -> LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = 104.dp),
+                modifier = Modifier.fillMaxSize().testTag("file-grid"),
+                contentPadding = PaddingValues(Spacing.s),
+            ) {
+                gridItems(visibleEntries, key = { it.path }, contentType = { if (it.isDirectory) 0 else 1 }) { entry ->
+                    FileTile(
+                        entry = entry,
+                        selected = entry.path in pane.selected,
+                        onClick = { open(entry) },
+                        onToggleSelect = { toggle(entry) },
+                        menu = menuFor(entry),
+                        modifier = Modifier.animateItem(),
+                    )
+                }
+            }
+            else -> LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 12.dp),
+            ) {
+                items(visibleEntries, key = { it.path }, contentType = { if (it.isDirectory) 0 else 1 }) { entry ->
+                    FileRow(
+                        entry = entry,
+                        selected = entry.path in pane.selected,
+                        onClick = { open(entry) },
+                        onLongClick = { toggle(entry) },
+                        menu = menuFor(entry),
+                        modifier = Modifier.animateItem(),
+                    )
+                }
             }
         }
     }
 }
 
+/**
+ * One file in list view: tonal type badge (tap it to select), name and details, and a "More options"
+ * menu. Long-press opens the same menu (its first item is Select); a horizontal swipe toggles selection.
+ */
 @Composable
 private fun FileRow(
     entry: FileEntry,
@@ -616,40 +727,112 @@ private fun FileRow(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     menu: (@Composable (dismiss: () -> Unit) -> Unit)? = null,
+    modifier: Modifier = Modifier,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
-    val bg = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
-    else MaterialTheme.colorScheme.surface
+    var drag by remember { mutableStateOf(0f) }
+    val offset by animateFloatAsState(drag, label = "swipe")
+    val bg = if (selected) MaterialTheme.colorScheme.secondaryContainer
+    else MaterialTheme.colorScheme.surface.copy(alpha = 0f)
+    val swipeThreshold = with(androidx.compose.ui.platform.LocalDensity.current) { 72.dp.toPx() }
     Row(
-        Modifier
+        modifier
             .fillMaxWidth()
-            .background(bg)
+            .padding(horizontal = Spacing.s, vertical = 2.dp)
+            .graphicsLayer { translationX = offset }
+            .background(bg, MaterialTheme.shapes.medium)
+            .pointerInput(entry.path) {
+                detectHorizontalDragGestures(
+                    onDragEnd = {
+                        if (kotlin.math.abs(drag) > swipeThreshold) onLongClick()
+                        drag = 0f
+                    },
+                    onDragCancel = { drag = 0f },
+                ) { change, amount ->
+                    change.consume()
+                    drag = (drag + amount).coerceIn(-swipeThreshold * 1.4f, swipeThreshold * 1.4f)
+                }
+            }
             .combinedClickable(onClick = onClick, onLongClick = { if (menu != null) menuOpen = true else onLongClick() })
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .padding(horizontal = Spacing.s, vertical = Spacing.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(
-            if (entry.isDirectory) Icons.Outlined.Folder else Icons.Outlined.Description,
-            contentDescription = null,
-            tint = if (entry.isDirectory) MaterialTheme.colorScheme.primary
-            else MaterialTheme.colorScheme.onSurfaceVariant,
+        CategoryBadge(
+            fileCategory(entry.name, entry.isDirectory),
+            selected = selected,
+            modifier = Modifier.clickable(onClick = onLongClick),
         )
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(Spacing.m))
         Column(Modifier.weight(1f)) {
-            Text(entry.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Medium)
+            Text(
+                entry.name, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium,
+            )
             Text(
                 meta(entry),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
             )
         }
         if (menu != null) {
             Box {
+                IconButton(onClick = { menuOpen = true }) {
+                    Icon(Icons.Outlined.MoreVert, contentDescription = "More options", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                    DropdownMenuItem(text = { Text("Select") }, onClick = { menuOpen = false; onLongClick() })
+                    DropdownMenuItem(text = { Text(if (selected) "Deselect" else "Select") }, onClick = { menuOpen = false; onLongClick() })
                     menu { menuOpen = false }
                 }
             }
+        }
+    }
+}
+
+/** One file in grid view: a large type badge with the name under it. Same gestures as [FileRow]. */
+@Composable
+private fun FileTile(
+    entry: FileEntry,
+    selected: Boolean,
+    onClick: () -> Unit,
+    onToggleSelect: () -> Unit,
+    menu: @Composable (dismiss: () -> Unit) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var menuOpen by remember { mutableStateOf(false) }
+    val bg = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerLow
+    Box(modifier.padding(Spacing.xs)) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .background(bg, MaterialTheme.shapes.medium)
+                .combinedClickable(onClick = onClick, onLongClick = { menuOpen = true })
+                .padding(Spacing.s),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            CategoryBadge(
+                fileCategory(entry.name, entry.isDirectory),
+                selected = selected,
+                size = 56.dp,
+                modifier = Modifier.clickable(onClick = onToggleSelect),
+            )
+            Spacer(Modifier.height(Spacing.s))
+            Text(
+                entry.name,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.labelLarge,
+            )
+            Text(
+                if (entry.isDirectory) "Folder" else formatSize(entry.sizeBytes),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+            DropdownMenuItem(text = { Text(if (selected) "Deselect" else "Select") }, onClick = { menuOpen = false; onToggleSelect() })
+            menu { menuOpen = false }
         }
     }
 }
@@ -842,12 +1025,24 @@ private fun TrashPane(state: UiState, onEvent: (UiEvent) -> Unit) {
 }
 
 @Composable
-private fun EmptyState(title: String, body: String) {
+private fun EmptyState(
+    title: String,
+    body: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector = Icons.Outlined.Info,
+) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp)) {
+            Box(
+                Modifier.size(72.dp).background(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.shapes.extraLarge),
+                contentAlignment = Alignment.Center,
+            ) { Icon(icon, null, Modifier.size(36.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+            Spacer(Modifier.height(Spacing.l))
             Text(title, style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(8.dp))
-            Text(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                body, style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center,
+            )
         }
     }
 }
@@ -1133,14 +1328,21 @@ private fun formatSize(bytes: Long): String {
     return String.format(java.util.Locale.US, "%.1f GB", mb / 1024.0)
 }
 
-private class NavItem(val dest: Dest, val icon: androidx.compose.ui.graphics.vector.ImageVector, val label: String)
+/** [compact]: shown in the phone bottom bar too; the rail on wider windows shows every destination. */
+private class NavItem(
+    val dest: Dest,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val label: String,
+    val compact: Boolean = true,
+)
 
 private val NavItems = listOf(
+    NavItem(Dest.HOME, Icons.Outlined.Home, "Home"),
     NavItem(Dest.FILES, Icons.Outlined.Storage, "Files"),
     NavItem(Dest.SEARCH, Icons.Outlined.Search, "Search"),
-    NavItem(Dest.BOOKMARKS, Icons.Outlined.BookmarkBorder, "Bookmarks"),
+    NavItem(Dest.BOOKMARKS, Icons.Outlined.BookmarkBorder, "Bookmarks", compact = false),
     NavItem(Dest.APPS, Icons.Outlined.Apps, "Apps"),
-    NavItem(Dest.NOTES, Icons.Outlined.Description, "Notes"),
+    NavItem(Dest.NOTES, Icons.Outlined.Description, "Notes", compact = false),
     NavItem(Dest.TOOLS, Icons.Outlined.Build, "Tools"),
     NavItem(Dest.TRASH, Icons.Outlined.RestoreFromTrash, "Trash"),
     NavItem(Dest.SETTINGS, Icons.Outlined.SettingsIcon, "Settings"),

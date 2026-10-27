@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+import androidx.compose.ui.unit.dp
 
 private val Teal = Color(0xFF2BB5A0)
 
@@ -61,6 +62,24 @@ internal fun ColorScheme.amoled(): ColorScheme = copy(
     surfaceContainerHigh = Color(0xFF0E1114),
     surfaceContainerHighest = Color(0xFF15191D),
 )
+
+/** Slightly rounder than the M3 defaults, used consistently for cards, chips and sheets. */
+internal val AppShapes = androidx.compose.material3.Shapes(
+    extraSmall = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
+    small = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+    medium = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+    large = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+    extraLarge = androidx.compose.foundation.shape.RoundedCornerShape(32.dp),
+)
+
+/** The app's spacing scale (4dp grid). Use these instead of ad-hoc values in new UI. */
+object Spacing {
+    val xs = 4.dp
+    val s = 8.dp
+    val m = 12.dp
+    val l = 16.dp
+    val xl = 24.dp
+}
 
 internal fun isDark(mode: ThemeMode, systemDark: Boolean) = when (mode) {
     ThemeMode.SYSTEM -> systemDark
@@ -107,7 +126,12 @@ fun VictoriousTheme(
             }
         }
     }
-    MaterialTheme(colorScheme = schemeFor(prefs, systemDark, dynamic), content = content)
+    MaterialTheme(
+        colorScheme = schemeFor(prefs, systemDark, dynamic),
+        shapes = AppShapes,
+    ) {
+        androidx.compose.runtime.CompositionLocalProvider(LocalIconStyle provides prefs.iconStyle, content = content)
+    }
 }
 
 private tailrec fun Context.findActivity(): Activity? = when (this) {

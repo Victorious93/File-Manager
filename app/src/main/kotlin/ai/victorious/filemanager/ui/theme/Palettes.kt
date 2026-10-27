@@ -31,7 +31,19 @@ enum class Palette(val label: String, internal val seeds: Seeds?) {
     OCEAN("Ocean", Seeds(0xFF60A5FA, 0xFF2DD4BF, 0xFF0A1522, 0xFF1D4ED8, 0xFF0F766E, 0xFFEFF5FC)),
     EMBER("Ember", Seeds(0xFFFB923C, 0xFFF87171, 0xFF140C08, 0xFFC2410C, 0xFFB91C1C, 0xFFFDF5EF)),
     ROSE("Rose", Seeds(0xFFF472B6, 0xFFC084FC, 0xFF130A12, 0xFFBE185D, 0xFF7E22CE, 0xFFFCF3F8)),
-    GRAPHITE("Graphite", Seeds(0xFFD4D4D8, 0xFFA1A1AA, 0xFF0E0E10, 0xFF3F3F46, 0xFF63636B, 0xFFF4F4F5));
+    GRAPHITE("Graphite", Seeds(0xFFD4D4D8, 0xFFA1A1AA, 0xFF0E0E10, 0xFF3F3F46, 0xFF63636B, 0xFFF4F4F5)),
+    /** Arctic frost blues on slate. */
+    NORD("Nord", Seeds(0xFF88C0D0, 0xFFB48EAD, 0xFF101620, 0xFF3B6E8F, 0xFF7B4F72, 0xFFF0F3F7)),
+    /** Moss and sage greens. */
+    FOREST("Forest", Seeds(0xFF86C98A, 0xFFD6B370, 0xFF0A110B, 0xFF2E6B34, 0xFF7A5A12, 0xFFF2F7F1)),
+    /** Purple and pink on deep violet. */
+    DRACULA("Dracula", Seeds(0xFFBD93F9, 0xFFFF79C6, 0xFF120E1A, 0xFF6D3FC0, 0xFFAD1F75, 0xFFF6F2FC)),
+    /** Warm yellow and cyan on deep teal, after Solarized. */
+    SOLARIZED("Solarized", Seeds(0xFFE0B341, 0xFF4FB3C8, 0xFF001A21, 0xFF8A6100, 0xFF136C7F, 0xFFFBF6E9)),
+    /** Soft lilac and periwinkle. */
+    LAVENDER("Lavender", Seeds(0xFFC4B5FD, 0xFF93C5FD, 0xFF100D18, 0xFF6246C8, 0xFF2F5FB0, 0xFFF6F3FD)),
+    /** Coral and gold, a sunset. */
+    SUNSET("Sunset", Seeds(0xFFFF8A65, 0xFFFFD166, 0xFF160A0B, 0xFFB4401C, 0xFF8A5D00, 0xFFFDF4F0));
 
     /** Colour of this theme's chip in Settings. */
     val swatch: Color get() = Color(seeds?.darkPrimary ?: Accent.BLUE.dark)

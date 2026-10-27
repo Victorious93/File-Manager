@@ -1,5 +1,7 @@
 package ai.victorious.filemanager.ui
 
+import ai.victorious.filemanager.ui.theme.icon
+
 import ai.victorious.filemanager.FileManagerApplication
 import ai.victorious.filemanager.core.priv.PrivilegeBackend
 import androidx.compose.foundation.background
@@ -216,5 +218,43 @@ private fun AppearanceSection() {
                 FilterChip(selected = prefs.accent == a, onClick = { theme.update { it.copy(accent = a) } }, label = { Text(a.label) })
             }
         }
+    }
+    Text("Icon style", style = MaterialTheme.typography.titleSmall)
+    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        for (st in ai.victorious.filemanager.ui.theme.IconStyle.entries) {
+            FilterChip(
+                selected = prefs.iconStyle == st,
+                onClick = { theme.update { it.copy(iconStyle = st) } },
+                label = { Text(st.label) },
+                leadingIcon = {
+                    androidx.compose.material3.Icon(
+                        ai.victorious.filemanager.ui.theme.FileCategory.FOLDER.icon(st),
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = if (st.colourful) ai.victorious.filemanager.ui.theme.FileCategory.FOLDER.colour else androidx.compose.ui.graphics.Color.Unspecified,
+                    )
+                },
+            )
+        }
+    }
+    SettingSwitch("Grid view", "Show files as tiles instead of a list.", prefs.gridView) { on -> theme.update { it.copy(gridView = on) } }
+    SettingSwitch(
+        "Two panes on wide screens",
+        "Tablets and unfolded foldables show both panes side by side automatically.",
+        prefs.autoDualOnWide,
+    ) { on -> theme.update { it.copy(autoDualOnWide = on) } }
+    SettingSwitch("Start on Home", "Open the Home dashboard instead of the file list.", prefs.startOnHome) { on ->
+        theme.update { it.copy(startOnHome = on) }
+    }
+}
+
+@Composable
+private fun SettingSwitch(title: String, body: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleSmall)
+            Text(body, style = MaterialTheme.typography.bodySmall)
+        }
+        Switch(checked = checked, onCheckedChange = onChange)
     }
 }
