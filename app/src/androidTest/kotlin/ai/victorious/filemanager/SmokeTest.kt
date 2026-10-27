@@ -8,7 +8,6 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.onAllNodesWithTag
-import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
@@ -72,6 +71,8 @@ class SmokeTest {
     fun tearDown() {
         root.deleteRecursively()
         Smoke.app.wifiTransfer.stop()
+        // Never leak the grid preference into other tests.
+        Smoke.app.themeSettings.update { it.copy(gridView = false) }
     }
 
     private fun openBoth(left: File, right: File) {
@@ -307,10 +308,10 @@ class SmokeTest {
         openBoth(root, root)
         Smoke.waitText(rule, "sub")
         rule.onAllNodesWithContentDescription("Grid view")[0].performClick()
-        rule.onNodeWithTag("file-grid", useUnmergedTree = true).assertExists()
+        rule.waitUntil(10_000) { rule.onAllNodesWithTag("file-grid").fetchSemanticsNodes().isNotEmpty() }
         Smoke.waitText(rule, "sub")
         rule.onAllNodesWithContentDescription("List view")[0].performClick()
-        rule.onAllNodesWithTag("file-grid").assertCountEquals(0)
+        rule.waitUntil(10_000) { rule.onAllNodesWithTag("file-grid").fetchSemanticsNodes().isEmpty() }
         assertFalse(Smoke.app.themeSettings.state.value.gridView)
 
         // Breadcrumbs: enter sub, then tap the parent crumb to come back.
