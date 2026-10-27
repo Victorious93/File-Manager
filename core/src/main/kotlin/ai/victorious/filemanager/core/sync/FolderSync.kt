@@ -53,6 +53,13 @@ object FolderSync {
         conflict: ConflictPolicy,
         /** Relative paths previously seen on both sides; used to detect deletions. */
         previousBoth: Set<String> = emptySet(),
+        /**
+         * TWO_WAY only: paths that were on both sides last time and are unchanged on the side that
+         * still has them, so a copy missing on the other side was deleted there and the delete
+         * should be mirrored (instead of copying the file back). Callers without a per-file
+         * snapshot pass nothing and keep the safe copy-back behaviour.
+         */
+        twoWayDeletes: Set<String> = emptySet(),
     ): SyncPlan {
         val actions = mutableListOf<SyncAction>()
         val conflicts = mutableListOf<String>()
@@ -69,14 +76,20 @@ object FolderSync {
                     SyncDirection.ONE_WAY_B_TO_A -> {
                         if (rel in previousBoth) actions += SyncAction(SyncActionKind.DELETE_A, rel, "deleted on B")
                     }
-                    SyncDirection.ONE_WAY_A_TO_B, SyncDirection.TWO_WAY ->
+                    SyncDirection.TWO_WAY ->
+                        actions += if (rel in previousBoth && rel in twoWayDeletes) SyncAction(SyncActionKind.DELETE_A, rel, "deleted on B")
+                        else SyncAction(SyncActionKind.COPY_A_TO_B, rel)
+                    SyncDirection.ONE_WAY_A_TO_B ->
                         actions += SyncAction(SyncActionKind.COPY_A_TO_B, rel)
                 }
                 b != null && a == null -> when (direction) {
                     SyncDirection.ONE_WAY_A_TO_B -> {
                         if (rel in previousBoth) actions += SyncAction(SyncActionKind.DELETE_B, rel, "deleted on A")
                     }
-                    SyncDirection.ONE_WAY_B_TO_A, SyncDirection.TWO_WAY ->
+                    SyncDirection.TWO_WAY ->
+                        actions += if (rel in previousBoth && rel in twoWayDeletes) SyncAction(SyncActionKind.DELETE_B, rel, "deleted on A")
+                        else SyncAction(SyncActionKind.COPY_B_TO_A, rel)
+                    SyncDirection.ONE_WAY_B_TO_A ->
                         actions += SyncAction(SyncActionKind.COPY_B_TO_A, rel)
                 }
                 a != null && b != null -> {
@@ -137,6 +150,10 @@ object FolderSync {
         resolutions: Map<String, SyncActionKind> = emptyMap(), // for ASK conflicts
     ): SyncPlan {
         if (dryRun) return plan
+        // List each side at most once (not once per copied file: that was O(n²) and, on a remote,
+        // a full recursive network walk for every file).
+        val aTimes by lazy { a.listRecursive(aRoot).associate { it.relativePath to it.modifiedEpochMs } }
+        val bTimes by lazy { b.listRecursive(bRoot).associate { it.relativePath to it.modifiedEpochMs } }
         for (action in plan.actions) {
             val kind = if (action.kind == SyncActionKind.SKIP_CONFLICT)
                 resolutions[action.relativePath] ?: continue
@@ -145,12 +162,12 @@ object FolderSync {
                 SyncActionKind.COPY_A_TO_B -> {
                     val bytes = a.read(aRoot, action.relativePath)
                     ensureParent(b, bRoot, action.relativePath)
-                    b.write(bRoot, action.relativePath, bytes, a.listRecursive(aRoot).firstOrNull { it.relativePath == action.relativePath }?.modifiedEpochMs ?: System.currentTimeMillis())
+                    b.write(bRoot, action.relativePath, bytes, aTimes[action.relativePath] ?: System.currentTimeMillis())
                 }
                 SyncActionKind.COPY_B_TO_A -> {
                     val bytes = b.read(bRoot, action.relativePath)
                     ensureParent(a, aRoot, action.relativePath)
-                    a.write(aRoot, action.relativePath, bytes)
+                    a.write(aRoot, action.relativePath, bytes, bTimes[action.relativePath] ?: System.currentTimeMillis())
                 }
                 SyncActionKind.DELETE_A -> {
                     if (trashOnDelete != null) trashOnDelete('A', action.relativePath)

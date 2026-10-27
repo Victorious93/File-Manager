@@ -9,7 +9,9 @@ import ai.victorious.filemanager.core.sync.RemoteSyncFs
 import ai.victorious.filemanager.core.sync.SyncDirection
 import ai.victorious.filemanager.core.sync.SyncFs
 import ai.victorious.filemanager.core.sync.SyncJob
+import ai.victorious.filemanager.core.sync.SyncJobRules
 import ai.victorious.filemanager.core.sync.SyncJobRunner
+import kotlinx.coroutines.sync.withLock
 import ai.victorious.filemanager.sync.FolderSyncJobs
 import ai.victorious.filemanager.sync.FolderSyncWorker
 import ai.victorious.filemanager.sync.LocalSyncFs
@@ -113,8 +115,10 @@ internal fun FolderSyncScreen(defaultDir: String, onClose: () -> Unit, onEvent: 
                 Button(onClick = {
                     scope.launch {
                         val job = currentJob()
+                        SyncJobRules.problem(job)?.let { onEvent(UiEvent.ShowMessage(it)); return@launch }
                         val msg = withContext(Dispatchers.IO) {
-                            runCatching {
+                            if (FolderSyncJobs.runLock.isLocked) return@withContext "A sync is already running; try again when it finishes"
+                            FolderSyncJobs.runLock.withLock { runCatching {
                                 withSides(app, job) { afs, bfs ->
                                     val out = SyncJobRunner.run(job, afs, bfs, trashOnDelete = { side, rel ->
                                         val local = if (side == 'A') job.aRoot.takeIf { !job.aRemote } else job.bRoot.takeIf { !job.bRemote }
@@ -122,7 +126,7 @@ internal fun FolderSyncScreen(defaultDir: String, onClose: () -> Unit, onEvent: 
                                     })
                                     "Synced: ${out.summary}"
                                 }
-                            }.getOrElse { it.message ?: "sync failed" }
+                            }.getOrElse { it.message ?: "sync failed" } }
                         }
                         onEvent(UiEvent.ShowMessage(msg)); onEvent(UiEvent.Refresh)
                     }
@@ -134,14 +138,14 @@ internal fun FolderSyncScreen(defaultDir: String, onClose: () -> Unit, onEvent: 
             SwitchRow("Only while charging", charging) { charging = it }
             TextButton(onClick = {
                 val job = currentJob(UUID.randomUUID().toString())
-                when {
-                    job.aRoot.isBlank() || job.bRoot.isBlank() -> onEvent(UiEvent.ShowMessage("Both sides need a folder"))
-                    !job.involvesRemote && job.aRoot == job.bRoot -> onEvent(UiEvent.ShowMessage("Pick two different folders"))
-                    else -> {
+                val problem = SyncJobRules.problem(job)
+                if (problem != null) onEvent(UiEvent.ShowMessage(problem))
+                else scope.launch {
+                    jobs = withContext(Dispatchers.IO) {
                         FolderSyncWorker.schedule(context, job)
-                        jobs = FolderSyncJobs.all(context)
-                        onEvent(UiEvent.ShowMessage("Scheduled every ${job.intervalHours} h"))
+                        FolderSyncJobs.all(context)
                     }
+                    onEvent(UiEvent.ShowMessage("Scheduled every ${job.intervalHours} h"))
                 }
             }) { Text("Save + schedule") }
             if (jobs.isNotEmpty()) {
