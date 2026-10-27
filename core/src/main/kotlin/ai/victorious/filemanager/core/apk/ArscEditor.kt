@@ -3,7 +3,7 @@ package ai.victorious.filemanager.core.apk
 /**
  * String-value edits to a sealed resources.arsc. Only the global string pool is rewritten; the
  * resource tables are copied byte-for-byte, so this cannot add or remove resources — it can only
- * change the text of existing string values. Adding new string resources is deferred (see
+ * change the text of existing string values. Adding new string resources is handled by ArscStringAdder (see
  * docs/APK_DEEP_EDIT.md): it would need new entries in the type tables and the per-package key
  * pool, which shifts every downstream offset.
  */

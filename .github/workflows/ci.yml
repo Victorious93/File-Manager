@@ -229,7 +229,9 @@ jobs:
           SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
           SDKMANAGER="$(find "$SDK/cmdline-tools" -name sdkmanager -type f | sort | tail -n1)"
           yes | "$SDKMANAGER" --sdk_root="$SDK" --licenses >/dev/null || true
-          "$SDKMANAGER" --sdk_root="$SDK" "platform-tools" "build-tools;35.0.0" "platforms;android-35"
+          # NDK: ffmpeg-decoder enables cmake when android-libs is present; AGP
+          # auto-download of ndk;27 can flake on fresh runners during configure.
+          "$SDKMANAGER" --sdk_root="$SDK"             "platform-tools"             "build-tools;35.0.0"             "platforms;android-35"             "ndk;27.0.12077973"
 
       - name: Grant Gradle wrapper execute bit
         run: chmod +x gradlew
