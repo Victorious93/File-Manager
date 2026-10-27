@@ -35,12 +35,12 @@ sign, `apksig` verification must pass.
 - `ApkBuilder.rewrite`: stream an APK, replace named entries, keep `resources.arsc` /
   native libs STORED and aligned, drop old v1 signatures so the result can be re-signed.
 
-### Limit: adding new string resources
+### Adding new string resources (Phase 16)
 
-**Not supported.** New string resources need new entries in the type tables and the
-per-package key string pool, which shifts every downstream offset. Only the text of
-*existing* string values can change. Styled / complex string entries are listed but not
-edited (the complex flag is skipped). Documented here and in the APK mod UI.
+`ArscStringAdder` appends new `string/<name>` resources: global pool values, package key
+pool names, and entries in **every** string-type configuration. Compact (sparse / offset16)
+tables are still unsupported. Styled / complex entries remain list-only. See `docs/PHASE16.md`.
+`ArscEditor` continues to edit the text of *existing* string values only.
 
 ## One-tap "APK mod" flow
 

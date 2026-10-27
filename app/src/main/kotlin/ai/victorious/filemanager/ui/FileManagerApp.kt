@@ -646,7 +646,18 @@ private fun FilePane(
                 modifier = Modifier.padding(12.dp),
             )
         }
-        val visibleEntries = remember(pane.active.entries, listing) { listing.apply(pane.active.entries) }
+        // Sort/filter on a background dispatcher (debounced while typing a filter) so 10k+ entry
+        // folders never block the UI thread. Until the first result lands, show nothing for a new
+        // folder rather than the previous folder's files.
+        val entries = pane.active.entries
+        val folderPath = pane.active.path
+        var shown by remember { mutableStateOf(ShownListing(null, null, null, emptyList())) }
+        LaunchedEffect(entries, listing) {
+            val list = ai.victorious.filemanager.core.listing.ListingWork.compute(entries, listing, shown.options)
+            shown = ShownListing(folderPath, entries, listing, list)
+        }
+        val sorting = shown.entries !== entries || shown.options != listing
+        val visibleEntries = if (shown.path == folderPath) shown.list else emptyList()
         val open: (FileEntry) -> Unit = { entry ->
             onEvent(UiEvent.FocusPane(index))
             if (entry.isDirectory && pane.selected.isEmpty()) {
@@ -676,7 +687,7 @@ private fun FilePane(
             }
         }
         when {
-            visibleEntries.isEmpty() && pane.active.error == null && !busy -> EmptyState(
+            visibleEntries.isEmpty() && pane.active.error == null && !busy && !sorting -> EmptyState(
                 title = if (listing.filter.isNotEmpty()) "No matches" else "This folder is empty",
                 body = if (listing.filter.isNotEmpty()) "Nothing here matches \"${listing.filter}\"." else "Use New folder or file to add something, or paste here.",
                 icon = Icons.Outlined.FolderOff,
@@ -1346,4 +1357,12 @@ private val NavItems = listOf(
     NavItem(Dest.TOOLS, Icons.Outlined.Build, "Tools"),
     NavItem(Dest.TRASH, Icons.Outlined.RestoreFromTrash, "Trash"),
     NavItem(Dest.SETTINGS, Icons.Outlined.SettingsIcon, "Settings"),
+)
+
+/** The last finished sort/filter result for a pane. */
+private data class ShownListing(
+    val path: String?,
+    val entries: List<FileEntry>?,
+    val options: ai.victorious.filemanager.core.listing.ListingOptions?,
+    val list: List<FileEntry>,
 )

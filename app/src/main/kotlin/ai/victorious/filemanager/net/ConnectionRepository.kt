@@ -106,7 +106,7 @@ class ConnectionRepository(
             draft.protocol == RemoteProtocol.S3 -> draft.s3SecretKey
             draft.authKind == AuthKind.PASSWORD -> draft.password
             draft.authKind == AuthKind.PRIVATE_KEY ->
-                draft.privateKeyPem?.takeIf { it.isNotBlank() }?.let { SftpKeys.encodeSecret(it, draft.keyPassphrase) }
+                SftpKeys.secretForSave(secretFor(id), draft.privateKeyPem, draft.keyPassphrase)
             else -> null
         }
         if (!secret.isNullOrEmpty()) {

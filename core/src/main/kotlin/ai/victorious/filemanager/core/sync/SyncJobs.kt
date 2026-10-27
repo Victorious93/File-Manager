@@ -74,6 +74,10 @@ object SyncJobStore {
         )
     }
 
+    fun encodeOne(job: SyncJob): String = json.encodeToString(SyncJob.serializer(), job)
+
+    fun decodeOne(text: String): SyncJob? = runCatching { json.decodeFromString(SyncJob.serializer(), text) }.getOrNull()
+
     fun encode(jobs: Map<String, SyncJob>): String = buildJsonObject {
         jobs.forEach { (k, v) -> put(k, json.encodeToJsonElement(SyncJob.serializer(), v)) }
     }.toString()
