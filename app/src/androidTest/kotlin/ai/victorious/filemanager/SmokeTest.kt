@@ -4,7 +4,6 @@ import ai.victorious.filemanager.ui.UiEvent
 import ai.victorious.filemanager.ui.ViewerMode
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasAnyAncestor
-import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -321,7 +320,7 @@ class SmokeTest {
         // Breadcrumbs: enter sub, then tap the parent crumb to come back.
         rule.onAllNodesWithText("sub")[0].performClick()
         Smoke.waitFor(rule, "entered sub") { Smoke.vm(rule).ui.value.left.active.path == File(root, "sub").absolutePath }
-        rule.onAllNodes(hasText(root.name) and hasClickAction() and hasAnyAncestor(hasTestTag("breadcrumbs")))[0].performClick()
+        rule.onAllNodes(hasText(root.name) and hasAnyAncestor(hasTestTag("breadcrumbs")), useUnmergedTree = true)[0].performClick()
         Smoke.waitFor(rule, "crumb back to root") { Smoke.vm(rule).ui.value.left.active.path == root.absolutePath }
     }
 
