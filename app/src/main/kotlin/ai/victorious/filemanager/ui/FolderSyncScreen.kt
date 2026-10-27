@@ -11,7 +11,11 @@ import ai.victorious.filemanager.core.sync.SyncFs
 import ai.victorious.filemanager.core.sync.SyncJob
 import ai.victorious.filemanager.core.sync.SyncJobRules
 import ai.victorious.filemanager.core.sync.SyncJobRunner
-import kotlinx.coroutines.sync.withLock
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
 import ai.victorious.filemanager.sync.FolderSyncJobs
 import ai.victorious.filemanager.sync.FolderSyncWorker
 import ai.victorious.filemanager.sync.LocalSyncFs
@@ -60,7 +64,7 @@ internal fun FolderSyncScreen(defaultDir: String, onClose: () -> Unit, onEvent: 
     val context = LocalContext.current
     val app = context.applicationContext as FileManagerApplication
     val scope = rememberCoroutineScope()
-    val connections = remember { runCatching { app.connections.list() }.getOrDefault(emptyList()) }
+    var connections by remember { mutableStateOf(emptyList<SavedConnection>()) }
     var aConn by remember { mutableStateOf<String?>(null) }
     var bConn by remember { mutableStateOf<String?>(null) }
     var aRoot by remember { mutableStateOf(defaultDir) }
@@ -71,7 +75,30 @@ internal fun FolderSyncScreen(defaultDir: String, onClose: () -> Unit, onEvent: 
     var scheduleHours by remember { mutableStateOf("24") }
     var wifiOnly by remember { mutableStateOf(true) }
     var charging by remember { mutableStateOf(false) }
-    var jobs by remember { mutableStateOf(FolderSyncJobs.all(context)) }
+    // Disk reads stay off the main thread; the list refreshes whenever a sync run finishes.
+    var jobs by remember { mutableStateOf<Map<String, SyncJob>>(emptyMap()) }
+    val manualRuns by remember { WorkManager.getInstance(context).getWorkInfosForUniqueWorkFlow(FolderSyncWorker.MANUAL_WORK) }
+        .collectAsState(initial = emptyList())
+    val manualRun = manualRuns.firstOrNull()
+    val manualRunning = manualRun != null && !manualRun.state.isFinished
+    var announced by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) {
+        connections = withContext(Dispatchers.IO) { runCatching { app.connections.list() }.getOrDefault(emptyList()) }
+    }
+    LaunchedEffect(manualRun?.state) {
+        jobs = FolderSyncJobs.load(context)
+        val run = manualRun ?: return@LaunchedEffect
+        if (run.state.isFinished && announced != run.id.toString()) {
+            announced = run.id.toString()
+            val summary = run.outputData.getString(FolderSyncWorker.KEY_SUMMARY)
+            onEvent(UiEvent.ShowMessage(when (run.state) {
+                WorkInfo.State.SUCCEEDED -> "Synced: ${summary.orEmpty()}"
+                WorkInfo.State.CANCELLED -> "Sync cancelled"
+                else -> summary ?: "Sync failed"
+            }))
+            onEvent(UiEvent.Refresh)
+        }
+    }
 
     fun currentJob(id: String = "adhoc") = SyncJob(
         id = id, aConnectionId = aConn, aRoot = aRoot.trim(), bConnectionId = bConn, bRoot = bRoot.trim(),
@@ -112,25 +139,16 @@ internal fun FolderSyncScreen(defaultDir: String, onClose: () -> Unit, onEvent: 
                         preview = lines
                     }
                 }) { Text("Dry-run preview") }
-                Button(onClick = {
-                    scope.launch {
-                        val job = currentJob()
-                        SyncJobRules.problem(job)?.let { onEvent(UiEvent.ShowMessage(it)); return@launch }
-                        val msg = withContext(Dispatchers.IO) {
-                            if (FolderSyncJobs.runLock.isLocked) return@withContext "A sync is already running; try again when it finishes"
-                            FolderSyncJobs.runLock.withLock { runCatching {
-                                withSides(app, job) { afs, bfs ->
-                                    val out = SyncJobRunner.run(job, afs, bfs, trashOnDelete = { side, rel ->
-                                        val local = if (side == 'A') job.aRoot.takeIf { !job.aRemote } else job.bRoot.takeIf { !job.bRemote }
-                                        local != null && runCatching { app.trash.moveToTrash(File(local, rel).absolutePath) }.isSuccess
-                                    })
-                                    "Synced: ${out.summary}"
-                                }
-                            }.getOrElse { it.message ?: "sync failed" } }
-                        }
-                        onEvent(UiEvent.ShowMessage(msg)); onEvent(UiEvent.Refresh)
+                Button(enabled = !manualRunning, onClick = {
+                    val job = currentJob()
+                    val problem = SyncJobRules.problem(job)
+                    if (problem != null) onEvent(UiEvent.ShowMessage(problem))
+                    else {
+                        // Runs in WorkManager, so leaving this screen (or the app) does not cut it off mid-file.
+                        FolderSyncWorker.runNow(context, job)
+                        onEvent(UiEvent.ShowMessage("Sync started; it keeps running if you leave this screen"))
                     }
-                }) { Text("Run sync") }
+                }) { Text(if (manualRunning) "Syncing…" else "Run sync") }
             }
             Text("Schedule", style = MaterialTheme.typography.labelLarge)
             OutlinedTextField(scheduleHours, { scheduleHours = it.filter(Char::isDigit) }, label = { Text("Every N hours") }, singleLine = true)
@@ -162,7 +180,11 @@ internal fun FolderSyncScreen(defaultDir: String, onClose: () -> Unit, onEvent: 
                             val last = j.lastRunEpochMs?.let { "last ${DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(it))}: ${j.lastResult}" } ?: "not run yet"
                             Text("$constraints — $last", style = MaterialTheme.typography.labelSmall)
                         }
-                        TextButton(onClick = { FolderSyncWorker.cancel(context, j.id); jobs = FolderSyncJobs.all(context) }) { Text("Remove") }
+                        TextButton(onClick = {
+                            scope.launch {
+                                jobs = withContext(Dispatchers.IO) { FolderSyncWorker.cancel(context, j.id); FolderSyncJobs.all(context) }
+                            }
+                        }) { Text("Remove") }
                     }
                 }
             }

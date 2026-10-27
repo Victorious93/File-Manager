@@ -23,7 +23,29 @@ interface SyncFs {
     fun delete(root: String, relative: String)
     fun mkdir(root: String, relative: String)
     fun exists(root: String, relative: String): Boolean
+
+    /** Streams a file. Implementations should override so large files never sit in memory. */
+    fun openRead(root: String, relative: String): java.io.InputStream = read(root, relative).inputStream()
+
+    /**
+     * Writes [input] to [relative]. Implementations should stream to a temporary sibling and
+     * rename it into place, so a failure or cancellation never leaves a half-written file.
+     */
+    fun writeFrom(root: String, relative: String, input: java.io.InputStream, modifiedEpochMs: Long = System.currentTimeMillis()) =
+        write(root, relative, input.readBytes(), modifiedEpochMs)
 }
+
+/** Name prefix of in-progress sync uploads; such files are never listed or synced. */
+const val SYNC_PART_PREFIX = ".fmpart-"
+
+internal fun partNameFor(relative: String): String {
+    val dir = relative.substringBeforeLast('/', "")
+    val name = relative.substringAfterLast('/')
+    val part = "$SYNC_PART_PREFIX${java.util.UUID.randomUUID().toString().take(8)}-$name"
+    return if (dir.isEmpty()) part else "$dir/$part"
+}
+
+fun isSyncPart(relative: String): Boolean = relative.substringAfterLast('/').startsWith(SYNC_PART_PREFIX)
 
 enum class SyncActionKind { COPY_A_TO_B, COPY_B_TO_A, DELETE_A, DELETE_B, KEEP_BOTH_A, KEEP_BOTH_B, SKIP_CONFLICT }
 
@@ -160,14 +182,16 @@ object FolderSync {
             else action.kind
             when (kind) {
                 SyncActionKind.COPY_A_TO_B -> {
-                    val bytes = a.read(aRoot, action.relativePath)
                     ensureParent(b, bRoot, action.relativePath)
-                    b.write(bRoot, action.relativePath, bytes, aTimes[action.relativePath] ?: System.currentTimeMillis())
+                    a.openRead(aRoot, action.relativePath).use { input ->
+                        b.writeFrom(bRoot, action.relativePath, input, aTimes[action.relativePath] ?: System.currentTimeMillis())
+                    }
                 }
                 SyncActionKind.COPY_B_TO_A -> {
-                    val bytes = b.read(bRoot, action.relativePath)
                     ensureParent(a, aRoot, action.relativePath)
-                    a.write(aRoot, action.relativePath, bytes, bTimes[action.relativePath] ?: System.currentTimeMillis())
+                    b.openRead(bRoot, action.relativePath).use { input ->
+                        a.writeFrom(aRoot, action.relativePath, input, bTimes[action.relativePath] ?: System.currentTimeMillis())
+                    }
                 }
                 SyncActionKind.DELETE_A -> {
                     if (trashOnDelete != null) trashOnDelete('A', action.relativePath)
@@ -178,16 +202,14 @@ object FolderSync {
                     else b.delete(bRoot, action.relativePath)
                 }
                 SyncActionKind.KEEP_BOTH_A -> {
-                    val bytes = a.read(aRoot, action.relativePath)
                     val name = conflictCopyName(action.relativePath, "A")
                     ensureParent(b, bRoot, name)
-                    b.write(bRoot, name, bytes)
+                    a.openRead(aRoot, action.relativePath).use { b.writeFrom(bRoot, name, it) }
                 }
                 SyncActionKind.KEEP_BOTH_B -> {
-                    val bytes = b.read(bRoot, action.relativePath)
                     val name = conflictCopyName(action.relativePath, "B")
                     ensureParent(a, aRoot, name)
-                    a.write(aRoot, name, bytes)
+                    b.openRead(bRoot, action.relativePath).use { a.writeFrom(aRoot, name, it) }
                 }
                 SyncActionKind.SKIP_CONFLICT -> Unit
             }
@@ -236,6 +258,7 @@ class RemoteSyncFs(private val remote: ai.victorious.filemanager.core.net.Remote
         fun walk(path: String, relBase: String) {
             for (e in remote.list(path)) {
                 val name = e.name
+                if (name.startsWith(SYNC_PART_PREFIX)) continue
                 val rel = if (relBase.isEmpty()) name else "$relBase/$name"
                 val childPath = path.trimEnd('/') + "/" + name
                 if (e.isDirectory) {
@@ -253,8 +276,23 @@ class RemoteSyncFs(private val remote: ai.victorious.filemanager.core.net.Remote
     override fun read(root: String, relative: String): ByteArray =
         remote.openInput(join(root, relative)).use { it.readBytes() }
 
-    override fun write(root: String, relative: String, bytes: ByteArray, modifiedEpochMs: Long) {
-        remote.openOutput(join(root, relative)).use { it.write(bytes) }
+    override fun write(root: String, relative: String, bytes: ByteArray, modifiedEpochMs: Long) =
+        writeFrom(root, relative, bytes.inputStream(), modifiedEpochMs)
+
+    override fun openRead(root: String, relative: String): java.io.InputStream = remote.openInput(join(root, relative))
+
+    /** Uploads to a hidden temp name, then renames over the target; the temp is removed on any failure. */
+    override fun writeFrom(root: String, relative: String, input: java.io.InputStream, modifiedEpochMs: Long) {
+        val target = join(root, relative)
+        val part = join(root, partNameFor(relative))
+        try {
+            remote.openOutput(part).use { out -> input.copyTo(out, 256 * 1024) }
+            if (remote.exists(target)) remote.delete(target)
+            remote.rename(part, target)
+        } catch (t: Throwable) {
+            runCatching { if (remote.exists(part)) remote.delete(part) }
+            throw t
+        }
     }
 
     override fun delete(root: String, relative: String) = remote.delete(join(root, relative))
