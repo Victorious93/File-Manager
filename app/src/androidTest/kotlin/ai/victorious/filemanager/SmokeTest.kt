@@ -3,7 +3,12 @@ package ai.victorious.filemanager
 import ai.victorious.filemanager.ui.UiEvent
 import ai.victorious.filemanager.ui.ViewerMode
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
@@ -100,7 +105,7 @@ class SmokeTest {
     fun launchesFragmentActivityWithStorageAccess() {
         assertTrue("MainActivity must be a FragmentActivity (BiometricPrompt)", rule.activity is FragmentActivity)
         rule.onNodeWithText("Victorious").assertExists()
-        for (label in listOf("Files", "Search", "Apps", "Tools", "Trash", "Settings")) rule.onNode(Smoke.clickable(label)).assertExists()
+        for (label in listOf("Home", "Files", "Search", "Apps", "Tools", "Trash", "Settings")) rule.onNode(Smoke.clickable(label)).assertExists()
         Smoke.waitFor(rule, "storage access") { Smoke.vm(rule).ui.value.hasStorageAccess }
         rule.onAllNodesWithText("Storage access needed").assertCountEquals(0)
     }
@@ -287,6 +292,32 @@ class SmokeTest {
         is com.termux.view.TerminalView -> v
         is android.view.ViewGroup -> (0 until v.childCount).firstNotNullOfOrNull { findView(v.getChildAt(it)) }
         else -> null
+    }
+
+    @Test
+    fun homeDashboardAndGridView() {
+        nav("Home")
+        Smoke.waitText(rule, "Storage")
+        rule.onNodeWithText("Quick tools").assertExists()
+        Smoke.waitText(rule, "Internal storage", timeoutMs = 20_000)
+        // Tapping the storage card opens it in Files.
+        rule.onAllNodesWithText("Internal storage")[0].performClick()
+        Smoke.waitFor(rule, "back on Files") { Smoke.vm(rule).ui.value.destination == ai.victorious.filemanager.ui.Dest.FILES }
+
+        openBoth(root, root)
+        Smoke.waitText(rule, "sub")
+        rule.onAllNodesWithContentDescription("Grid view")[0].performClick()
+        rule.onNodeWithTag("file-grid", useUnmergedTree = true).assertExists()
+        Smoke.waitText(rule, "sub")
+        rule.onAllNodesWithContentDescription("List view")[0].performClick()
+        rule.onAllNodesWithTag("file-grid").assertCountEquals(0)
+        assertFalse(Smoke.app.themeSettings.state.value.gridView)
+
+        // Breadcrumbs: enter sub, then tap the parent crumb to come back.
+        rule.onAllNodesWithText("sub")[0].performClick()
+        Smoke.waitFor(rule, "entered sub") { Smoke.vm(rule).ui.value.left.active.path == File(root, "sub").absolutePath }
+        rule.onAllNodes(hasText(root.name) and hasClickAction() and hasAnyAncestor(hasTestTag("breadcrumbs")))[0].performClick()
+        Smoke.waitFor(rule, "crumb back to root") { Smoke.vm(rule).ui.value.left.active.path == root.absolutePath }
     }
 
     @Test
