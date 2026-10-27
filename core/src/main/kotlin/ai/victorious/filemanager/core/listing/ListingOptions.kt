@@ -16,7 +16,7 @@ data class ListingOptions(
 ) {
     fun apply(entries: List<FileEntry>): List<FileEntry> {
         val needle = filter.trim()
-        val visible = entries.filter { e ->
+        val visible = entries.distinctBy { it.path }.filter { e ->
             (showHidden || !e.isHidden) && (needle.isEmpty() || e.name.contains(needle, ignoreCase = true))
         }
         val base: Comparator<FileEntry> = when (sortKey) {

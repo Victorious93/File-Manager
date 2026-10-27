@@ -5,7 +5,9 @@ import ai.victorious.filemanager.core.net.RemoteBackend
 import ai.victorious.filemanager.core.sync.RemoteSyncFs
 import ai.victorious.filemanager.core.sync.SyncFs
 import ai.victorious.filemanager.core.sync.SyncJob
+import ai.victorious.filemanager.core.sync.SyncJobRules
 import ai.victorious.filemanager.core.sync.SyncJobRunner
+import ai.victorious.filemanager.core.sync.SyncSafetyStop
 import ai.victorious.filemanager.core.sync.SyncJobStore
 import ai.victorious.filemanager.core.sync.SyncRunConstraints
 import android.content.Context
@@ -21,6 +23,9 @@ import androidx.work.workDataOf
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /** Saved sync jobs in `filesDir/folder_sync_jobs.json` (see [SyncJobStore]). */
 object FolderSyncJobs {
@@ -31,18 +36,25 @@ object FolderSyncJobs {
         SyncJobStore.decode(runCatching { file(context).readText() }.getOrDefault(""))
     }
 
-    fun put(context: Context, job: SyncJob) = synchronized(lock) {
+    /** One sync at a time per process, so "Run sync" and a scheduled run never write the same files at once. */
+    val runLock = Mutex()
+
+    fun put(context: Context, job: SyncJob) = update(context) { it + (job.id to job) }
+
+    fun remove(context: Context, id: String) = update(context) { it - id }
+
+    /** Saves a finished run only if the job still exists, keeping any edits made meanwhile. */
+    fun recordRun(context: Context, ran: SyncJob) = update(context) { jobs ->
+        val merged = SyncJobStore.recordRun(jobs[ran.id], ran)
+        if (merged == null) jobs else jobs + (ran.id to merged)
+    }
+
+    private fun update(context: Context, change: (Map<String, SyncJob>) -> Map<String, SyncJob>) = synchronized(lock) {
         val f = file(context)
-        val jobs = SyncJobStore.decode(runCatching { f.readText() }.getOrDefault("")) + (job.id to job)
+        val jobs = change(SyncJobStore.decode(runCatching { f.readText() }.getOrDefault("")))
         val tmp = File(f.path + ".tmp")
         tmp.writeText(SyncJobStore.encode(jobs))
         if (!tmp.renameTo(f)) { f.writeText(tmp.readText()); tmp.delete() }
-    }
-
-    fun remove(context: Context, id: String) = synchronized(lock) {
-        val f = file(context)
-        val jobs = SyncJobStore.decode(runCatching { f.readText() }.getOrDefault("")) - id
-        f.writeText(SyncJobStore.encode(jobs))
     }
 }
 
@@ -56,6 +68,14 @@ class FolderSyncWorker(appContext: Context, params: WorkerParameters) : Coroutin
     override suspend fun doWork(): Result {
         val jobId = inputData.getString(KEY_JOB) ?: return Result.failure()
         val job = FolderSyncJobs.all(applicationContext)[jobId] ?: return Result.failure()
+        SyncJobRules.problem(job)?.let { reason ->
+            FolderSyncJobs.recordRun(applicationContext, job.copy(lastRunEpochMs = System.currentTimeMillis(), lastResult = "Not run: $reason"))
+            return Result.failure()
+        }
+        return FolderSyncJobs.runLock.withLock { runJob(job) }
+    }
+
+    private fun runJob(job: SyncJob): Result {
         val app = applicationContext as FileManagerApplication
         val opened = mutableListOf<RemoteBackend>()
         fun side(connectionId: String?): SyncFs =
@@ -72,12 +92,14 @@ class FolderSyncWorker(appContext: Context, params: WorkerParameters) : Coroutin
                 } ?: return@run false
                 runCatching { app.trash.moveToTrash(File(localRoot, rel).absolutePath) }.isSuccess
             })
-            FolderSyncJobs.put(applicationContext, outcome.job)
+            FolderSyncJobs.recordRun(applicationContext, outcome.job)
             Result.success(workDataOf(KEY_SUMMARY to outcome.summary))
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            val transient = e is IOException || e.cause is IOException ||
-                e.javaClass.name.startsWith("com.jcraft.jsch") || e.javaClass.name.contains("Timeout")
-            FolderSyncJobs.put(applicationContext, job.copy(lastRunEpochMs = System.currentTimeMillis(),
+            val transient = e !is SyncSafetyStop && (e is IOException || e.cause is IOException ||
+                e.javaClass.name.startsWith("com.jcraft.jsch") || e.javaClass.name.contains("Timeout"))
+            FolderSyncJobs.recordRun(applicationContext, job.copy(lastRunEpochMs = System.currentTimeMillis(),
                 lastResult = "Failed: ${e.message ?: e.javaClass.simpleName}"))
             if (transient && runAttemptCount < MAX_RETRIES) Result.retry() else Result.failure()
         } finally {

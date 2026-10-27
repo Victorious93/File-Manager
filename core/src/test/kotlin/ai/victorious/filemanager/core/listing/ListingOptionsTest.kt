@@ -44,4 +44,21 @@ class ListingOptionsTest {
         assertEquals(true, ListingOptions.naturalCompare("a02", "a10") < 0)
         assertEquals(true, ListingOptions.naturalCompare("a2", "a02") != 0)
     }
+
+    @Test fun duplicatePaths_areCollapsed_soLazyListKeysStayUnique() {
+        // LazyColumn/LazyVerticalGrid use the path as key and crash on duplicates
+        // (some remote/archive listings report the same entry twice).
+        val out = ListingOptions().apply(listOf(f("a.txt"), f("b.txt"), f("a.txt")))
+        org.junit.Assert.assertEquals(listOf("a.txt", "b.txt"), out.map { it.name })
+    }
+
+    @Test fun tenThousandEntries_sortQuickly() {
+        val many = (0 until 10_000).map { f("file$it.txt") }.shuffled(java.util.Random(1))
+        val t0 = System.nanoTime()
+        val out = ListingOptions().apply(many)
+        val ms = (System.nanoTime() - t0) / 1_000_000
+        org.junit.Assert.assertEquals("file0.txt", out.first().name)
+        org.junit.Assert.assertEquals("file9999.txt", out.last().name)
+        org.junit.Assert.assertTrue("sorting 10k took $ms ms", ms < 2_000)
+    }
 }

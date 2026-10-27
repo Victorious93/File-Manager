@@ -57,9 +57,47 @@ object SyncJobStore {
         }.toMap()
     }
 
+    /**
+     * Saves a finished run onto the job as it is *now* in the store. Returns null when the job was
+     * removed while running (do not resurrect it). Settings edited during the run are kept; the
+     * sync history is dropped if the folders changed, because it describes the old folders.
+     */
+    fun recordRun(current: SyncJob?, ran: SyncJob): SyncJob? {
+        current ?: return null
+        val sameFolders = current.aConnectionId == ran.aConnectionId && current.aRoot == ran.aRoot &&
+            current.bConnectionId == ran.bConnectionId && current.bRoot == ran.bRoot
+        return current.copy(
+            previousBoth = if (sameFolders) ran.previousBoth else emptySet(),
+            snapshot = if (sameFolders) ran.snapshot else emptyMap(),
+            lastRunEpochMs = ran.lastRunEpochMs,
+            lastResult = ran.lastResult,
+        )
+    }
+
     fun encode(jobs: Map<String, SyncJob>): String = buildJsonObject {
         jobs.forEach { (k, v) -> put(k, json.encodeToJsonElement(SyncJob.serializer(), v)) }
     }.toString()
+}
+
+/** The run refused to do something destructive; retrying will not help until the user acts. */
+class SyncSafetyStop(message: String) : java.io.IOException(message)
+
+/** Validation shared by the job editor and the worker. */
+object SyncJobRules {
+    /** A human-readable reason the job cannot run, or null when it is fine. */
+    fun problem(job: SyncJob): String? {
+        if (job.aRoot.isBlank() || job.bRoot.isBlank()) return "Pick both folders."
+        val sameStore = job.aConnectionId.orEmpty() == job.bConnectionId.orEmpty()
+        if (!sameStore) return null
+        val a = norm(job.aRoot); val b = norm(job.bRoot)
+        if (a == b) return "Both sides are the same folder."
+        if (b.startsWith("$a/") || a.startsWith("$b/") || a == "/" || b == "/") {
+            return "One folder is inside the other; syncing would copy the folder into itself on every run."
+        }
+        return null
+    }
+
+    private fun norm(p: String): String = p.trim().replace(Regex("/+"), "/").trimEnd('/').ifEmpty { "/" }
 }
 
 /** Platform-neutral description of when a job may run; the app maps it to WorkManager Constraints. */
@@ -111,7 +149,27 @@ object SyncJobRunner {
                 bf.size == st.bSize && bf.modifiedEpochMs == st.bModified && af.size == bf.size
             ) bf.copy(modifiedEpochMs = af.modifiedEpochMs) else bf
         }
-        val plan = FolderSync.plan(aMap, bMap, job.direction, job.conflict, job.previousBoth)
+        // A path that was on both sides last run, is now missing on one side and is unchanged on
+        // the other was deleted on purpose: mirror the delete instead of copying it back.
+        val twoWayDeletes = job.previousBoth.filterTo(HashSet()) { rel ->
+            val st = job.snapshot[rel] ?: return@filterTo false
+            val af = aMap[rel]; val bf = bMap[rel]
+            when {
+                af != null && bf == null -> af.size == st.aSize && af.modifiedEpochMs == st.aModified
+                af == null && bf != null -> bf.size == st.bSize && bf.modifiedEpochMs == st.bModified
+                else -> false
+            }
+        }
+        val plan = FolderSync.plan(aMap, bMap, job.direction, job.conflict, job.previousBoth, twoWayDeletes)
+        // Safety net: a side that suddenly lists no files at all (unmounted SD card, wrong or
+        // emptied remote folder, server glitch) must never be mirrored as "delete everything".
+        // Deleting the single synced file is an ordinary edit, so the net needs at least two.
+        if (plan.deleteCount > 1 && job.previousBoth.size > 1 && (aMap.isEmpty() || bMap.isEmpty())) {
+            throw SyncSafetyStop(
+                "Sync stopped: one side is empty but was not last time, so nothing was deleted. " +
+                    "Check the folder is available, or recreate the job to start fresh.",
+            )
+        }
         FolderSync.apply(
             plan, a, job.aRoot, b, job.bRoot,
             trashOnDelete = { side, rel ->
