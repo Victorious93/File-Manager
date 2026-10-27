@@ -167,3 +167,35 @@ dependencies {
     androidTestImplementation(libs.androidx.test.espresso.core)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
+
+/**
+ * Ships docs/MANUAL.md inside the APK as assets/help/MANUAL.md for the in-app Help screen,
+ * so the manual is never copied by hand and can't drift from the repo copy.
+ */
+abstract class BundleManualTask : DefaultTask() {
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val manual: RegularFileProperty
+
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+
+    @TaskAction
+    fun bundle() {
+        val out = outputDir.get().asFile
+        out.deleteRecursively()
+        val dest = out.resolve("help/MANUAL.md")
+        dest.parentFile.mkdirs()
+        manual.get().asFile.copyTo(dest, overwrite = true)
+    }
+}
+
+val bundleManual = tasks.register<BundleManualTask>("bundleManual") {
+    manual.set(rootProject.layout.projectDirectory.file("docs/MANUAL.md"))
+}
+
+androidComponents {
+    onVariants { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(bundleManual, BundleManualTask::outputDir)
+    }
+}

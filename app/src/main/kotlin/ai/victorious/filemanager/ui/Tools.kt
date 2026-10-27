@@ -29,6 +29,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material.icons.outlined.Compare
 import androidx.compose.material.icons.outlined.ContentCopy
@@ -96,6 +97,8 @@ sealed interface ToolRequest {
     data class FolderSync(val dir: String) : ToolRequest
     data class PhotoTools(val paths: List<String>, val dir: String) : ToolRequest
     data class PatchPresets(val path: String, val dir: String) : ToolRequest
+    /** In-app manual (docs/MANUAL.md) with search. */
+    data object Help : ToolRequest
 }
 
 @Composable
@@ -115,6 +118,11 @@ fun ToolsPane(state: UiState, onEvent: (UiEvent) -> Unit) {
                 modifier = Modifier.padding(16.dp),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+        item {
+            ToolItem(Icons.AutoMirrored.Outlined.HelpOutline, "Help & manual", "The full user manual, searchable, works offline") {
+                onEvent(UiEvent.OpenTool(ToolRequest.Help))
+            }
         }
         item {
             ToolItem(Icons.Outlined.Terminal, "Terminal", "sh / su / Shizuku shell with extra keys") {
@@ -277,6 +285,7 @@ fun ToolHost(request: ToolRequest, onClose: () -> Unit, onEvent: (UiEvent) -> Un
         is ToolRequest.FolderSync -> FolderSyncScreen(request.dir, onClose, onEvent)
         is ToolRequest.PhotoTools -> PhotoToolsScreen(request.paths, request.dir, onClose, onEvent)
         is ToolRequest.PatchPresets -> PatchPresetsScreen(request.path, request.dir, onClose, onEvent)
+        ToolRequest.Help -> HelpScreen(onClose)
     }
 }
 

@@ -15,6 +15,7 @@ import ai.victorious.filemanager.core.net.RemoteProtocol
 import ai.victorious.filemanager.core.net.SavedConnection
 import android.content.Context
 import android.content.SharedPreferences
+import ai.victorious.filemanager.core.net.SftpKeys
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import kotlinx.serialization.builtins.ListSerializer
@@ -104,7 +105,8 @@ class ConnectionRepository(
         val secret = when {
             draft.protocol == RemoteProtocol.S3 -> draft.s3SecretKey
             draft.authKind == AuthKind.PASSWORD -> draft.password
-            draft.authKind == AuthKind.PRIVATE_KEY -> draft.privateKeyPem
+            draft.authKind == AuthKind.PRIVATE_KEY ->
+                draft.privateKeyPem?.takeIf { it.isNotBlank() }?.let { SftpKeys.encodeSecret(it, draft.keyPassphrase) }
             else -> null
         }
         if (!secret.isNullOrEmpty()) {
@@ -131,6 +133,16 @@ class ConnectionRepository(
         val backend = effectiveFactory.open(conn, secretFor(id))
         openBackends[id] = backend
         return backend
+    }
+
+    /**
+     * A new, uncached session for background work (scheduled sync) so it never closes or shares
+     * the session a visible pane is using. The caller must close it.
+     */
+    fun openDetached(id: String): RemoteBackend {
+        val conn = list().firstOrNull { it.id == id }
+            ?: throw IllegalArgumentException("Unknown connection $id")
+        return effectiveFactory.open(conn, secretFor(id))
     }
 
     fun backendOrNull(id: String): RemoteBackend? = runCatching { backend(id) }.getOrNull()
