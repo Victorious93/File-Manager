@@ -161,6 +161,34 @@ class AxmlAndModTest {
         }
     }
 
+    @Test fun newLanguageIsAddedSignedAndReadByAapt2() {
+        val apk = fixture()
+        val arsc = Arsc.loadFromTarget(apk)
+        val defaults = arsc.strings.filter { it.locale == "default" }
+        assertTrue("fixture has default strings", defaults.isNotEmpty())
+        val target = defaults.first()
+        val out = File(tmp.root, "eo.apk")
+        val r = ApkMod.applyTo(apk, ModPlan(newLocales = mapOf("eo" to mapOf(target.resId to "Saluton Esperanto"))), out, key())
+        assertTrue(r.verify!!.verified)
+        assertEquals(listOf("resources.arsc"), r.changedEntries)
+        val again = Arsc.loadFromTarget(out)
+        assertTrue(again.locales().toString(), "eo" in again.locales())
+        assertEquals("Saluton Esperanto", again.strings.single { it.locale == "eo" }.value)
+        // Existing default strings are untouched.
+        assertEquals(defaults.map { it.value }, again.strings.filter { it.locale == "default" }.map { it.value })
+
+        val proc = ProcessBuilder(aapt2().absolutePath, "dump", "resources", out.absolutePath)
+            .redirectErrorStream(true).start()
+        val text = proc.inputStream.bufferedReader().readText()
+        assertEquals(text, 0, proc.waitFor())
+        assertTrue(text, text.contains("(eo)") && text.contains("Saluton Esperanto"))
+
+        // Adding the same language twice is refused.
+        assertTrue(runCatching {
+            ArscLocaleAdder.addLocale(again.bytes(), "eo", mapOf(target.resId to "x"))
+        }.isFailure)
+    }
+
     @Test fun smaliEditRebuildsAndSigns() {
         val apk = fixture()
         val smali = """

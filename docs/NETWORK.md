@@ -47,3 +47,11 @@ Unchanged: `EXTERNAL_NODE`, no DependencyGuard / companion packages / fleet `BIN
 - Credential redaction
 - `CompositeFileIo` list + download via in-memory remote
 - Wi-Fi router PIN auth + download/upload
+- SFTP private-key login (`SftpKeyLoginTest`, in-process Apache SSHD): ed25519 with/without passphrase,
+  OpenSSH RSA with passphrase, PEM RSA plain/encrypted, PEM ECDSA, wrong/missing passphrase, unauthorised key
+
+## SFTP private keys
+`core/.../net/SftpKeys.kt` detects the key format, checks it (type, fingerprint, passphrase) before
+save, and stores key + passphrase together as one secret in the existing encrypted credential store
+(EncryptedSharedPreferences, master key in the Android Keystore). Older entries that hold only a bare
+key still work. ed25519 uses Bouncy Castle through JSch's `bc` provider so it works on every API level.

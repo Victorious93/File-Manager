@@ -194,6 +194,42 @@ class Phase6Test {
         assertEquals(1, again.search("hola", "default").size)
     }
 
+    @Test fun addNewLocaleKeepsDefaultsAndFallsBack() {
+        val bytes = buildArsc("com.example.app", listOf("app_name" to "Hello", "ok" to "OK", "bye" to "Bye"))
+        val added = ArscLocaleAdder.addLocale(bytes, "pt_br", mapOf(0x7f010000 to "Olá", 0x7f010002 to "Tchau"))
+        val a = Arsc.open(added)
+        assertEquals(listOf("default", "pt-rBR"), a.locales())
+        val pt = a.strings.filter { it.locale == "pt-rBR" }.associate { it.name to it.value }
+        assertEquals(mapOf("app_name" to "Olá", "bye" to "Tchau"), pt) // "ok" falls back to default
+        assertEquals(listOf("Hello", "OK", "Bye"), a.strings.filter { it.locale == "default" }.map { it.value })
+        // Edits on the new table still work afterwards.
+        val edited = Arsc.open(a.withEdits(mapOf(a.strings.first { it.locale == "pt-rBR" && it.name == "bye" }.poolIndex to "Adeus")))
+        assertEquals("Adeus", edited.strings.first { it.locale == "pt-rBR" && it.name == "bye" }.value)
+        // Second language on top of the first.
+        val two = Arsc.open(ArscLocaleAdder.addLocale(added, "eo", mapOf(0x7f010001 to "Bone")))
+        assertEquals(listOf("default", "eo", "pt-rBR"), two.locales())
+    }
+
+    @Test fun newLocaleLinesRoundTrip() {
+        val a = Arsc.open(buildArsc("com.example.app", listOf("app_name" to "Hello", "ok" to "OK")))
+        assertEquals("app_name\tHello\nok\tOK", ArscLocaleAdder.templateLines(a))
+        val texts = ArscLocaleAdder.textsFromLines(a, "# comment\napp_name\tHallo\\nWelt\n\nstring/ok=Gut\nmissing\tx\nok\t")
+        assertEquals(mapOf(0x7f010000 to "Hallo\nWelt", 0x7f010001 to "Gut"), texts)
+    }
+
+    @Test fun addNewLocaleRejectsBadInput() {
+        val bytes = buildArsc("com.example.app", listOf("app_name" to "Hello"))
+        assertEquals("pt-rBR", ArscLocaleAdder.parseLocale("pt-rBR").qualifier)
+        assertEquals("eo", ArscLocaleAdder.parseLocale(" EO ").qualifier)
+        for (bad in listOf("", "english", "e", "pt-BRA")) {
+            assertTrue(bad, runCatching { ArscLocaleAdder.parseLocale(bad) }.isFailure)
+        }
+        assertTrue(runCatching { ArscLocaleAdder.addLocale(bytes, "fr", emptyMap()) }.isFailure)
+        assertTrue(runCatching { ArscLocaleAdder.addLocale(bytes, "fr", mapOf(0x7f019999 to "x")) }.isFailure)
+        val fr = ArscLocaleAdder.addLocale(bytes, "fr", mapOf(0x7f010000 to "Bonjour"))
+        assertTrue(runCatching { ArscLocaleAdder.addLocale(fr, "fr", mapOf(0x7f010000 to "Salut")) }.isFailure)
+    }
+
     @Test fun bundleParseAndMerge() {
         val d = tmp()
         fun apk(name: String, entries: Map<String, ByteArray>): File {
