@@ -9,8 +9,10 @@ data class ModPlan(
     val strings: Map<ArscEditor.ResTarget, String> = emptyMap(),
     /** Smali source per class, assembled into the dex that already holds that class (or classes.dex). */
     val smali: List<String> = emptyList(),
+    /** Brand-new languages: locale qualifier (e.g. `eo`, `pt-BR`) → resource id → text. */
+    val newLocales: Map<String, Map<Int, String>> = emptyMap(),
 ) {
-    val isEmpty: Boolean get() = manifest.isEmpty && strings.isEmpty() && smali.isEmpty()
+    val isEmpty: Boolean get() = manifest.isEmpty && strings.isEmpty() && smali.isEmpty() && newLocales.isEmpty()
 }
 
 data class ModResult(
@@ -47,6 +49,11 @@ object ApkMod {
         if (plan.strings.isNotEmpty()) {
             val arsc = Arsc.loadFromTarget(apk)
             replacements["resources.arsc"] = ArscEditor.apply(arsc, plan.strings)
+        }
+        if (plan.newLocales.isNotEmpty()) {
+            var bytes = replacements["resources.arsc"] ?: ApkResources.read(apk, "resources.arsc")
+            for ((locale, texts) in plan.newLocales) bytes = ArscLocaleAdder.addLocale(bytes, locale, texts)
+            replacements["resources.arsc"] = bytes
         }
         if (plan.smali.isNotEmpty()) {
             val assembled = plan.smali.map { SmaliAssembler.assembleClass(it) }

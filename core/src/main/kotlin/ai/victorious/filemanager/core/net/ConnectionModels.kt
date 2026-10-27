@@ -66,6 +66,8 @@ data class ConnectionDraft(
     val username: String = "",
     val password: String? = null,
     val privateKeyPem: String? = null,
+    /** Optional passphrase for an encrypted private key (stored encrypted with the key, never logged). */
+    val keyPassphrase: String? = null,
     val initialPath: String = "/",
     val authKind: AuthKind = AuthKind.PASSWORD,
     val keyLabel: String = "",
@@ -77,7 +79,12 @@ data class ConnectionDraft(
     val s3PathStyle: Boolean = false,
     /** S3 secret access key (stored encrypted, never logged). */
     val s3SecretKey: String? = null,
-)
+) {
+    /** Never print secrets (password, key, passphrase, S3 secret) in logs or crash reports. */
+    override fun toString(): String =
+        "ConnectionDraft(name=$name, protocol=$protocol, host=$host, port=$port, username=$username, " +
+            "authKind=$authKind, keyLabel=$keyLabel, initialPath=$initialPath, secrets=<redacted>)"
+}
 
 /**
  * Parse a connection URI like `sftp://user@host:22/path` or `ftp://host`.

@@ -48,6 +48,9 @@ fun SettingsPane(onEvent: (UiEvent) -> Unit = {}) {
         Modifier.fillMaxWidth().padding(16.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        OutlinedButton(onClick = { onEvent(UiEvent.OpenTool(ToolRequest.Help)) }, modifier = Modifier.fillMaxWidth()) {
+            Text("Help & manual")
+        }
         AppearanceSection()
         Text("Privilege", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
         Text(

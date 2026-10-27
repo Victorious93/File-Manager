@@ -208,12 +208,13 @@ class Arsc private constructor(
         }
     }
 
+    /** [start] is the ResTable_config itself (its u32 size comes first, then mcc/mnc/lang/country). */
     private fun decodeConfig(buf: ByteBuffer, start: Int, size: Int): String {
-        if (size < 8) return "default"
-        val mcc = buf.getShort(start).toInt() and 0xFFFF
-        val mnc = buf.getShort(start + 2).toInt() and 0xFFFF
-        val lang = charPair(buf.get(start + 4), buf.get(start + 5))
-        val country = charPair(buf.get(start + 6), buf.get(start + 7))
+        if (size < 12) return "default"
+        val mcc = buf.getShort(start + 4).toInt() and 0xFFFF
+        val mnc = buf.getShort(start + 6).toInt() and 0xFFFF
+        val lang = charPair(buf.get(start + 8), buf.get(start + 9))
+        val country = charPair(buf.get(start + 10), buf.get(start + 11))
         val parts = mutableListOf<String>()
         if (mcc != 0) parts += "mcc$mcc"
         if (mnc != 0) parts += "mnc$mnc"
@@ -268,6 +269,9 @@ class Arsc private constructor(
         ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).putInt(4, bytes.size)
         return bytes
     }
+
+    /** The raw table bytes this view was parsed from. */
+    fun bytes(): ByteArray = original.copyOf()
 
     companion object {
         const val RES_TABLE = 0x0002

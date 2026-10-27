@@ -2,6 +2,12 @@ package ai.victorious.filemanager.ui
 
 import ai.victorious.filemanager.core.apk.Arsc
 import ai.victorious.filemanager.core.apk.ArscEditor
+import ai.victorious.filemanager.core.apk.ArscLocaleAdder
+import ai.victorious.filemanager.core.apk.ApkMod
+import ai.victorious.filemanager.core.apk.ModPlan
+import ai.victorious.filemanager.FileManagerApplication
+import ai.victorious.filemanager.apk.ApkRepository
+import androidx.compose.ui.platform.LocalContext
 import ai.victorious.filemanager.core.apk.DexTools
 import ai.victorious.filemanager.core.apk.mtnp.ArscTranslate
 import ai.victorious.filemanager.core.apk.mtnp.DecryptMethod
@@ -342,7 +348,7 @@ private fun TranslateTab(target: File, outDir: String, onEvent: (UiEvent) -> Uni
                         }
                         // Only apply if locale already exists
                         val present = a.locales().toSet()
-                        require(dstLoc in present) { "Locale $dstLoc not in ARSC (cannot add new type config yet)" }
+                        require(dstLoc in present) { "Locale $dstLoc is not in this APK yet — use \"Add a new language\" below" }
                         val outBytes = ArscTranslate.apply(a, edits)
                         val out = File(outDir, "${target.nameWithoutExtension}-translated.arsc")
                         out.writeBytes(outBytes)
@@ -353,6 +359,7 @@ private fun TranslateTab(target: File, outDir: String, onEvent: (UiEvent) -> Uni
                     .onFailure { onEvent(UiEvent.ShowMessage(it.message ?: "apply failed")) }
             }
         }) { Text("Apply AI suggestions (user-approved)") }
+        NewLanguageSection(target, arsc, outDir, onEvent)
         LazyColumn(Modifier.weight(0.6f)) {
             items(rows.take(100)) { r ->
                 Text(
@@ -362,5 +369,83 @@ private fun TranslateTab(target: File, outDir: String, onEvent: (UiEvent) -> Uni
                 )
             }
         }
+    }
+}
+
+/**
+ * Adds a brand-new language (values-xx) to the APK: pick or type a locale, fill in
+ * `name<TAB>text` lines, and get a new signed `<name>-<locale>.apk`. Untranslated strings fall
+ * back to the default language.
+ */
+@Composable
+private fun NewLanguageSection(target: File, arsc: Arsc?, outDir: String, onEvent: (UiEvent) -> Unit) {
+    val app = LocalContext.current.applicationContext as FileManagerApplication
+    val scope = rememberCoroutineScope()
+    var locale by remember { mutableStateOf("") }
+    var lines by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    val isApk = target.isFile && target.name.endsWith(".apk", true)
+    val existing = arsc?.locales().orEmpty().toSet()
+    val parsed = runCatching { ArscLocaleAdder.parseLocale(locale) }
+    val localeError = when {
+        locale.isBlank() -> null
+        parsed.isFailure -> parsed.exceptionOrNull()?.message
+        parsed.getOrThrow().qualifier in existing -> "Already in this APK; use Apply above to edit it"
+        else -> null
+    }
+    Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+        Text("Add a new language", style = MaterialTheme.typography.titleSmall)
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            ArscLocaleAdder.SUGGESTED.forEach { code ->
+                val q = ArscLocaleAdder.parseLocale(code).qualifier
+                FilterChip(
+                    selected = locale.equals(code, true),
+                    onClick = { locale = code },
+                    enabled = q !in existing,
+                    label = { Text(code) },
+                )
+            }
+        }
+        OutlinedTextField(
+            locale, { locale = it.take(8) },
+            label = { Text("Language code (e.g. eo, pt-BR)") },
+            singleLine = true,
+            isError = localeError != null,
+            supportingText = { localeError?.let { Text(it) } },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            OutlinedButton(onClick = { arsc?.let { lines = ArscLocaleAdder.templateLines(it) } }, enabled = arsc != null) {
+                Text("Fill with default strings")
+            }
+        }
+        OutlinedTextField(
+            lines, { lines = it },
+            label = { Text("Translations: name<TAB>text per line") },
+            modifier = Modifier.fillMaxWidth(),
+            minLines = 3, maxLines = 6,
+        )
+        Button(
+            enabled = !busy && isApk && arsc != null && locale.isNotBlank() && localeError == null,
+            onClick = {
+                val a = arsc ?: return@Button
+                busy = true
+                scope.launch {
+                    val r = withContext(Dispatchers.IO) {
+                        runCatching {
+                            val loc = ArscLocaleAdder.parseLocale(locale)
+                            val texts = ArscLocaleAdder.textsFromLines(a, lines)
+                            require(texts.isNotEmpty()) { "No lines matched a default string name" }
+                            val out = File(outDir, "${target.nameWithoutExtension}-${loc.qualifier.replace("-r", "-")}.apk")
+                            ApkMod.applyTo(target, ModPlan(newLocales = mapOf(loc.qualifier to texts)), out, ApkRepository(app).debugKey())
+                            "Added ${loc.qualifier} (${texts.size} strings) → ${out.name}, signed with the File-Manager debug key"
+                        }
+                    }
+                    busy = false
+                    onEvent(UiEvent.ShowMessage(r.getOrElse { it.message ?: "Could not add language" }))
+                    if (r.isSuccess) onEvent(UiEvent.Refresh)
+                }
+            },
+        ) { Text(if (isApk) "Add language and build APK" else "Open an APK to add a language") }
     }
 }
