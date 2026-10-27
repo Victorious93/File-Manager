@@ -165,3 +165,36 @@ private fun lightPaletteScheme(primary: Color, secondary: Color, bg: Color, inve
         surfaceContainerHighest = lerp(bg, onSurface, 0.08f),
     )
 }
+
+/** VictorLaunch's palette is dark when its background is (LIGHT mode ships light surfaces). */
+internal fun fleetIsDark(p: ai.victorious.filemanager.ui.theme.fleet.FleetPalette): Boolean =
+    Color(p.background).copy(alpha = 1f).luminance() < 0.5f
+
+/**
+ * Maps palette.* onto a Material scheme: derive the coherent set from primary/secondary/background like the
+ * named themes, then pin the roles VictorLaunch states directly (surface, onBackground, muted, danger).
+ * Text colours are only taken when readable, so a bad fleet palette cannot make the app illegible.
+ */
+internal fun fleetScheme(p: ai.victorious.filemanager.ui.theme.fleet.FleetPalette): ColorScheme {
+    val bg = Color(p.background).copy(alpha = 1f)
+    val primary = Color(p.primary).copy(alpha = 1f)
+    val secondary = Color(p.secondary).copy(alpha = 1f)
+    val dark = fleetIsDark(p)
+    val base = if (dark) darkPaletteScheme(primary, secondary, bg, primary) else lightPaletteScheme(primary, secondary, bg, primary)
+    val surface = Color(p.surface).copy(alpha = 1f)
+    val onBg = readableTint(Color(p.onBackground).copy(alpha = 1f), bg)
+    val onSurface = readableTint(onBg, surface)
+    val muted = p.muted?.let { readableTint(Color(it).copy(alpha = 1f), surface) } ?: base.onSurfaceVariant
+    val danger = p.danger?.let { Color(it).copy(alpha = 1f) } ?: base.error
+    return base.copy(
+        background = bg,
+        onBackground = onBg,
+        surface = surface,
+        onSurface = onSurface,
+        onSurfaceVariant = muted,
+        inverseSurface = onSurface,
+        inverseOnSurface = surface,
+        error = danger,
+        onError = readableOn(danger),
+    )
+}
