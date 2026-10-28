@@ -4,7 +4,7 @@ package ai.victorious.filemanager.core.search
 enum class FileCategory(val token: String, val label: String, val extensions: Set<String>) {
     IMAGE("image", "Images", setOf("png", "jpg", "jpeg", "gif", "webp", "bmp", "heic", "heif", "svg", "ico")),
     VIDEO("video", "Videos", setOf("mp4", "m4v", "mkv", "webm", "3gp", "mov", "avi", "wmv", "flv")),
-    AUDIO("audio", "Audio", setOf("mp3", "m4a", "aac", "ogg", "oga", "opus", "flac", "wav", "amr", "mid", "midi")),
+    AUDIO("audio", "Audio", setOf("mp3", "m4a", "aac", "ogg", "oga", "opus", "flac", "wav", "amr", "mid", "midi", "ac3", "eac3", "ec3", "dts", "thd", "mka", "wma")),
     DOCUMENT("doc", "Documents", setOf("pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "txt", "md", "rtf", "csv", "epub")),
     ARCHIVE("archive", "Archives", setOf("zip", "7z", "rar", "tar", "gz", "tgz", "bz2", "tbz2", "tbz", "xz", "txz", "jar")),
     APK("apk", "APKs", setOf("apk", "apks", "xapk", "apkm", "aab"));

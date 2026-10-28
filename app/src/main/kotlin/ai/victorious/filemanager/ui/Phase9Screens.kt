@@ -6,6 +6,8 @@ import ai.victorious.filemanager.core.plugins.PluginValidationException
 import ai.victorious.filemanager.core.plugins.SavedScript
 import ai.victorious.filemanager.core.secure.VaultEntry
 import ai.victorious.filemanager.plugins.InstalledPlugin
+import ai.victorious.filemanager.plugins.AppPlugin
+import ai.victorious.filemanager.plugins.AppPluginHost
 import android.content.Context
 import android.content.ContextWrapper
 import androidx.activity.compose.BackHandler
@@ -95,7 +97,11 @@ fun PluginsScreen(selected: List<String>, dir: String, onClose: () -> Unit, onEv
     val log = remember { mutableStateListOf<String>() }
     var running by remember { mutableStateOf(false) }
     var confirmRemove by remember { mutableStateOf<InstalledPlugin?>(null) }
-    fun reload() { plugins = repo.list() }
+    val context = LocalContext.current
+    val appHost = remember { AppPluginHost(context.applicationContext) }
+    var appPlugins by remember { mutableStateOf<List<AppPlugin>>(emptyList()) }
+    LaunchedEffect(Unit) { appPlugins = withContext(Dispatchers.IO) { appHost.list() } }
+    fun reload() { plugins = repo.list(); appPlugins = appHost.list() }
     fun msg(s: String) = onEvent(UiEvent.ShowMessage(s))
 
     P9Scaffold("Plugins", onClose) { modifier ->
@@ -121,6 +127,41 @@ fun PluginsScreen(selected: List<String>, dir: String, onClose: () -> Unit, onEv
                     }) { Text("Add samples") }
                 }
             }
+            item {
+                Text("App plugins (separate APKs, API v2)", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
+                if (appPlugins.isEmpty()) Text(
+                    "None installed. App plugins are separate apps that declare ai.victorious.filemanager.action.PLUGIN; " +
+                        "they get read-only access to the files you select, nothing else.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            items(appPlugins, key = { "app:" + it.key }) { ap ->
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(ap.descriptor?.let { "${it.name} ${it.version}" } ?: ap.label, style = MaterialTheme.typography.titleSmall)
+                                Text(ap.component.packageName, style = MaterialTheme.typography.bodySmall)
+                            }
+                            Switch(checked = ap.enabled, enabled = ap.descriptor != null, onCheckedChange = { appHost.setEnabled(ap, it); reload() })
+                        }
+                        ap.problem?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                        ap.descriptor?.let { d ->
+                            if (d.description.isNotBlank()) Text(d.description, style = MaterialTheme.typography.bodySmall)
+                            Text(
+                                (if (d.wantsWrite) "Read + write" else "Read-only") + " access to selected files" +
+                                    (if (d.extensions.isNotEmpty()) " · .${d.extensions.joinToString(", .")}" else ""),
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                            if (ap.enabled) OutlinedButton(onClick = {
+                                runCatching { context.startActivity(appHost.launchIntent(ap, selected).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                                    .onFailure { msg(it.message ?: "Could not start plugin") }
+                            }) { Text("Run on selection") }
+                        }
+                    }
+                }
+            }
+            item { Text("JSON plugins (API v1)", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp)) }
             items(plugins, key = { it.manifest.id }) { p ->
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(12.dp)) {

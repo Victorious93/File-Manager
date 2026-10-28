@@ -12,6 +12,7 @@ import ai.victorious.filemanager.core.syntax.SyntaxHighlighter
 import ai.victorious.filemanager.core.archive.ZipEdit
 import ai.victorious.filemanager.core.archive.ZipEditor
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.FindReplace
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.TextFieldValue
@@ -150,6 +151,7 @@ private fun TextEditorScreen(file: File, onClose: () -> Unit, onMessage: (String
     var version by remember { mutableIntStateOf(0) }
     var confirmClose by remember { mutableStateOf(false) }
     var showFind by remember { mutableStateOf(false) }
+    var showAi by remember { mutableStateOf(false) }
     var find by remember { mutableStateOf(FindState()) }
     var field by remember { mutableStateOf(TextFieldValue("")) }
     val language = remember(file) { SyntaxHighlighter.languageFor(file.name) }
@@ -167,6 +169,9 @@ private fun TextEditorScreen(file: File, onClose: () -> Unit, onMessage: (String
         actions = {
             val h = history
             if (h != null) {
+                IconButton(onClick = { showAi = true }) {
+                    Icon(Icons.Outlined.AutoAwesome, contentDescription = "Ask Droidcommand AI")
+                }
                 IconButton(onClick = { showFind = !showFind }) {
                     Icon(Icons.Outlined.FindReplace, contentDescription = "Find & replace")
                 }
@@ -229,6 +234,11 @@ private fun TextEditorScreen(file: File, onClose: () -> Unit, onMessage: (String
                 textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
             )
         }
+    }
+    if (showAi) history?.let { hh ->
+        AiAssistDialog(file.name, language.name, text, onApply = { newText ->
+            if (newText != text) { text = newText; hh.push(newText); field = TextFieldValue(newText); version++; onMessage("Applied AI edit (undo to revert)") }
+        }, onDismiss = { showAi = false })
     }
     if (confirmClose) DiscardDialog(onDiscard = onClose, onCancel = { confirmClose = false })
 }

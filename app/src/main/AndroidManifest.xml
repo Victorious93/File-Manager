@@ -29,6 +29,10 @@
         tools:ignore="QueryAllPackagesPermission" />
 
     <queries>
+        <!-- Phase 17: APK plugins (plugin API v2), see docs/PLUGINS.md. -->
+        <intent>
+            <action android:name="ai.victorious.filemanager.action.PLUGIN" />
+        </intent>
         <package android:name="ai.droidcommand.app" />
         <package android:name="ai.droidcommand.app.debug" />
         <package android:name="com.victorious.keyboard.debug" />
