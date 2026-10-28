@@ -98,6 +98,12 @@ object MediaProEngine : MediaRemote {
                 if (state == Player.STATE_ENDED) { p.currentMediaItem?.let { resume.clear(it.mediaId) }; sleep.shouldStop(trackEnded = true) }
             }
             override fun onIsPlayingChanged(isPlaying: Boolean) { if (!isPlaying) saveResume() }
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                val name = p.currentMediaItem?.mediaMetadata?.title?.toString()
+                    ?: p.currentMediaItem?.localConfiguration?.uri?.lastPathSegment ?: ""
+                val hint = ai.victorious.filemanager.core.media.AudioCodecSupport.failureHint(name, FfmpegRenderers.nativeLoaded())
+                android.widget.Toast.makeText(context.applicationContext, hint ?: "Cannot play: ${error.errorCodeName}", android.widget.Toast.LENGTH_LONG).show()
+            }
         })
         player = p
         ticker()

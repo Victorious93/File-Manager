@@ -12,7 +12,8 @@ object FileKinds {
         "yaml", "toml", "ini", "cfg", "conf", "properties", "gradle", "sql", "srt", "gitignore", "env",
     )
     private val image = setOf("png", "jpg", "jpeg", "gif", "webp", "bmp", "heic", "heif", "ico")
-    private val audio = setOf("mp3", "m4a", "aac", "ogg", "oga", "opus", "flac", "wav", "amr", "mid", "midi")
+    private val audio = setOf("mp3", "m4a", "aac", "ogg", "oga", "opus", "flac", "wav", "amr", "mid", "midi") +
+        ai.victorious.filemanager.core.media.AudioCodecSupport.audioExtensions
     private val video = setOf("mp4", "m4v", "mkv", "webm", "3gp", "mov", "avi", "ts")
     val archiveExtensions = setOf("zip", "jar", "apk", "7z", "tar", "gz", "tgz", "bz2", "tbz2", "tbz", "xz", "txz", "rar")
 

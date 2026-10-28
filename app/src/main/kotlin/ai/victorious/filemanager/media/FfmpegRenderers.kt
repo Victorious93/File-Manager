@@ -23,6 +23,11 @@ object FfmpegRenderers {
         Class.forName("androidx.media3.decoder.ffmpeg.FfmpegAudioRenderer")
     }.isSuccess
 
+    /** True when the JNI library actually loaded (class present is not enough). */
+    fun nativeLoaded(): Boolean = available() && runCatching {
+        androidx.media3.decoder.ffmpeg.FfmpegLibrary.isAvailable()
+    }.getOrDefault(false)
+
     fun factory(context: Context, preferExtension: Boolean = false): DefaultRenderersFactory {
         val mode = when {
             !available() -> DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF

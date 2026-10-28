@@ -103,7 +103,7 @@ class MediaProActivity : ComponentActivity() {
     }
 
     private fun siblingsOf(f: File): List<File> {
-        val ext = setOf("mp3", "m4a", "aac", "flac", "ogg", "opus", "wav", "wma", "mka", "mid")
+        val ext = setOf("mp3", "m4a", "aac", "flac", "ogg", "opus", "wav", "wma", "mka", "mid", "ac3", "eac3", "ec3", "dts", "thd")
         val isAudio = f.extension.lowercase() in ext
         if (!isAudio) return listOf(f)
         return f.parentFile?.listFiles()?.filter { it.isFile && it.extension.lowercase() in ext }?.sortedBy { it.name.lowercase() } ?: listOf(f)
