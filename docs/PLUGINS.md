@@ -76,3 +76,23 @@ Tools → **Scripts**: saved `sh` scripts (stored in app-private `scripts.json`)
 `app/…/plugins/PluginRepository.kt`, `app/…/ui/Phase9Screens.kt`.
 Tests: `PluginsTest` (parse, capability checks, ids/placeholders/unknown fields, quoting,
 script wrapping, bundled samples valid).
+
+## API v2: app plugins (Phase 17)
+
+A plugin can also be a separate APK. VictorFiles never loads its code; Android's app sandbox isolates it.
+
+```xml
+<activity android:name=".HashPluginActivity" android:exported="true">
+    <intent-filter><action android:name="ai.victorious.filemanager.action.PLUGIN" /></intent-filter>
+    <meta-data android:name="ai.victorious.filemanager.plugin" android:value="@string/vf_plugin" />
+</activity>
+<!-- @string/vf_plugin: {"id":"com.example.hash","name":"Hash it","apiVersion":2,
+     "extensions":["apk"],"minFiles":1,"maxFiles":1,"wantsWrite":false} -->
+```
+
+- Discovered with `queryIntentActivities(ACTION)`; listed in Tools → Plugins with a switch. Starts **disabled**.
+- Invalid descriptors (bad id, apiVersion ≠ 2, minFiles/maxFiles out of 0..500, dotted extensions) are shown with the reason and cannot be enabled.
+- On "Run on selection" the activity receives `ClipData` of `content://<pkg>.files/...` URIs (plus `data` when one file),
+  `FLAG_GRANT_READ_URI_PERMISSION` (write only when `wantsWrite`, shown to the user), `extra.API_VERSION=2` and
+  `extra.DISPLAY_NAMES`. No paths, no shell, no other storage access.
+- Code: `core/.../plugins/AppPlugins.kt` (contract, parser, selection rules; `AppPluginsTest`) and `app/.../plugins/AppPluginHost.kt`.
