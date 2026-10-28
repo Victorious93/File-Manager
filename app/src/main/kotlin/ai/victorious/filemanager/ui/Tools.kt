@@ -41,6 +41,10 @@ import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material.icons.outlined.Code
+import androidx.compose.material.icons.outlined.Translate
+import androidx.compose.material.icons.outlined.Calculate
+import androidx.compose.material.icons.outlined.Translate
+import androidx.compose.material.icons.outlined.Calculate
 import androidx.compose.material.icons.outlined.Extension
 import androidx.compose.material.icons.outlined.Wifi
 import androidx.compose.material.icons.outlined.PhotoCamera
@@ -97,6 +101,8 @@ sealed interface ToolRequest {
     data class FolderSync(val dir: String) : ToolRequest
     data class PhotoTools(val paths: List<String>, val dir: String) : ToolRequest
     data class PatchPresets(val path: String, val dir: String) : ToolRequest
+    data class TranslateStrings(val paths: List<String>, val dir: String) : ToolRequest
+    data class Utilities(val selected: List<String>) : ToolRequest
     /** In-app manual (docs/MANUAL.md) with search. */
     data object Help : ToolRequest
 }
@@ -132,6 +138,16 @@ fun ToolsPane(state: UiState, onEvent: (UiEvent) -> Unit) {
         item {
             ToolItem(Icons.Outlined.Extension, "Plugins", "Declarative JSON plugins with declared capabilities") {
                 onEvent(UiEvent.OpenTool(ToolRequest.Plugins(pane.selected.toList(), dir)))
+            }
+        }
+        item {
+            ToolItem(Icons.Outlined.Translate, "Translate strings.xml", "Side-by-side translation of decoded APK strings, CSV export/import") {
+                onEvent(UiEvent.OpenTool(ToolRequest.TranslateStrings(files.map { it.absolutePath }, dir)))
+            }
+        }
+        item {
+            ToolItem(Icons.Outlined.Calculate, "Utilities", "Hash (MD5/SHA), Base64/hex, timestamp, color picker, regex tester") {
+                onEvent(UiEvent.OpenTool(ToolRequest.Utilities(files.map { it.absolutePath })))
             }
         }
         item {
@@ -285,6 +301,8 @@ fun ToolHost(request: ToolRequest, onClose: () -> Unit, onEvent: (UiEvent) -> Un
         is ToolRequest.FolderSync -> FolderSyncScreen(request.dir, onClose, onEvent)
         is ToolRequest.PhotoTools -> PhotoToolsScreen(request.paths, request.dir, onClose, onEvent)
         is ToolRequest.PatchPresets -> PatchPresetsScreen(request.path, request.dir, onClose, onEvent)
+        is ToolRequest.TranslateStrings -> TranslateStringsScreen(request.paths, request.dir, onClose, onEvent)
+        is ToolRequest.Utilities -> UtilitiesScreen(request.selected, onClose)
         ToolRequest.Help -> HelpScreen(onClose)
     }
 }
