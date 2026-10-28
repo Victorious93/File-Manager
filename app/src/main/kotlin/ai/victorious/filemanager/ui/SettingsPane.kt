@@ -194,6 +194,20 @@ private fun AppearanceSection() {
         Switch(checked = prefs.dualPane, onCheckedChange = { on -> theme.update { it.copy(dualPane = on) } })
     }
     val dynamicOn = prefs.dynamicColor && dynamicSupported
+    val fleetState by app.fleetTheme.state.collectAsState()
+    SettingSwitch(
+        "Fleet theme",
+        when (val f = fleetState) {
+            is ai.victorious.filemanager.ui.theme.fleet.FleetThemeState.Applied ->
+                "Follow VictorLaunch's theme (${f.palette.mode.ifEmpty { "custom" }}). Updates live."
+            is ai.victorious.filemanager.ui.theme.fleet.FleetThemeState.Unavailable ->
+                "Follow VictorLaunch's theme. Not available now (${f.reason}); your own theme is used."
+        },
+        prefs.fleetTheme,
+    ) { on ->
+        theme.update { it.copy(fleetTheme = on) }
+        if (on) app.fleetTheme.refresh()
+    }
     if (!dynamicOn) {
         Text("Theme", style = MaterialTheme.typography.titleSmall)
         androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {

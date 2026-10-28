@@ -47,6 +47,9 @@ class FileManagerApplication : Application() {
         private set
     lateinit var themeSettings: ThemeSettings
         private set
+    lateinit var fleetTheme: ai.victorious.filemanager.ui.theme.fleet.FleetThemeClient
+        private set
+    fun isFleetThemeReady() = ::fleetTheme.isInitialized
     lateinit var nodeId: String
         private set
     lateinit var bridge: BridgeExecutor
@@ -113,6 +116,7 @@ class FileManagerApplication : Application() {
         search = FileSearch(io)
         index = FileIndex(normalIo)
         themeSettings = ThemeSettings(this)
+        fleetTheme = ai.victorious.filemanager.ui.theme.fleet.FleetThemeClient(this).also { it.start() }
         nodeId = loadOrCreateNodeId()
         fleetSettings = FleetSettings(this)
         terminals = TerminalSessionManager(privilege)

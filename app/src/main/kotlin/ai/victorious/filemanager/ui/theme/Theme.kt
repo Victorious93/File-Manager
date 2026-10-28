@@ -12,6 +12,8 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -91,7 +93,14 @@ internal fun isDark(mode: ThemeMode, systemDark: Boolean) = when (mode) {
  * Pure scheme selection (unit-tested). [dynamic] is the wallpaper scheme when the platform
  * supports it (API 31+) and the user enabled it; otherwise the accent preset recolors primary.
  */
-internal fun schemeFor(prefs: ThemePrefs, systemDark: Boolean, dynamic: ColorScheme?): ColorScheme {
+internal fun schemeFor(
+    prefs: ThemePrefs,
+    systemDark: Boolean,
+    dynamic: ColorScheme?,
+    fleet: ai.victorious.filemanager.ui.theme.fleet.FleetPalette? = null,
+): ColorScheme {
+    // The fleet theme wins only while it is on and actually readable; otherwise fall back to the user's theme.
+    if (prefs.fleetTheme && fleet != null) return fleetScheme(fleet)
     val dark = isDark(prefs.mode, systemDark)
     val base = dynamic ?: when {
         // Named themes bring their own primary; the accent presets only recolor Classic.
@@ -105,10 +114,11 @@ internal fun schemeFor(prefs: ThemePrefs, systemDark: Boolean, dynamic: ColorSch
 @Composable
 fun VictoriousTheme(
     prefs: ThemePrefs = ThemePrefs(),
+    fleet: ai.victorious.filemanager.ui.theme.fleet.FleetPalette? = currentFleetPalette(),
     content: @Composable () -> Unit,
 ) {
     val systemDark = isSystemInDarkTheme()
-    val dark = isDark(prefs.mode, systemDark)
+    val dark = if (prefs.fleetTheme && fleet != null) fleetIsDark(fleet) else isDark(prefs.mode, systemDark)
     val dynamic = if (prefs.dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         val ctx = LocalContext.current
         if (dark) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx)
@@ -127,7 +137,7 @@ fun VictoriousTheme(
         }
     }
     MaterialTheme(
-        colorScheme = schemeFor(prefs, systemDark, dynamic),
+        colorScheme = schemeFor(prefs, systemDark, dynamic, fleet),
         shapes = AppShapes,
     ) {
         androidx.compose.runtime.CompositionLocalProvider(LocalIconStyle provides prefs.iconStyle, content = content)
@@ -138,4 +148,13 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
     is Activity -> this
     is ContextWrapper -> baseContext.findActivity()
     else -> null
+}
+
+/** The live fleet palette, or null when VictorLaunch's theme is not readable (then the user's theme is used). */
+@Composable
+fun currentFleetPalette(): ai.victorious.filemanager.ui.theme.fleet.FleetPalette? {
+    val app = LocalContext.current.applicationContext as? ai.victorious.filemanager.FileManagerApplication ?: return null
+    if (!app.isFleetThemeReady()) return null
+    val state by app.fleetTheme.state.collectAsState()
+    return (state as? ai.victorious.filemanager.ui.theme.fleet.FleetThemeState.Applied)?.palette
 }

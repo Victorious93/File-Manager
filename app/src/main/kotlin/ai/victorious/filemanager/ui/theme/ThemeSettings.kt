@@ -32,6 +32,8 @@ data class ThemePrefs(
     val autoDualOnWide: Boolean = true,
     /** Open on the Home dashboard instead of the file list. */
     val startOnHome: Boolean = false,
+    /** Follow VictorLaunch's fleet theme when it is readable; otherwise the choices above apply. */
+    val fleetTheme: Boolean = false,
 )
 
 /** Both file panes are on screen: the user turned them on, or the window is wide enough and they allow it. */
@@ -58,6 +60,7 @@ class ThemeSettings(context: Context) {
         gridView = prefs.getBoolean("grid_view", false),
         autoDualOnWide = prefs.getBoolean("auto_dual_wide", true),
         startOnHome = prefs.getBoolean("start_home", false),
+        fleetTheme = prefs.getBoolean("fleet_theme", false),
     )
 
     /** Re-reads SharedPreferences (after a settings import). */
@@ -77,6 +80,7 @@ class ThemeSettings(context: Context) {
             .putBoolean("grid_view", next.gridView)
             .putBoolean("auto_dual_wide", next.autoDualOnWide)
             .putBoolean("start_home", next.startOnHome)
+            .putBoolean("fleet_theme", next.fleetTheme)
             .apply()
         _state.value = next
     }

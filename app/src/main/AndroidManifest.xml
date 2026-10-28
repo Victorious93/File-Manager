@@ -33,6 +33,9 @@
         <package android:name="ai.droidcommand.app.debug" />
         <package android:name="com.victorious.keyboard.debug" />
         <package android:name="moe.shizuku.privileged.api" />
+        <!-- Fleet theme: VictorLaunch's read-only theme provider. -->
+        <package android:name="com.victorious.launch" />
+        <provider android:authorities="com.victorious.launch.theme" />
         <intent>
             <action android:name="rikka.shizuku.intent.action.REQUEST_PERMISSION" />
         </intent>
@@ -218,5 +221,14 @@
             </intent-filter>
         </activity>
 
+        <!-- Fleet theme wake-up from VictorLaunch (sent explicitly to this package). Exported; it only
+             triggers a re-query, which verifies the provider's package and signing cert. -->
+        <receiver
+            android:name=".ui.theme.fleet.FleetThemeChangedReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.victorious.launch.action.FLEET_THEME_CHANGED" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>
