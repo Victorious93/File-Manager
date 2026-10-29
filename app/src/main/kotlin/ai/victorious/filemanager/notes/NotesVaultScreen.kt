@@ -26,6 +26,11 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import android.net.Uri
 import android.content.Intent
 import ai.victorious.filemanager.core.notes.NoteIo
+import ai.victorious.filemanager.core.notes.NoteOps
+import ai.victorious.filemanager.core.notes.Mention
+import ai.victorious.filemanager.core.notes.TagNode
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.runtime.produceState
 import ai.victorious.filemanager.core.notes.ForceDirectedLayout
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -84,7 +89,7 @@ import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.random.Random
 
-private enum class NotesPane { EDITOR, PREVIEW, SPLIT, GRAPH, SEARCH }
+private enum class NotesPane { EDITOR, PREVIEW, SPLIT, GRAPH, TAGS, SEARCH }
 
 /**
  * Obsidian-style notes vault UI. Written from scratch — no Obsidian source.
@@ -113,6 +118,9 @@ fun NotesVaultPane(onEvent: (UiEvent) -> Unit) {
     var pane by remember { mutableStateOf(NotesPane.SPLIT) }
     var showSwitcher by remember { mutableStateOf(false) }
     var showNew by remember { mutableStateOf(false) }
+    var showRename by remember { mutableStateOf(false) }
+    var localGraph by remember { mutableStateOf(false) }
+    var indexVersion by remember { mutableStateOf(0) }
     var searchQ by remember { mutableStateOf("") }
     var searchHits by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
     val scope = rememberCoroutineScope()
@@ -125,7 +133,10 @@ fun NotesVaultPane(onEvent: (UiEvent) -> Unit) {
         else prefs.edit().remove("tree_uri").apply()
         scope.launch {
             val v = withContext(Dispatchers.IO) {
-                Vault(noteIo(), VaultConfig(root)).also { it.rebuildIndex() }
+                runCatching { Vault(noteIo(), VaultConfig(root)).also { it.rebuildIndex() } }
+            }.getOrElse {
+                onEvent(UiEvent.ShowMessage("Cannot open vault: ${it.message}"))
+                return@launch
             }
             vault = v
             currentPath = null
@@ -137,25 +148,42 @@ fun NotesVaultPane(onEvent: (UiEvent) -> Unit) {
 
     fun openNote(path: String) {
         val v = vault ?: return
-        if (dirty && currentPath != null) {
-            v.save(currentPath!!, body)
-            dirty = false
-        }
+        val pending = if (dirty) currentPath?.let { it to body } else null
+        dirty = false
         scope.launch {
-            val text = withContext(Dispatchers.IO) { v.open(path) }
-            currentPath = path
-            body = text
-            dirty = false
+            val text = withContext(Dispatchers.IO) {
+                pending?.let { (p, b) -> runCatching { v.save(p, b) }.onFailure { e -> onEvent(UiEvent.ShowMessage("Could not save ${NotePaths.titleOf(p)}: ${e.message}")) } }
+                runCatching { v.open(path) }
+            }
+            text.onSuccess {
+                currentPath = path
+                body = it
+                indexVersion++
+            }.onFailure { onEvent(UiEvent.ShowMessage("Could not open ${NotePaths.titleOf(path)}: ${it.message}")) }
         }
     }
 
     fun save() {
         val v = vault ?: return
         val p = currentPath ?: return
+        val text = body
         scope.launch {
-            withContext(Dispatchers.IO) { v.save(p, body) }
-            dirty = false
-            onEvent(UiEvent.ShowMessage("Saved ${NotePaths.titleOf(p)}"))
+            withContext(Dispatchers.IO) { runCatching { v.save(p, text) } }
+                .onSuccess {
+                    if (body == text) dirty = false
+                    indexVersion++
+                    onEvent(UiEvent.ShowMessage("Saved ${NotePaths.titleOf(p)}"))
+                }
+                .onFailure { onEvent(UiEvent.ShowMessage("Save failed: ${it.message}")) }
+        }
+    }
+
+    fun newNoteThenOpen(title: String, template: String? = null) {
+        val v = vault ?: return
+        scope.launch {
+            withContext(Dispatchers.IO) { runCatching { v.newNote(title, template) } }
+                .onSuccess { openNote(it) }
+                .onFailure { onEvent(UiEvent.ShowMessage("Could not create note: ${it.message}")) }
         }
     }
 
@@ -192,21 +220,31 @@ fun NotesVaultPane(onEvent: (UiEvent) -> Unit) {
             )
             candidates.forEach { path ->
                 TextButton(onClick = {
-                    File(path).mkdirs()
-                    File(path, "Templates").mkdirs()
-                    File(path, "Daily").mkdirs()
-                    if (!File(path, "Welcome.md").exists()) {
-                        File(path, "Welcome.md").writeText(
-                            "---\ntitle: Welcome\n---\n\n# Welcome\n\nThis is your vault. Create notes with [[wikilinks]] and #tags.\n\nTry the daily note or the graph view.\n",
-                        )
+                    scope.launch {
+                        val ok = withContext(Dispatchers.IO) {
+                            runCatching {
+                                File(path).mkdirs()
+                                File(path, "Templates").mkdirs()
+                                File(path, "Daily").mkdirs()
+                                if (!File(path, "Welcome.md").exists()) {
+                                    File(path, "Welcome.md").writeText(
+                                        "---\ntitle: Welcome\n---\n\n# Welcome\n\nThis is your vault. Create notes with [[wikilinks]] and #tags.\n\nTry the daily note or the graph view.\n",
+                                    )
+                                }
+                            }
+                        }
+                        ok.onSuccess { openVault(path) }.onFailure { onEvent(UiEvent.ShowMessage("Cannot use $path: ${it.message}")) }
                     }
-                    openVault(path)
                 }) { Text("Use $path") }
             }
             var custom by remember { mutableStateOf("") }
             OutlinedTextField(custom, { custom = it }, label = { Text("Or paste a folder path") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             TextButton(enabled = custom.isNotBlank(), onClick = {
-                File(custom.trim()).mkdirs(); openVault(custom.trim())
+                val dir = custom.trim()
+                scope.launch {
+                    val ok = withContext(Dispatchers.IO) { File(dir).mkdirs() || File(dir).isDirectory }
+                    if (ok) openVault(dir) else onEvent(UiEvent.ShowMessage("Cannot create or open $dir"))
+                }
             }) { Text("Open path") }
         }
         return
@@ -216,9 +254,26 @@ fun NotesVaultPane(onEvent: (UiEvent) -> Unit) {
     val path = currentPath
     val links = remember(body) { WikiLinkParser.links(body) }
     val tags = remember(body) { WikiLinkParser.tags(body) }
-    val backlinks = remember(path, body, dirty) { path?.let { v.index.backlinks(it) }.orEmpty() }
-    val outgoing = remember(path, body) { path?.let { v.index.outgoing(it) }.orEmpty() }
+    val backlinks = remember(path, body, dirty, indexVersion) { path?.let { v.index.backlinks(it) }.orEmpty() }
+    val outgoing = remember(path, body, indexVersion) { path?.let { v.index.outgoing(it) }.orEmpty() }
 
+    val outline = remember(body) { NoteOps.outline(body) }
+    val taskStats = remember(body) { NoteOps.taskStats(body) }
+    // Unlinked mentions need every note body: read them off the main thread.
+    val mentions by produceState<List<Mention>>(emptyList(), path, indexVersion) {
+        val p = path
+        value = if (p == null) emptyList() else withContext(Dispatchers.IO) {
+            runCatching { NoteOps.unlinkedMentions(NotePaths.titleOf(p), v.readAll(), p) }.getOrDefault(emptyList())
+        }
+    }
+    fun linkMention(m: Mention) {
+        val p = path ?: return
+        scope.launch {
+            withContext(Dispatchers.IO) {
+                runCatching { v.save(m.path, NoteOps.linkMention(v.open(m.path), m, NotePaths.titleOf(p))) }
+            }.onSuccess { indexVersion++ }.onFailure { onEvent(UiEvent.ShowMessage("Link failed: ${it.message}")) }
+        }
+    }
     Column(Modifier.fillMaxSize().padding(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("Vault", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
@@ -226,10 +281,12 @@ fun NotesVaultPane(onEvent: (UiEvent) -> Unit) {
             TextButton(onClick = { showNew = true }) { Text("New") }
             TextButton(onClick = {
                 scope.launch {
-                    val p = withContext(Dispatchers.IO) { v.ensureDaily() }
-                    openNote(p)
+                    withContext(Dispatchers.IO) { runCatching { v.ensureDaily() } }
+                        .onSuccess { openNote(it) }
+                        .onFailure { onEvent(UiEvent.ShowMessage("Daily note failed: ${it.message}")) }
                 }
             }) { Text("Daily") }
+            TextButton(enabled = path != null, onClick = { showRename = true }) { Text("Rename") }
             TextButton(enabled = dirty, onClick = { save() }) { Text(if (dirty) "Save*" else "Saved") }
             TextButton(onClick = { vaultRoot = null; vaultTreeUri = null; vault = null; prefs.edit().remove("root").remove("tree_uri").apply() }) { Text("Change") }
         }
@@ -240,19 +297,23 @@ fun NotesVaultPane(onEvent: (UiEvent) -> Unit) {
         }
         when (pane) {
             NotesPane.SEARCH -> {
-                OutlinedTextField(searchQ, {
-                    searchQ = it
-                    searchHits = v.search(it)
-                    // Also use FileIndex if available for the vault root
-                    runCatching {
-                        val extra = app.index.search(it).filter { h ->
-                            h.entry.path.startsWith(v.config.root) && h.entry.path.endsWith(".md", true)
-                        }
-                        if (extra.isNotEmpty()) {
-                            searchHits = (searchHits + extra.map { h -> h.entry.path to h.relativePath }).distinctBy { it.first }
-                        }
+                // Search reads every note: debounce typing and run it off the main thread.
+                LaunchedEffect(searchQ) {
+                    val q = searchQ
+                    if (q.isBlank()) { searchHits = emptyList(); return@LaunchedEffect }
+                    delay(250)
+                    searchHits = withContext(Dispatchers.IO) {
+                        val hits = runCatching { v.search(q) }.getOrDefault(emptyList())
+                        val extra = runCatching {
+                            app.index.search(q).filter { h ->
+                                h.entry.path.startsWith(v.config.root) && h.entry.path.endsWith(".md", true)
+                            }.map { h -> h.entry.path to h.relativePath }
+                        }.getOrDefault(emptyList())
+                        (hits + extra).distinctBy { it.first }
                     }
-                }, label = { Text("Search notes") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                }
+                OutlinedTextField(searchQ, { searchQ = it }, label = { Text("Search notes") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                if (searchQ.isNotBlank() && searchHits.isEmpty()) Text("No notes match “$searchQ”.", Modifier.padding(8.dp), style = MaterialTheme.typography.bodySmall)
                 LazyColumn {
                     items(searchHits) { (p, snip) ->
                         Column(Modifier.fillMaxWidth().clickable { openNote(p); pane = NotesPane.SPLIT }.padding(8.dp)) {
@@ -263,24 +324,69 @@ fun NotesVaultPane(onEvent: (UiEvent) -> Unit) {
                 }
             }
             NotesPane.GRAPH -> {
-                val tagCounts = remember(v.index.noteCount()) {
-                    v.index.allTitles().associate { t ->
-                        val p = v.index.pathForTitle(t)!!
-                        p to WikiLinkParser.tags(runCatching { v.open(p) }.getOrDefault("")).size
+                // Reading every note for tag counts used to block the UI thread; do it on IO.
+                val tagCounts by produceState<Map<String, Int>>(emptyMap(), indexVersion, v) {
+                    value = withContext(Dispatchers.IO) {
+                        v.index.allTitles().mapNotNull { t -> v.index.pathForTitle(t) }.associateWith { p ->
+                            WikiLinkParser.tags(runCatching { v.open(p) }.getOrDefault("")).size
+                        }
                     }
                 }
-                val (nodes, edges) = remember(v.index.noteCount()) { NoteGraph.build(v.index, tagCounts) }
-                GraphCanvas(nodes, edges, onOpen = { openNote(it); pane = NotesPane.SPLIT })
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    FilterChip(!localGraph, { localGraph = false }, label = { Text("Whole vault") })
+                    FilterChip(localGraph, { localGraph = true }, enabled = path != null, label = { Text("This note's neighbours") })
+                }
+                val (nodes, edges) = remember(v.index.noteCount(), tagCounts, localGraph, path, indexVersion) {
+                    val p = path
+                    if (localGraph && p != null) NoteOps.localGraph(v.index, p, 2).let { (n, e) -> n.map { it.copy(tagCount = tagCounts[it.path] ?: 0) } to e }
+                    else NoteGraph.build(v.index, tagCounts)
+                }
+                if (nodes.isEmpty()) Text("No notes to draw yet.", Modifier.padding(8.dp))
+                else GraphCanvas(nodes, edges, onOpen = { openNote(it); pane = NotesPane.SPLIT })
+            }
+            NotesPane.TAGS -> {
+                val tree by produceState<List<TagNode>?>(null, indexVersion, v) {
+                    value = withContext(Dispatchers.IO) { runCatching { NoteOps.tagTree(v.readAll()) }.getOrDefault(emptyList()) }
+                }
+                var openTag by remember { mutableStateOf<String?>(null) }
+                when {
+                    tree == null -> Text("Reading tags…", Modifier.padding(8.dp))
+                    tree!!.isEmpty() -> Text("No #tags in this vault yet. Type #idea or #project/alpha in a note.", Modifier.padding(8.dp))
+                    else -> LazyColumn(Modifier.weight(1f)) {
+                        items(NoteOps.flatten(tree!!)) { (depth, node) ->
+                            Column(Modifier.fillMaxWidth()) {
+                                Text(
+                                    "#${node.name}  (${node.notes.size})",
+                                    Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                                        .clickable { openTag = if (openTag == node.fullName) null else node.fullName }
+                                        .padding(start = (8 + depth * 16).dp, top = 12.dp, bottom = 12.dp),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                                if (openTag == node.fullName) node.notes.forEach { np ->
+                                    Text(
+                                        NotePaths.titleOf(np),
+                                        Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable { openNote(np); pane = NotesPane.SPLIT }
+                                            .padding(start = (24 + depth * 16).dp, top = 12.dp),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
             else -> {
                 Row(Modifier.weight(1f)) {
                     // Note list
                     LazyColumn(Modifier.width(160.dp).fillMaxHeight()) {
-                        items(v.index.allTitles()) { title ->
+                        val titles = v.index.allTitles()
+                        if (titles.isEmpty()) item { Text("No notes yet. Tap New.", Modifier.padding(8.dp), style = MaterialTheme.typography.bodySmall) }
+                        items(titles) { title ->
                             val p = v.index.pathForTitle(title)!!
                             Text(
                                 title,
-                                Modifier.fillMaxWidth().clickable { openNote(p) }
+                                Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable { openNote(p) }
                                     .background(if (p == path) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
                                     .padding(8.dp),
                                 style = MaterialTheme.typography.bodyMedium,
@@ -308,27 +414,42 @@ fun NotesVaultPane(onEvent: (UiEvent) -> Unit) {
                             else -> Unit
                         }
                         // Backlinks / outgoing / tags
-                        Row(Modifier.fillMaxWidth().height(120.dp)) {
+                        Row(Modifier.fillMaxWidth().height(160.dp)) {
                             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(4.dp)) {
                                 Text("Backlinks", style = MaterialTheme.typography.labelLarge)
                                 if (backlinks.isEmpty()) Text("(none)", style = MaterialTheme.typography.bodySmall)
                                 backlinks.forEach { e ->
-                                    Text(NotePaths.titleOf(e.fromPath), Modifier.clickable { openNote(e.fromPath) }, style = MaterialTheme.typography.bodySmall)
+                                    Text(NotePaths.titleOf(e.fromPath), Modifier.heightIn(min = 48.dp).clickable { openNote(e.fromPath) }.padding(vertical = 12.dp), style = MaterialTheme.typography.bodySmall)
+                                }
+                                Text("Unlinked mentions", style = MaterialTheme.typography.labelLarge)
+                                if (mentions.isEmpty()) Text("(none)", style = MaterialTheme.typography.bodySmall)
+                                mentions.take(50).forEach { m ->
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("${NotePaths.titleOf(m.path)}: ${m.snippet}", Modifier.weight(1f).clickable { openNote(m.path) },
+                                            style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                                        TextButton(onClick = { linkMention(m) }) { Text("Link") }
+                                    }
                                 }
                             }
                             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(4.dp)) {
                                 Text("Outgoing", style = MaterialTheme.typography.labelLarge)
                                 outgoing.forEach { e ->
                                     val label = e.toTarget + if (e.toPath == null) " ?" else ""
-                                    Text(label, Modifier.clickable {
-                                        e.toPath?.let { openNote(it) } ?: run {
-                                            val created = v.newNote(e.toTarget)
-                                            openNote(created)
-                                        }
-                                    }, style = MaterialTheme.typography.bodySmall)
+                                    Text(label, Modifier.heightIn(min = 48.dp).clickable {
+                                        e.toPath?.let { openNote(it) } ?: newNoteThenOpen(e.toTarget)
+                                    }.padding(vertical = 12.dp), style = MaterialTheme.typography.bodySmall)
                                 }
                                 Text("Tags", style = MaterialTheme.typography.labelLarge)
                                 Text(tags.joinToString { "#${it.name}" }.ifBlank { "(none)" }, style = MaterialTheme.typography.bodySmall)
+                                if (taskStats.open + taskStats.done > 0) {
+                                    Text("Tasks", style = MaterialTheme.typography.labelLarge)
+                                    Text("${taskStats.done} of ${taskStats.open + taskStats.done} done", style = MaterialTheme.typography.bodySmall)
+                                }
+                                Text("Outline", style = MaterialTheme.typography.labelLarge)
+                                if (outline.isEmpty()) Text("(no headings)", style = MaterialTheme.typography.bodySmall)
+                                outline.forEach { h ->
+                                    Text("  ".repeat(h.level - 1) + h.text, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                                }
                             }
                         }
                     }
@@ -348,7 +469,7 @@ fun NotesVaultPane(onEvent: (UiEvent) -> Unit) {
                     OutlinedTextField(q, { q = it }, label = { Text("Note title") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     LazyColumn(Modifier.height(240.dp)) {
                         items(suggestions) { title ->
-                            Text(title, Modifier.fillMaxWidth().clickable {
+                            Text(title, Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable {
                                 v.index.pathForTitle(title)?.let { openNote(it) }
                                 showSwitcher = false
                             }.padding(8.dp))
@@ -357,6 +478,41 @@ fun NotesVaultPane(onEvent: (UiEvent) -> Unit) {
                 }
             },
             confirmButton = { TextButton(onClick = { showSwitcher = false }) { Text("Close") } },
+        )
+    }
+    if (showRename && path != null) {
+        var newTitle by remember(path) { mutableStateOf(NotePaths.titleOf(path)) }
+        var busy by remember { mutableStateOf(false) }
+        AlertDialog(
+            onDismissRequest = { if (!busy) showRename = false },
+            title = { Text("Rename note") },
+            text = {
+                Column {
+                    OutlinedTextField(newTitle, { newTitle = it }, label = { Text("New title") }, singleLine = true)
+                    Text("Links to this note in other notes are updated too.", style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = !busy && newTitle.isNotBlank(), onClick = {
+                    busy = true
+                    val unsaved = if (dirty) body else null
+                    scope.launch {
+                        withContext(Dispatchers.IO) {
+                            runCatching {
+                                unsaved?.let { v.save(path, it) }
+                                v.renameNote(path, newTitle)
+                            }
+                        }.onSuccess { r ->
+                            dirty = false
+                            showRename = false
+                            onEvent(UiEvent.ShowMessage("Renamed; updated ${r.linksRewritten} link(s) in ${r.updatedNotes.size} note(s)"))
+                            openNote(r.newPath)
+                        }.onFailure { onEvent(UiEvent.ShowMessage("Rename failed: ${it.message}")) }
+                        busy = false
+                    }
+                }) { Text("Rename") }
+            },
+            dismissButton = { TextButton(enabled = !busy, onClick = { showRename = false }) { Text("Cancel") } },
         )
     }
     if (showNew) {
@@ -377,8 +533,7 @@ fun NotesVaultPane(onEvent: (UiEvent) -> Unit) {
             },
             confirmButton = {
                 TextButton(enabled = title.isNotBlank(), onClick = {
-                    val p = v.newNote(title.trim(), template)
-                    openNote(p); showNew = false
+                    newNoteThenOpen(title.trim(), template); showNew = false
                 }) { Text("Create") }
             },
             dismissButton = { TextButton(onClick = { showNew = false }) { Text("Cancel") } },

@@ -37,20 +37,23 @@ class WifiTransferController(private val io: FileIo) {
         session = null
     }
 
-    fun qrBitmap(content: String, size: Int = 512): Bitmap {
-        val bits = QRCodeWriter().encode(
-            content,
-            BarcodeFormat.QR_CODE,
-            size,
-            size,
-            mapOf(EncodeHintType.MARGIN to 1),
-        )
-        val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.RGB_565)
-        for (x in 0 until size) {
-            for (y in 0 until size) {
-                bmp.setPixel(x, y, if (bits[x, y]) Color.BLACK else Color.WHITE)
-            }
+    fun qrBitmap(content: String, size: Int = 512): Bitmap = renderQr(content, size)
+
+    companion object {
+        /** QR as a bitmap. One setPixels call instead of size² setPixel calls; UTF-8 so non-ASCII SSIDs work. */
+        fun renderQr(content: String, size: Int = 512): Bitmap {
+            val bits = QRCodeWriter().encode(
+                content,
+                BarcodeFormat.QR_CODE,
+                size,
+                size,
+                mapOf(EncodeHintType.MARGIN to 1, EncodeHintType.CHARACTER_SET to "UTF-8"),
+            )
+            val px = IntArray(size * size)
+            for (y in 0 until size) for (x in 0 until size) px[y * size + x] = if (bits[x, y]) Color.BLACK else Color.WHITE
+            val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.RGB_565)
+            bmp.setPixels(px, 0, size, 0, 0, size, size)
+            return bmp
         }
-        return bmp
     }
 }
