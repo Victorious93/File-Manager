@@ -16,6 +16,7 @@
 #include <android/log.h>
 #include <jni.h>
 #include <stdlib.h>
+#include <string.h>
 
 extern "C" {
 #ifdef __cplusplus
@@ -28,6 +29,7 @@ extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavutil/channel_layout.h>
 #include <libavutil/error.h>
+#include <libavutil/intreadwrite.h>
 #include <libavutil/opt.h>
 #include <libswresample/swresample.h>
 }
@@ -250,6 +252,28 @@ AVCodecContext* createContext(JNIEnv* env, const AVCodec* codec,
       return NULL;
     }
     env->GetByteArrayRegion(extraData, 0, size, (jbyte*)context->extradata);
+  }
+  // VictorFiles: WMA (ASF) streams need block_align / bit_rate, which the stock
+  // JNI cannot pass. Our AsfExtractor prefixes extradata with "VFWM" + three
+  // little-endian u32 (block_align, bit_rate, bits_per_coded_sample).
+  if ((context->codec_id == AV_CODEC_ID_WMAV1 ||
+       context->codec_id == AV_CODEC_ID_WMAV2 ||
+       context->codec_id == AV_CODEC_ID_WMAPRO) &&
+      context->extradata && context->extradata_size >= 16 &&
+      memcmp(context->extradata, "VFWM", 4) == 0) {
+    const uint8_t* e = context->extradata;
+    context->block_align = (int)AV_RL32(e + 4);
+    context->bit_rate = (int64_t)AV_RL32(e + 8);
+    context->bits_per_coded_sample = (int)AV_RL32(e + 12);
+    int rest = context->extradata_size - 16;
+    memmove(context->extradata, e + 16, rest);
+    memset(context->extradata + rest, 0, 16);
+    context->extradata_size = rest;
+    if (rawSampleRate > 0) context->sample_rate = rawSampleRate;
+    if (rawChannelCount > 0) {
+      av_channel_layout_uninit(&context->ch_layout);
+      av_channel_layout_default(&context->ch_layout, rawChannelCount);
+    }
   }
   if (context->codec_id == AV_CODEC_ID_PCM_MULAW ||
       context->codec_id == AV_CODEC_ID_PCM_ALAW) {

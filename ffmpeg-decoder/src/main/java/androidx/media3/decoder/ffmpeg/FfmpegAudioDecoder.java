@@ -190,6 +190,11 @@ import java.util.List;
         return getAlacExtraData(initializationData);
       case MimeTypes.AUDIO_VORBIS:
         return getVorbisExtraData(initializationData);
+      case FfmpegLibrary.MIME_WMAV1:
+      case FfmpegLibrary.MIME_WMAV2:
+      case FfmpegLibrary.MIME_WMAPRO:
+        // VictorFiles: "VFWM" header + WAVEFORMATEX extra bytes, built by AsfExtractor.
+        return initializationData.isEmpty() ? null : initializationData.get(0);
       default:
         // Other codecs do not require extra data.
         return null;

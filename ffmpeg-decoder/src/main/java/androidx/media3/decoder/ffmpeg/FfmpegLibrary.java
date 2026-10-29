@@ -28,6 +28,12 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 @UnstableApi
 public final class FfmpegLibrary {
 
+  // VictorFiles additions: sample MIME types emitted by the app's ASF (WMA) extractor.
+  public static final String MIME_WMAV1 = "audio/x-ms-wma-v1";
+  public static final String MIME_WMAV2 = "audio/x-ms-wma";
+  public static final String MIME_WMAPRO = "audio/x-ms-wma-pro";
+
+
   static {
     MediaLibraryInfo.registerModule("media3.decoder.ffmpeg");
   }
@@ -135,6 +141,12 @@ public final class FfmpegLibrary {
         return "dca";
       case MimeTypes.AUDIO_VORBIS:
         return "vorbis";
+      case MIME_WMAV1:
+        return "wmav1";
+      case MIME_WMAV2:
+        return "wmav2";
+      case MIME_WMAPRO:
+        return "wmapro";
       case MimeTypes.AUDIO_OPUS:
         return "opus";
       case MimeTypes.AUDIO_AMR_NB:
