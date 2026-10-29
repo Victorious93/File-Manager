@@ -16,4 +16,14 @@ class FileNoteIo : NoteIo {
     }
     override fun exists(path: String): Boolean = File(path).exists()
     override fun mkdir(path: String) { File(path).mkdirs() }
+    override fun rename(from: String, to: String): Boolean {
+        val src = File(from); val dst = File(to)
+        if (!src.isFile) return false
+        // Case-only rename on case-insensitive storage: go via a temp name.
+        if (src.absolutePath.equals(dst.absolutePath, ignoreCase = true) && src.absolutePath != dst.absolutePath) {
+            val tmp = File(src.parentFile, ".${src.name}.renaming")
+            return src.renameTo(tmp) && tmp.renameTo(dst)
+        }
+        return !dst.exists() && src.renameTo(dst)
+    }
 }

@@ -13,6 +13,8 @@ interface NoteIo {
     fun write(path: String, text: String)
     fun exists(path: String): Boolean
     fun mkdir(path: String)
+    /** Rename a note in place (same folder). Return false when unsupported. */
+    fun rename(from: String, to: String): Boolean = false
 }
 
 data class VaultConfig(
@@ -95,5 +97,34 @@ class Vault(private val io: NoteIo, var config: VaultConfig) {
             }
         }
         return out
+    }
+
+    /** All note bodies (path -> text). Call off the main thread. */
+    fun readAll(): Map<String, String> = io.listMarkdown(config.root).associateWith { runCatching { io.read(it) }.getOrDefault("") }
+
+    /**
+     * Rename [path] to [newTitle] (same folder) and rewrite every wikilink that pointed to it,
+     * Obsidian-style. Throws if the target exists or the rename fails.
+     */
+    fun renameNote(path: String, newTitle: String): RenameResult {
+        val clean = newTitle.trim()
+        require(clean.isNotEmpty() && clean.none { it in "/\\:*?\"<>|[]#^" }) { "Invalid note title" }
+        val oldTitle = NotePaths.titleOf(path)
+        val dir = path.substringBeforeLast('/', "")
+        val newPath = if (dir.isEmpty()) "$clean.md" else "$dir/$clean.md"
+        if (newPath == path) return RenameResult(path, emptyList(), 0)
+        if (!newPath.equals(path, ignoreCase = true)) require(!io.exists(newPath)) { "A note named $clean already exists" }
+        val linkers = index.backlinks(path).map { it.fromPath }.distinct()
+        check(io.rename(path, newPath)) { "Rename not supported for this vault" }
+        index.removeNote(path)
+        index.setNote(newPath, runCatching { io.read(newPath) }.getOrDefault(""))
+        val updated = mutableListOf<String>()
+        var total = 0
+        for (p in linkers) {
+            val src = if (p == path) newPath else p
+            val (nb, n) = NoteOps.rewriteLinks(io.read(src), oldTitle, clean)
+            if (n > 0) { io.write(src, nb); index.setNote(src, nb); updated += src; total += n }
+        }
+        return RenameResult(newPath, updated, total)
     }
 }

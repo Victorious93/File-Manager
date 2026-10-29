@@ -52,6 +52,13 @@ class SafNoteIo(private val context: Context, treeUri: Uri) : NoteIo {
 
     override fun mkdir(path: String) { ensureDir(path) }
 
+    /** Same-folder rename only (SAF has no cheap cross-folder move before API 24 providers). */
+    override fun rename(from: String, to: String): Boolean {
+        if (from.substringBeforeLast('/', "") != to.substringBeforeLast('/', "")) return false
+        val doc = find(from) ?: return false
+        return doc.renameTo(to.substringAfterLast('/'))
+    }
+
     private fun ensureDir(rel: String): DocumentFile {
         var cur = root
         if (rel.isBlank()) return cur

@@ -49,6 +49,10 @@ import androidx.compose.material.icons.outlined.Extension
 import androidx.compose.material.icons.outlined.Wifi
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.Restore
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.QrCode
+import androidx.compose.material.icons.automirrored.outlined.Label
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
@@ -105,6 +109,10 @@ sealed interface ToolRequest {
     data class Utilities(val selected: List<String>) : ToolRequest
     /** In-app manual (docs/MANUAL.md) with search. */
     data object Help : ToolRequest
+    data class CommandPalette(val selected: List<String>, val dir: String) : ToolRequest
+    data class Organize(val selected: List<String>, val dir: String) : ToolRequest
+    data class Snapshots(val selected: List<String>, val dir: String) : ToolRequest
+    data object WifiQrShare : ToolRequest
 }
 
 @Composable
@@ -124,6 +132,26 @@ fun ToolsPane(state: UiState, onEvent: (UiEvent) -> Unit) {
                 modifier = Modifier.padding(16.dp),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+        item {
+            ToolItem(Icons.Outlined.Search, "Command palette", "Type a few letters to jump to any tool") {
+                onEvent(UiEvent.OpenTool(ToolRequest.CommandPalette(files.map { it.absolutePath }, dir)))
+            }
+        }
+        item {
+            ToolItem(Icons.AutoMirrored.Outlined.Label, "Colour tags & smart collections", "Label files by colour; live saved searches (${files.size} selected)") {
+                onEvent(UiEvent.OpenTool(ToolRequest.Organize(files.map { it.absolutePath }, dir)))
+            }
+        }
+        item {
+            ToolItem(Icons.Outlined.History, "File version snapshots", "Keep, diff and restore earlier versions (${files.size} selected)") {
+                onEvent(UiEvent.OpenTool(ToolRequest.Snapshots(files.map { it.absolutePath }, dir)))
+            }
+        }
+        item {
+            ToolItem(Icons.Outlined.QrCode, "Share Wi-Fi as QR", "Let another phone join a network by scanning") {
+                onEvent(UiEvent.OpenTool(ToolRequest.WifiQrShare))
+            }
         }
         item {
             ToolItem(Icons.AutoMirrored.Outlined.HelpOutline, "Help & manual", "The full user manual, searchable, works offline") {
@@ -304,6 +332,10 @@ fun ToolHost(request: ToolRequest, onClose: () -> Unit, onEvent: (UiEvent) -> Un
         is ToolRequest.TranslateStrings -> TranslateStringsScreen(request.paths, request.dir, onClose, onEvent)
         is ToolRequest.Utilities -> UtilitiesScreen(request.selected, onClose)
         ToolRequest.Help -> HelpScreen(onClose)
+        is ToolRequest.CommandPalette -> CommandPaletteScreen(request.selected, request.dir, onClose, onEvent)
+        is ToolRequest.Organize -> OrganizeScreen(request.selected, request.dir, onClose, onEvent)
+        is ToolRequest.Snapshots -> SnapshotsScreen(request.selected, onClose, onEvent)
+        ToolRequest.WifiQrShare -> WifiQrScreen(onClose)
     }
 }
 

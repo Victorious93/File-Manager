@@ -82,7 +82,7 @@ object MediaProEngine : MediaRemote {
         player?.let { return it }
         val p = ExoPlayer.Builder(context)
             .setRenderersFactory(FfmpegRenderers.factory(context))
-            .setMediaSourceFactory(DefaultMediaSourceFactory(RoutingDataSourceFactory(context)))
+            .setMediaSourceFactory(DefaultMediaSourceFactory(RoutingDataSourceFactory(context), ai.victorious.filemanager.media.extractors.VfExtractorsFactory()))
             .setHandleAudioBecomingNoisy(true)
             .setAudioAttributes(
                 androidx.media3.common.AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(),
