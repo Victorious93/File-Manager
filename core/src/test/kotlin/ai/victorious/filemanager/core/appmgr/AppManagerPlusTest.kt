@@ -80,7 +80,17 @@ class AppManagerPlusTest {
         assertEquals(listOf("pm unsuspend --user 0 'a.b'"), BatchOpsPlus.unfreeze(listOf("a.b")).commands)
         assertEquals(listOf("pm uninstall -k --user 0 'a.b'"), BatchOpsPlus.uninstall(listOf("a.b"), keepData = true).commands)
         assertEquals(listOf("pm clear --cache-only --user 0 'a.b'"), BatchOpsPlus.clearCache(listOf("a.b"), PrivilegeBackend.SHIZUKU, 34).commands)
-        assertTrue(BatchOpsPlus.clearCache(listOf("a.b"), PrivilegeBackend.ROOT, 30).commands[0].startsWith("rm -rf /data/user/0/a.b/cache/*"))
+        val rootClear = BatchOpsPlus.clearCache(listOf("a.b"), PrivilegeBackend.ROOT, 30).commands.single()
+        assertFalse(rootClear.contains("*"))
+        for (dir in listOf(
+            "/data/user/0/a.b/cache",
+            "/data/user/0/a.b/code_cache",
+            "/data/user_de/0/a.b/cache",
+            "/data/user_de/0/a.b/code_cache",
+        )) {
+            assertTrue(rootClear.contains(BatchOpsPlus.clearCacheDir(dir)))
+            assertTrue(rootClear.contains("[ ! -L '$dir' ]"))
+        }
         assertEquals(listOf("cmd appops reset 'a.b'"), BatchOpsPlus.resetAppOps(listOf("a.b")).commands)
     }
 
@@ -88,6 +98,9 @@ class AppManagerPlusTest {
         assertTrue(runCatching { BatchOpsPlus.clearCache(listOf("a.b"), PrivilegeBackend.SHIZUKU, 33) }.isFailure)
         assertTrue(runCatching { BatchOpsPlus.clearCache(listOf("a.b"), PrivilegeBackend.NORMAL, 34) }.isFailure)
         assertTrue(runCatching { BatchOpsPlus.clearCache(listOf("a;b"), PrivilegeBackend.ROOT, 34) }.isFailure)
+        assertTrue(runCatching { BatchOpsPlus.clearCache(listOf(".."), PrivilegeBackend.ROOT, 34) }.isFailure)
+        assertTrue(runCatching { BatchOpsPlus.clearCache(listOf("."), PrivilegeBackend.ROOT, 34) }.isFailure)
+        assertTrue(runCatching { BatchOpsPlus.clearCache(listOf("a.b"), PrivilegeBackend.ROOT, 34, user = -1) }.isFailure)
     }
 
     @Test fun appOpsForegroundAndCatalog() {

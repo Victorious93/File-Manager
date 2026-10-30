@@ -203,16 +203,33 @@ object InstallCommands {
 
 /** More multi-app actions on top of [BatchOps]. Each returns shell commands for a confirm-then-run plan. */
 object BatchOpsPlus {
+    private val PKG = Regex("""^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$""")
+
     fun unfreeze(pkgs: List<String>, user: Int = 0) = BatchPlan("Unfreeze apps", pkgs, pkgs.map { AppState.unsuspend(it, user) })
     fun clearData(pkgs: List<String>, user: Int = 0) = BatchPlan("Clear data", pkgs, pkgs.map { AppState.clearData(it, user) })
 
+    /**
+     * Delete the children of one cache directory.
+     *
+     * The directory must be a real directory. An app owns its data dir and can replace
+     * cache with a symlink; a shell glob of that path then deletes the link target
+     * (another app, or /data). test -d follows links too, so also require the path
+     * is not a symlink.
+     */
+    internal fun clearCacheDir(dir: String): String {
+        val q = ShellCommands.quote(dir)
+        return "if [ -d $q ] && [ ! -L $q ]; then find $q -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +; fi"
+    }
+
     /** Root deletes cache dirs directly; Shizuku uses `pm clear --cache-only` (Android 14+). */
     fun clearCache(pkgs: List<String>, backend: PrivilegeBackend, sdk: Int, user: Int = 0): BatchPlan {
+        require(user >= 0) { "Bad user id" }
         val cmds = when {
             backend == PrivilegeBackend.ROOT -> pkgs.map { p ->
-                require(p.matches(Regex("""^[A-Za-z0-9_.]+$"""))) { "Bad package name: $p" }
-                val q = p
-                "rm -rf /data/user/$user/$q/cache/* /data/user/$user/$q/code_cache/* /data/user_de/$user/$q/cache/* /data/user_de/$user/$q/code_cache/*"
+                require(PKG.matches(p)) { "Bad package name: $p" }
+                listOf("cache", "code_cache").flatMap { name ->
+                    listOf("/data/user/$user/$p/$name", "/data/user_de/$user/$p/$name")
+                }.joinToString("; ") { clearCacheDir(it) }
             }
             backend == PrivilegeBackend.SHIZUKU && sdk >= 34 -> pkgs.map { "pm clear --cache-only --user $user ${ShellCommands.quote(it)}" }
             backend == PrivilegeBackend.SHIZUKU -> throw IllegalStateException("Clearing one app's cache via Shizuku needs Android 14+. Use Root, or clear it in system settings.")
