@@ -156,4 +156,16 @@ class WifiTransferServerTest {
         assertEquals("data", get("$base/a.txt", mapOf("X-Wifi-Pin" to "4321")).second)
         assertTrue(File(root, "x.txt").exists().not())
     }
+
+    @Test
+    fun listingPageUsesTheFleetDarkTheme() = withServer { base, _, root ->
+        File(root, "sub").mkdirs()
+        val (code, body) = get("$base/")
+        assertEquals(200, code)
+        assertTrue(body.contains("background:#0B0F1A"))
+        assertTrue(body.contains("#00E5FF"))
+        assertTrue(body.contains("#FF2BD6"))
+        assertTrue(body.contains("color-scheme"))
+        assertFalse(body.contains("#fff;") || body.contains("background:white"))
+    }
 }

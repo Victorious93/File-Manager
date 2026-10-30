@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
@@ -52,6 +53,58 @@ internal val LightColors = lightColorScheme(
     error = Color(0xFFBA1A1A),
     outline = Color(0xFFC5D0DA),
 )
+
+/** Fleet dark palette: Don's house style. Background #0B0F1A, cyan accent, magenta secondary. */
+object FleetDark {
+    val Background = Color(0xFF0B0F1A)
+    val Surface = Color(0xFF121829)
+    val SurfaceHigh = Color(0xFF1A2236)
+    val Cyan = Color(0xFF00E5FF)
+    val Magenta = Color(0xFFFF2BD6)
+    val OnDark = Color(0xFFE6F1FF)
+    val Muted = Color(0xFF9AA8C2)
+}
+
+/** The fleet dark scheme, for screens that must never render light (Wi-Fi transfer, network, tools). */
+internal val FleetDarkColors = darkColorScheme(
+    primary = FleetDark.Cyan,
+    onPrimary = FleetDark.Background,
+    primaryContainer = Color(0xFF003D47),
+    onPrimaryContainer = Color(0xFFB8F6FF),
+    secondary = FleetDark.Magenta,
+    onSecondary = FleetDark.Background,
+    secondaryContainer = Color(0xFF4A0D3F),
+    onSecondaryContainer = Color(0xFFFFD6F5),
+    tertiary = FleetDark.Magenta,
+    onTertiary = FleetDark.Background,
+    background = FleetDark.Background,
+    onBackground = FleetDark.OnDark,
+    surface = FleetDark.Background,
+    onSurface = FleetDark.OnDark,
+    surfaceVariant = FleetDark.SurfaceHigh,
+    onSurfaceVariant = FleetDark.Muted,
+    surfaceContainerLowest = FleetDark.Background,
+    surfaceContainerLow = Color(0xFF0F1422),
+    surfaceContainer = FleetDark.Surface,
+    surfaceContainerHigh = FleetDark.SurfaceHigh,
+    surfaceContainerHighest = Color(0xFF222B42),
+    error = Color(0xFFFFB4AB),
+    outline = Color(0xFF34405C),
+    outlineVariant = Color(0xFF242E45),
+)
+
+/** Draws [content] in the fleet dark scheme on a full-size #0B0F1A surface, whatever the app theme is. */
+@Composable
+fun FleetDarkScreen(content: @Composable () -> Unit) {
+    MaterialTheme(colorScheme = FleetDarkColors, shapes = AppShapes) {
+        androidx.compose.material3.Surface(
+            modifier = androidx.compose.ui.Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background,
+            contentColor = MaterialTheme.colorScheme.onBackground,
+            content = content,
+        )
+    }
+}
 
 /** True dark: black background/surfaces for OLED panels, keeping the dark-scheme contrast. */
 internal fun ColorScheme.amoled(): ColorScheme = copy(
