@@ -29,7 +29,7 @@ object PermissionOps {
 
 /** AppOps management via `appops`/`cmd appops` (Shizuku/root). */
 object AppOpsManagerOps {
-    enum class Mode(val cli: String) { ALLOW("allow"), DENY("deny"), IGNORE("ignore"), DEFAULT("default") }
+    enum class Mode(val cli: String) { ALLOW("allow"), DENY("deny"), IGNORE("ignore"), DEFAULT("default"), FOREGROUND("foreground") }
 
     fun set(pkg: String, op: String, mode: Mode): String = "cmd appops set ${ShellCommands.quote(pkg)} ${ShellCommands.quote(op)} ${mode.cli}"
     fun get(pkg: String): String = "cmd appops get ${ShellCommands.quote(pkg)}"
@@ -39,7 +39,7 @@ object AppOpsManagerOps {
     fun parse(text: String): Map<String, Mode> {
         val out = linkedMapOf<String, Mode>()
         for (raw in text.lineSequence()) {
-            val m = Regex("""^\s*([A-Z_]+):\s*(allow|deny|ignore|default)""").find(raw) ?: continue
+            val m = Regex("""^\s*([A-Z_]+):\s*(allow|deny|ignore|default|foreground)""").find(raw) ?: continue
             out[m.groupValues[1]] = Mode.entries.first { it.cli == m.groupValues[2] }
         }
         return out
