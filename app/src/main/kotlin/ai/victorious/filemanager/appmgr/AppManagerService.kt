@@ -1,6 +1,20 @@
 package ai.victorious.filemanager.appmgr
 
 import ai.victorious.filemanager.core.appmgr.AppComponent
+import ai.victorious.filemanager.core.appmgr.AppOpCatalog
+import ai.victorious.filemanager.core.appmgr.BatchOpsPlus
+import ai.victorious.filemanager.core.appmgr.DexClassLister
+import ai.victorious.filemanager.core.appmgr.ExodusTrackers
+import ai.victorious.filemanager.core.appmgr.InstallCommands
+import ai.victorious.filemanager.core.appmgr.InstallOptions
+import ai.victorious.filemanager.core.appmgr.LibraryHit
+import ai.victorious.filemanager.core.appmgr.LibrarySignatures
+import ai.victorious.filemanager.core.appmgr.NetUsage
+import ai.victorious.filemanager.core.appmgr.NetUsageAggregator
+import ai.victorious.filemanager.core.appmgr.PrivilegeStatus
+import ai.victorious.filemanager.core.appmgr.TrackerSignature
+import ai.victorious.filemanager.core.appmgr.TrackerSignatures
+import ai.victorious.filemanager.core.priv.ShizukuState
 import ai.victorious.filemanager.core.appmgr.AppOpsManagerOps
 import ai.victorious.filemanager.core.appmgr.AppProfile
 import ai.victorious.filemanager.core.appmgr.AppState
@@ -84,7 +98,43 @@ class AppManagerService(private val context: Context, private val privilege: Pri
     /** Class names from the package's own components + declared libraries — enough for tracker prefixes. */
     fun classHints(pkg: String): List<String> = components(pkg).map { it.className }
 
-    fun scanTrackers(pkg: String): List<TrackerHit> = TrackerScanner.scan(classHints(pkg))
+    /** Real code scan: every class in the APK's dex files (base + splits), plus manifest components. */
+    fun dexClasses(pkg: String): List<String> {
+        val ai = runCatching { pm.getApplicationInfo(pkg, 0) }.getOrNull() ?: return emptyList()
+        val files = (listOfNotNull(ai.sourceDir) + (ai.splitSourceDirs?.toList() ?: emptyList())).map(::File)
+        return DexClassLister.classes(files)
+    }
+
+    fun scanTrackers(pkg: String): List<TrackerHit> =
+        TrackerScanner.scan((dexClasses(pkg) + classHints(pkg)).distinct(), trackerSignatures())
+
+    fun scanLibraries(pkg: String): List<LibraryHit> = LibrarySignatures.scan(dexClasses(pkg))
+
+    // ---- Exodus Privacy tracker list (ODbL/DbCL, downloaded on demand, never bundled) ----
+    private val exodusFile = File(context.filesDir, "exodus_trackers.json")
+    @Volatile private var exodusCache: List<TrackerSignature>? = null
+
+    fun exodusCount(): Int = exodusSignatures().size
+    private fun exodusSignatures(): List<TrackerSignature> = exodusCache ?: runCatching {
+        ExodusTrackers.parse(exodusFile.readText()).signatures
+    }.getOrDefault(emptyList()).also { exodusCache = it }
+
+    fun trackerSignatures(): List<TrackerSignature> = ExodusTrackers.merge(TrackerSignatures.ALL, exodusSignatures())
+
+    /** Downloads the Exodus list. Returns how many usable signatures it holds. Call off the main thread. */
+    fun updateExodus(): Int {
+        val conn = java.net.URL(ExodusTrackers.URL).openConnection() as java.net.HttpURLConnection
+        conn.connectTimeout = 15_000; conn.readTimeout = 30_000
+        try {
+            if (conn.responseCode != 200) error("Exodus returned HTTP ${conn.responseCode}")
+            val text = conn.inputStream.bufferedReader().readText()
+            val parsed = ExodusTrackers.parse(text)
+            if (parsed.signatures.isEmpty()) error("Exodus list had no usable signatures")
+            val tmp = File(exodusFile.path + ".tmp"); tmp.writeText(text); tmp.renameTo(exodusFile)
+            exodusCache = parsed.signatures
+            return parsed.signatures.size
+        } finally { conn.disconnect() }
+    }
 
     fun permissions(pkg: String): List<Pair<String, Boolean>> {
         val requested = runCatching {
@@ -154,6 +204,66 @@ class AppManagerService(private val context: Context, private val privilege: Pri
         if (comps.isEmpty()) return BatchPlan("No tracker components", emptyList(), emptyList())
         return planBlock(comps)
     }
+    fun planUnfreeze(pkgs: List<String>) = BatchOpsPlus.unfreeze(pkgs).also { requireElevated("unfreeze") }
+    fun planClearDataMany(pkgs: List<String>) = BatchOpsPlus.clearData(pkgs).also { requireElevated("clear data") }
+    fun planClearCache(pkgs: List<String>): BatchPlan {
+        requireElevated("clear cache")
+        return BatchOpsPlus.clearCache(pkgs, privilege.backend(), Build.VERSION.SDK_INT)
+    }
+    fun planUninstall(pkgs: List<String>, keepData: Boolean) = BatchOpsPlus.uninstall(pkgs, keepData).also { requireElevated("uninstall silently") }
+    fun planReinstallExisting(pkgs: List<String>) = BatchOpsPlus.reinstallExisting(pkgs).also { requireElevated("restore apps") }
+    fun planResetAppOps(pkgs: List<String>) = BatchOpsPlus.resetAppOps(pkgs).also { requireElevated("reset app ops") }
+    fun planAddAppOp(pkg: String, op: String, mode: AppOpsManagerOps.Mode): BatchPlan {
+        require(AppOpCatalog.valid(op)) { "Not a valid app op name: $op" }
+        return planAppOp(pkg, op, mode)
+    }
+    fun planInstall(apkPath: String, o: InstallOptions): BatchPlan {
+        requireElevated("install with options")
+        val cmds = InstallCommands.plan(apkPath, o, Build.VERSION.SDK_INT, System.currentTimeMillis())
+        return BatchPlan("Install ${File(apkPath).name}", listOf(cmds[1]), cmds)
+    }
+
+    /** Batch APK backup via the existing AppBackupService (APK only — no data). */
+    fun backupApks(pkgs: List<String>, destDir: File): Pair<Int, List<String>> {
+        val svc = ai.victorious.filemanager.apps.AppBackupService(context, privilege)
+        val all = svc.listInstalled().associateBy { it.packageName }
+        val errors = ArrayList<String>(); var ok = 0
+        destDir.mkdirs()
+        for (p in pkgs) {
+            val a = all[p] ?: run { errors += "$p: APK not readable"; null } ?: continue
+            runCatching { svc.backup(a, destDir, asApksBundle = a.apkPaths.size > 1, includeData = false) }
+                .onSuccess { ok++ }.onFailure { errors += "$p: ${it.message}" }
+        }
+        return ok to errors
+    }
+
+    fun privilegeBanner(shizuku: ShizukuState): PrivilegeStatus.Banner = PrivilegeStatus.banner(privilege.availability(), shizuku)
+    fun blockReason(need: PrivilegeStatus.Need): String? = PrivilegeStatus.blockReason(need, privilege.backend())
+
+    /** Mobile + Wi-Fi bytes per uid over [startMs, endMs]. Needs usage access. Per-uid mobile stats may be empty without READ_PHONE_STATE on some OEMs. */
+    fun dataUsage(startMs: Long, endMs: Long): List<NetUsage> {
+        if (!hasUsageAccess()) return emptyList()
+        val nsm = context.getSystemService(Context.NETWORK_STATS_SERVICE) as android.app.usage.NetworkStatsManager
+        val rows = ArrayList<NetUsage>()
+        fun collect(type: Int, mobile: Boolean) = runCatching {
+            nsm.querySummary(type, null, startMs, endMs).use { st ->
+                val b = android.app.usage.NetworkStats.Bucket()
+                while (st.hasNextBucket()) {
+                    st.getNextBucket(b)
+                    rows += if (mobile) NetUsage(b.uid, mobileRx = b.rxBytes, mobileTx = b.txBytes)
+                    else NetUsage(b.uid, wifiRx = b.rxBytes, wifiTx = b.txBytes)
+                }
+            }
+        }
+        @Suppress("DEPRECATION") collect(android.net.ConnectivityManager.TYPE_MOBILE, true)
+        @Suppress("DEPRECATION") collect(android.net.ConnectivityManager.TYPE_WIFI, false)
+        return NetUsageAggregator.merge(rows)
+    }
+
+    fun labelForUid(uid: Int): String = pm.getPackagesForUid(uid)?.firstOrNull()?.let { p ->
+        runCatching { pm.getApplicationLabel(pm.getApplicationInfo(p, 0)).toString() }.getOrDefault(p)
+    } ?: when (uid) { -4 -> "Removed apps"; -5 -> "Tethering"; 1000 -> "Android system"; else -> "uid $uid" }
+
     fun planProfile(profile: AppProfile) = ProfileRunner.plan(profile).let { BatchPlan(profile.name, it.summary, it.commands) }
         .also { requireElevated("apply profile") }
 

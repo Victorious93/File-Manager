@@ -44,3 +44,5 @@ list content is independent.
 
 `core/.../appmgr/AppManagerProTest.kt` — IFW XML, pm quoting, permission/AppOps parsers, tracker
 prefix matching, logcat filter, usage merge/sort, `ps` parse, profile codec/plan, batch plans.
+
+> See also [APPMANAGER.md](APPMANAGER.md) for the AppManager parity pass (added features, skips, licence notes).

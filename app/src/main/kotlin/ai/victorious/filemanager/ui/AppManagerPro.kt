@@ -21,6 +21,7 @@ import android.content.Intent
 import android.provider.Settings
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -39,6 +40,14 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import ai.victorious.filemanager.core.appmgr.AppOpCatalog
+import ai.victorious.filemanager.core.appmgr.ExodusTrackers
+import ai.victorious.filemanager.core.appmgr.InstallOptions
+import ai.victorious.filemanager.core.appmgr.LibraryHit
+import ai.victorious.filemanager.core.appmgr.NetUsage
+import ai.victorious.filemanager.core.appmgr.NetUsageAggregator
+import ai.victorious.filemanager.core.appmgr.PrivilegeStatus
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -69,11 +78,7 @@ fun AppManagerProPane(onEvent: (UiEvent) -> Unit) {
     val titles = listOf("Apps", "Trackers", "Logcat", "Usage", "Running", "Profiles", "Backup")
     Column(Modifier.fillMaxSize().padding(8.dp)) {
         Text("App Manager Pro", style = MaterialTheme.typography.titleLarge)
-        Text(
-            if (service.needsPrivilege()) "Privilege: ${app.privilege.backend()}"
-            else "Root or Shizuku required for block / freeze / permissions / AppOps",
-            style = MaterialTheme.typography.bodySmall,
-        )
+        PrivilegeBanner(service, app, onEvent)
         TabRow(tab) { titles.forEachIndexed { i, t -> Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t) }) } }
         when (tab) {
             0 -> AppsTab(service, onEvent)
@@ -89,6 +94,75 @@ fun AppManagerProPane(onEvent: (UiEvent) -> Unit) {
             }
         }
     }
+}
+
+/** Clear Root / Shizuku / Limited state, with the one action that fixes it. */
+@Composable
+private fun PrivilegeBanner(service: AppManagerService, app: FileManagerApplication, onEvent: (UiEvent) -> Unit) {
+    val shizuku by app.shizuku.state.collectAsState()
+    var banner by remember { mutableStateOf<PrivilegeStatus.Banner?>(null) }
+    LaunchedEffect(shizuku) { banner = withContext(Dispatchers.IO) { service.privilegeBanner(shizuku) } }
+    val b = banner ?: return
+    val color = when (b.level) {
+        PrivilegeStatus.Level.ROOT -> MaterialTheme.colorScheme.primary
+        PrivilegeStatus.Level.SHIZUKU -> MaterialTheme.colorScheme.tertiary
+        PrivilegeStatus.Level.LIMITED -> MaterialTheme.colorScheme.error
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(b.title, color = color, style = MaterialTheme.typography.labelLarge)
+            Text(b.detail, style = MaterialTheme.typography.bodySmall)
+        }
+        b.action?.let { label ->
+            TextButton(onClick = {
+                if (label == "Grant Shizuku") app.privilege.requestShizukuPermission()
+                else onEvent(UiEvent.Navigate(Dest.SETTINGS))
+            }) { Text(label) }
+        }
+    }
+}
+
+/** A button that stays visible but disabled with the reason when the needed privilege is missing. */
+@Composable
+private fun GatedButton(label: String, need: PrivilegeStatus.Need, service: AppManagerService, onEvent: (UiEvent) -> Unit, onClick: () -> Unit) {
+    val reason = remember(need) { service.blockReason(need) }
+    TextButton(onClick = { if (reason != null) onEvent(UiEvent.ShowMessage("$label: $reason")) else onClick() }) {
+        Text(if (reason != null) "$label 🔒" else label)
+    }
+}
+
+@Composable
+private fun InstallDialog(service: AppManagerService, onEvent: (UiEvent) -> Unit, onPlan: (BatchPlan) -> Unit, onDismiss: () -> Unit) {
+    var path by remember { mutableStateOf("/sdcard/Download/") }
+    var installer by remember { mutableStateOf("") }
+    var downgrade by remember { mutableStateOf(false) }
+    var testOnly by remember { mutableStateOf(false) }
+    var grant by remember { mutableStateOf(false) }
+    var bypass by remember { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Install APK with options") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                OutlinedTextField(path, { path = it }, label = { Text("APK path (.apk)") }, singleLine = true)
+                OutlinedTextField(installer, { installer = it }, label = { Text("Installer package (optional)") }, singleLine = true)
+                FilterChip(downgrade, { downgrade = !downgrade }, label = { Text("Allow downgrade") })
+                FilterChip(testOnly, { testOnly = !testOnly }, label = { Text("Allow test-only") })
+                FilterChip(grant, { grant = !grant }, label = { Text("Grant all runtime permissions") })
+                FilterChip(bypass, { bypass = !bypass }, label = { Text("Bypass low target SDK block (Android 14+)") })
+                Text("Needs Root or Shizuku. For split bundles (.apks) use the normal installer.", style = MaterialTheme.typography.bodySmall)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                runCatching {
+                    service.planInstall(path.trim(), InstallOptions(downgrade = downgrade, testOnly = testOnly, grantAllPermissions = grant,
+                        installerPackage = installer.trim().ifBlank { null }, bypassLowTargetSdk = bypass))
+                }.onSuccess { onDismiss(); onPlan(it) }.onFailure { onEvent(UiEvent.ShowMessage(it.message ?: "")) }
+            }) { Text("Review") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 @Composable
@@ -112,6 +186,8 @@ private fun AppsTab(service: AppManagerService, onEvent: (UiEvent) -> Unit) {
     var detail by remember { mutableStateOf<AppManagerService.InstalledApp?>(null) }
     var plan by remember { mutableStateOf<BatchPlan?>(null) }
     var userOnly by remember { mutableStateOf(true) }
+    var installing by remember { mutableStateOf(false) }
+    val context = LocalContext.current
     fun reload() = scope.launch { apps = withContext(Dispatchers.IO) { service.listApps(includeSystem = !userOnly) } }
     LaunchedEffect(userOnly) { reload() }
     fun run(p: BatchPlan) { plan = p }
@@ -127,6 +203,7 @@ private fun AppsTab(service: AppManagerService, onEvent: (UiEvent) -> Unit) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(query, { query = it }, label = { Text("Search") }, modifier = Modifier.weight(1f), singleLine = true)
             FilterChip(userOnly, { userOnly = !userOnly }, label = { Text(if (userOnly) "User" else "All") })
+            GatedButton("Install…", PrivilegeStatus.Need.ELEVATED, service, onEvent) { installing = true }
         }
         if (selected.isNotEmpty()) {
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -135,6 +212,23 @@ private fun AppsTab(service: AppManagerService, onEvent: (UiEvent) -> Unit) {
                 TextButton(onClick = { runCatching { run(service.planForceStop(selected.toList())) }.onFailure { onEvent(UiEvent.ShowMessage(it.message ?: "")) } }) { Text("Force-stop") }
                 TextButton(onClick = { runCatching { run(service.planSuspend(selected.toList())) }.onFailure { onEvent(UiEvent.ShowMessage(it.message ?: "")) } }) { Text("Freeze") }
                 TextButton(onClick = { selected = emptySet() }) { Text("Clear") }
+            }
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                val sel = selected.toList()
+                fun tryPlan(f: () -> BatchPlan) = runCatching { run(f()) }.onFailure { onEvent(UiEvent.ShowMessage(it.message ?: "")) }
+                GatedButton("Unfreeze", PrivilegeStatus.Need.ELEVATED, service, onEvent) { tryPlan { service.planUnfreeze(sel) } }
+                GatedButton("Clear cache", PrivilegeStatus.Need.ELEVATED, service, onEvent) { tryPlan { service.planClearCache(sel) } }
+                GatedButton("Clear data", PrivilegeStatus.Need.ELEVATED, service, onEvent) { tryPlan { service.planClearDataMany(sel) } }
+                GatedButton("Uninstall", PrivilegeStatus.Need.ELEVATED, service, onEvent) { tryPlan { service.planUninstall(sel, keepData = false) } }
+                GatedButton("Restore", PrivilegeStatus.Need.ELEVATED, service, onEvent) { tryPlan { service.planReinstallExisting(sel) } }
+                GatedButton("Reset ops", PrivilegeStatus.Need.ELEVATED, service, onEvent) { tryPlan { service.planResetAppOps(sel) } }
+                TextButton(onClick = {
+                    scope.launch {
+                        val dir = File(context.getExternalFilesDir(null) ?: context.filesDir, "app-backups")
+                        val (ok, errs) = withContext(Dispatchers.IO) { service.backupApks(sel, dir) }
+                        onEvent(UiEvent.ShowMessage("Backed up $ok APK(s) to ${dir.path}" + if (errs.isEmpty()) "" else " · ${errs.size} failed: ${errs.first()}"))
+                    }
+                }) { Text("Backup APKs") }
             }
         }
         val rows = apps.filter { query.isBlank() || it.label.contains(query, true) || it.packageName.contains(query, true) }
@@ -152,6 +246,7 @@ private fun AppsTab(service: AppManagerService, onEvent: (UiEvent) -> Unit) {
             }
         }
     }
+    if (installing) InstallDialog(service, onEvent, onPlan = { run(it) }, onDismiss = { installing = false })
     detail?.let { a -> AppDetailDialog(a, service, onEvent, onPlan = { run(it) }, onClose = { detail = null }) }
     ConfirmPlan(plan, onConfirm = ::go, onDismiss = { plan = null })
 }
@@ -169,20 +264,30 @@ private fun AppDetailDialog(
     var perms by remember { mutableStateOf<List<Pair<String, Boolean>>>(emptyList()) }
     var trackers by remember { mutableStateOf<List<TrackerHit>>(emptyList()) }
     var ops by remember { mutableStateOf<Map<String, AppOpsManagerOps.Mode>>(emptyMap()) }
+    var libs by remember { mutableStateOf<List<LibraryHit>?>(null) }
+    var newOp by remember { mutableStateOf("") }
     LaunchedEffect(a.packageName) {
         withContext(Dispatchers.IO) {
             comps = service.components(a.packageName)
             perms = service.permissions(a.packageName)
-            trackers = service.scanTrackers(a.packageName)
             ops = service.appOps(a.packageName)
+            trackers = service.scanTrackers(a.packageName)
+            libs = service.scanLibraries(a.packageName)
         }
     }
     AlertDialog(
         onDismissRequest = onClose,
         title = { Text(a.label) },
         text = {
-            Column {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
                 Text(a.packageName, style = MaterialTheme.typography.bodySmall)
+                Text(
+                    when (val l = libs) {
+                        null -> "Scanning code for trackers and libraries…"
+                        else -> if (l.isEmpty()) "Libraries: none recognised" else "Libraries: " + l.joinToString { "${it.library.name} (${it.library.kind})" }
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                )
                 Text("Components: ${comps.size} · Trackers: ${trackers.size} · Permissions: ${perms.size}")
                 if (trackers.isNotEmpty()) Text("Trackers: " + trackers.joinToString { it.tracker.name }, style = MaterialTheme.typography.bodySmall)
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -223,13 +328,31 @@ private fun AppDetailDialog(
                     ops.entries.take(20).forEach { (op, mode) ->
                         Row {
                             Text("$op=${mode.cli}", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                            TextButton(onClick = {
-                                runCatching { onPlan(service.planAppOp(a.packageName, op, AppOpsManagerOps.Mode.DENY)) }
-                                    .onFailure { onEvent(UiEvent.ShowMessage(it.message ?: "")) }
-                            }) { Text("Deny") }
+                            AppOpsManagerOps.Mode.entries.filter { it != mode }.forEach { m ->
+                                TextButton(onClick = {
+                                    runCatching { onPlan(service.planAppOp(a.packageName, op, m)) }
+                                        .onFailure { onEvent(UiEvent.ShowMessage(it.message ?: "")) }
+                                }) { Text(m.cli) }
+                            }
                         }
                     }
                 }
+                Text("Add / reset app ops", style = MaterialTheme.typography.labelLarge)
+                Row(Modifier.horizontalScroll(rememberScrollState())) {
+                    AppOpCatalog.COMMON.filter { it !in ops }.take(12).forEach { op ->
+                        FilterChip(newOp == op, { newOp = op }, label = { Text(op) })
+                    }
+                }
+                Row {
+                    OutlinedTextField(newOp, { newOp = it.uppercase() }, label = { Text("Op name") }, singleLine = true, modifier = Modifier.weight(1f))
+                    TextButton(enabled = newOp.isNotBlank(), onClick = {
+                        runCatching { onPlan(service.planAddAppOp(a.packageName, newOp.trim(), AppOpsManagerOps.Mode.IGNORE)) }
+                            .onFailure { onEvent(UiEvent.ShowMessage(it.message ?: "")) }
+                    }) { Text("Set ignore") }
+                }
+                TextButton(onClick = {
+                    runCatching { onPlan(service.planResetAppOps(listOf(a.packageName))) }.onFailure { onEvent(UiEvent.ShowMessage(it.message ?: "")) }
+                }) { Text("Reset all app ops to default") }
             }
         },
         confirmButton = { TextButton(onClick = onClose) { Text("Close") } },
@@ -241,10 +364,30 @@ private fun TrackersTab(service: AppManagerService, onEvent: (UiEvent) -> Unit) 
     val scope = rememberCoroutineScope()
     var rows by remember { mutableStateOf<List<Pair<AppManagerService.InstalledApp, List<TrackerHit>>>>(emptyList()) }
     var plan by remember { mutableStateOf<BatchPlan?>(null) }
-    LaunchedEffect(Unit) {
+    var exodus by remember { mutableIntStateOf(-1) }
+    var scanning by remember { mutableStateOf(true) }
+    var gen by remember { mutableIntStateOf(0) }
+    LaunchedEffect(gen) {
+        scanning = true
+        exodus = withContext(Dispatchers.IO) { service.exodusCount() }
         rows = withContext(Dispatchers.IO) {
             service.listApps(includeSystem = false).map { it to service.scanTrackers(it.packageName) }.filter { it.second.isNotEmpty() }
         }
+        scanning = false
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(if (scanning) "Scanning app code…" else "${rows.size} apps with trackers", style = MaterialTheme.typography.labelLarge)
+            Text(if (exodus > 0) "Built-in list + $exodus Exodus signatures. ${ExodusTrackers.ATTRIBUTION}" else "Built-in list only. Download the Exodus Privacy list for wider coverage.",
+                style = MaterialTheme.typography.bodySmall)
+        }
+        TextButton(enabled = !scanning, onClick = {
+            scope.launch {
+                runCatching { withContext(Dispatchers.IO) { service.updateExodus() } }
+                    .onSuccess { onEvent(UiEvent.ShowMessage("Exodus list updated: $it signatures")); gen++ }
+                    .onFailure { onEvent(UiEvent.ShowMessage("Exodus update failed: ${it.message}")) }
+            }
+        }) { Text("Update tracker list") }
     }
     LazyColumn {
         items(rows) { (a, hits) ->
@@ -308,10 +451,15 @@ private fun UsageTab(service: AppManagerService, onEvent: (UiEvent) -> Unit) {
     val context = LocalContext.current
     var rows by remember { mutableStateOf<List<AppUsage>>(emptyList()) }
     var sort by remember { mutableStateOf(UsageSort.TIME) }
+    var showData by remember { mutableStateOf(false) }
+    var net by remember { mutableStateOf<List<Pair<String, NetUsage>>>(emptyList()) }
     LaunchedEffect(Unit) {
         if (!service.hasUsageAccess()) return@LaunchedEffect
         val end = System.currentTimeMillis()
         rows = withContext(Dispatchers.IO) { service.usage(end - 7L * 24 * 3600_000, end) }
+        net = withContext(Dispatchers.IO) {
+            service.dataUsage(end - 30L * 24 * 3600_000, end).map { service.labelForUid(it.uid) to it }
+        }
     }
     Column {
         if (!service.hasUsageAccess()) {
@@ -321,6 +469,19 @@ private fun UsageTab(service: AppManagerService, onEvent: (UiEvent) -> Unit) {
                 onEvent(UiEvent.ShowMessage("Grant usage access, then reopen this tab"))
             }) { Text("Open usage access settings") }
         } else {
+            Row {
+                FilterChip(!showData, { showData = false }, label = { Text("Screen time (7d)") })
+                FilterChip(showData, { showData = true }, label = { Text("Data (30d)") })
+            }
+            if (showData) {
+                if (net.isEmpty()) Text("No data usage reported (some devices hide per-app mobile data).", style = MaterialTheme.typography.bodySmall)
+                LazyColumn {
+                    items(net) { (label, n) ->
+                        Text("$label: mobile ${NetUsageAggregator.formatBytes(n.mobile)} · Wi-Fi ${NetUsageAggregator.formatBytes(n.wifi)}", Modifier.padding(6.dp))
+                    }
+                }
+                return@Column
+            }
             Row { UsageSort.entries.forEach { s ->
                 FilterChip(sort == s, { sort = s }, label = { Text(s.name) })
             } }
