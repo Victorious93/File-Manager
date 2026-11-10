@@ -328,7 +328,8 @@ class SmokeTest {
     fun appManagerListsApps() {
         nav("Apps")
         // App Manager Pro opens on its own "Apps" tab; the installed-app list with User/System/All chips is under "Backup".
-        rule.onNode(Smoke.clickable("Backup")).performClick()
+        // The tab row scrolls (8 tabs); bring "Backup" on screen before tapping it.
+        rule.onNode(Smoke.clickable("Backup")).performScrollTo().performClick()
         Smoke.waitText(rule, Smoke.app.packageName, substring = true, timeoutMs = 30_000)
         rule.onNode(Smoke.clickable("All")).performClick()
         Smoke.waitText(rule, " · system", substring = true, timeoutMs = 30_000)
