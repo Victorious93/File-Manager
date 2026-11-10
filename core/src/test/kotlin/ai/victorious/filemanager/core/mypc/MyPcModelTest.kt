@@ -104,4 +104,9 @@ class MyPcModelTest {
     @Test fun shellQuoteKeepsPathsAsData() {
         assertEquals("'/home/don/it'\\''s \$(rm -rf).txt'", MyPcSftpBackend.shellQuote("/home/don/it's \$(rm -rf).txt"))
     }
+
+    @Test fun p256KeysSignLikeSshlibLogin() {
+        val gen = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }
+        assertTrue(MyPcCrypto.signVerifies(gen.generateKeyPair()))
+    }
 }

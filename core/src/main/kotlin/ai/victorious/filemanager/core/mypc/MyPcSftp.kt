@@ -253,3 +253,13 @@ class MyPcSftpBackend internal constructor(
         fun shellQuote(s: String): String = "'" + s.replace("'", "'\\''") + "'"
     }
 }
+
+/** Checks a key pair signs exactly the way sshlib's public-key login will (SHA256withECDSA → SSH form). */
+object MyPcCrypto {
+    fun signVerifies(pair: KeyPair, message: ByteArray = "victorpc-self-test".toByteArray()): Boolean {
+        val pub = pair.public as? java.security.interfaces.ECPublicKey ?: return false
+        val verifier = com.trilead.ssh2.signature.ECDSASHA2Verify.getVerifierForKey(pub) ?: return false
+        val sig = verifier.generateSignature(message, pair.private, java.security.SecureRandom())
+        return verifier.verifySignature(message, sig, pub)
+    }
+}
