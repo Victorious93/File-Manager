@@ -20,6 +20,8 @@
     <!-- Phase 12: background audio playback via Media3 MediaSessionService. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <!-- My PC transfers: WorkManager runs them as a dataSync foreground service (docs/MYPC.md). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Fleet: full-screen approve/deny prompt for held remote requests. -->
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
@@ -148,6 +150,12 @@
                 <action android:name="ai.victorious.filemanager.action.BRIDGE" />
             </intent-filter>
         </service>
+
+        <!-- My PC transfers (WorkManager foreground work, dataSync). Not exported. -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
 
         <!-- Phase 12 — Media & viewers -->
         <service

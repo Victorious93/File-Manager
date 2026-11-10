@@ -140,6 +140,13 @@ android {
     }
 }
 
+// sshlib (My PC pane, via :core) pulls the JVM build of Tink. security-crypto already brings
+// tink-android, which has the same com.google.crypto.tink classes (sshlib only needs the
+// subtle Ed25519/X25519 ones), so keep one copy to avoid duplicate classes in the APK.
+configurations.configureEach {
+    exclude(group = "com.google.crypto.tink", module = "tink")
+}
+
 dependencies {
     implementation(project(":core"))
     coreLibraryDesugaring(libs.desugar.jdk.libs)

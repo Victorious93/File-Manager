@@ -30,6 +30,9 @@ dependencies {
     implementation(libs.zip4j)
     implementation(libs.commons.net)
     implementation(libs.jsch)
+    // My PC pane only (SFTPv3Client, host-key pinning, Keystore-backed key auth). BSD-3-Clause.
+    // The manual SFTP connections keep using JSch.
+    implementation(libs.connectbot.sshlib)
     // Ed25519/Ed448 SSH keys on Android (no JDK EdDSA there); JSch's bc.* classes use it. MIT-style licence.
     implementation(libs.bouncycastle.bcprov)
     implementation(libs.smbj)

@@ -85,6 +85,7 @@ fun CommandPaletteScreen(selected: List<String>, dir: String, onClose: () -> Uni
             PaletteCommand(id, title, kw.toList(), "Tools") to { onEvent(UiEvent.OpenTool(req())) }
         listOf(
             tool("help", "Help & manual", "docs", "guide") { ToolRequest.Help },
+            tool("mypc", "My PC", "pc", "computer", "ubuntu", "sftp", "remote") { ToolRequest.MyPc(0) },
             tool("media", "Media library", "music", "video", "playlist", "youtube", "continue watching") { ToolRequest.MediaLibrary },
             PaletteCommand("terminal", "Terminal", listOf("shell", "su", "adb")) to { onEvent(UiEvent.OpenTerminal) },
             PaletteCommand("network", "Network connections", listOf("ftp", "sftp", "smb", "webdav")) to { onEvent(UiEvent.OpenNetwork) },

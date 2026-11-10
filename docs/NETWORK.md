@@ -8,6 +8,7 @@ Built from scratch. Open-source clients only (licenses allow redistribution).
 |----------|---------|---------|
 | FTP / FTPS | Apache Commons Net | Apache-2.0 |
 | SFTP | mwiede/jsch | BSD-style |
+| My PC (SFTP to your own PC, see `docs/MYPC.md`) | org.connectbot:sshlib | BSD-3-Clause |
 | SMB 2/3 | smbj (Hierynomus) | Apache-2.0 |
 | WebDAV | OkHttp + PROPFIND/MKCOL/MOVE | Apache-2.0 |
 

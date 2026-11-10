@@ -46,6 +46,7 @@ import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Computer
 import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material.icons.outlined.QrCode
 import androidx.compose.material.icons.automirrored.outlined.Label
@@ -112,6 +113,8 @@ sealed interface ToolRequest {
     data object WifiQrShare : ToolRequest
     /** Local music/video library with YouTube-style home, plus YouTube link handoff to the official apps. */
     data object MediaLibrary : ToolRequest
+    /** My PC: SFTP to Don's own PCs, pinned host keys, background transfers (docs/MYPC.md). */
+    data class MyPc(val pane: Int) : ToolRequest
 }
 
 @Composable
@@ -147,6 +150,11 @@ fun ToolsPane(state: UiState, onEvent: (UiEvent) -> Unit) {
         item {
             ToolItem(Icons.Outlined.History, "File version snapshots", "Keep, diff and restore earlier versions (${files.size} selected)") {
                 onEvent(UiEvent.OpenTool(ToolRequest.Snapshots(files.map { it.absolutePath }, dir)))
+            }
+        }
+        item {
+            ToolItem(Icons.Outlined.Computer, "My PC", "Browse your PC over SFTP in a pane; host-key pinned, resumable transfers") {
+                onEvent(UiEvent.OpenTool(ToolRequest.MyPc(state.focusedPane)))
             }
         }
         item {
@@ -389,6 +397,7 @@ fun ToolHost(request: ToolRequest, onClose: () -> Unit, onEvent: (UiEvent) -> Un
         is ToolRequest.Snapshots -> SnapshotsScreen(request.selected, onClose, onEvent)
         ToolRequest.WifiQrShare -> WifiQrScreen(onClose)
         ToolRequest.MediaLibrary -> MediaLibraryScreen(onClose, onEvent)
+        is ToolRequest.MyPc -> MyPcScreen(request.pane, onClose, onEvent)
     }
 }
 

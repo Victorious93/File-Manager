@@ -70,6 +70,9 @@ class FileManagerApplication : Application() {
         private set
     lateinit var connections: ConnectionRepository
         private set
+    /** My PC (victorpc) profiles and SFTP sessions, see docs/MYPC.md. */
+    lateinit var myPc: ai.victorious.filemanager.mypc.MyPcRepository
+        private set
     /** Saved archive passwords (Keystore-encrypted, noBackupFilesDir). Created lazily; main-thread safe to read the reference only. */
     val archivePasswords: ai.victorious.filemanager.core.archive.ArchivePasswordStore by lazy {
         ai.victorious.filemanager.archive.ArchivePasswords.create(this)
@@ -96,11 +99,15 @@ class FileManagerApplication : Application() {
         privilege = PrivilegeManager(privilegeSettings, shizuku)
         normalIo = NioFileIo()
         connections = ConnectionRepository(this)
+        myPc = ai.victorious.filemanager.mypc.MyPcRepository(this)
         val escalating = EscalatingFileIo(normalIo, privilege)
         io = CompositeFileIo(
             local = escalating,
-            backends = { id -> connections.backendOrNull(id) },
-            listConnections = { connections.list() },
+            backends = { id ->
+                if (id.startsWith(ai.victorious.filemanager.core.mypc.MyPcIds.CONNECTION_PREFIX)) myPc.backendOrNull(id)
+                else connections.backendOrNull(id)
+            },
+            listConnections = { connections.list() + myPc.asConnections() },
         )
         // Shared storage: trash payloads stay on the same volume ($ext/.victorious-trash/items)
         // so deleting a 4 GB video is a rename, not a copy into internal storage. The index
