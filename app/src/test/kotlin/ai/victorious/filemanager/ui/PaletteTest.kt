@@ -83,7 +83,6 @@ class PaletteTest {
     @Test fun classicIsTheOriginalSchemeUntouched() {
         assertSame(DarkColors, paletteScheme(Palette.CLASSIC, dark = true))
         assertSame(LightColors, paletteScheme(Palette.CLASSIC, dark = false))
-        assertEquals(Palette.CLASSIC, ThemePrefs().palette)
     }
 
     @Test fun anAccentPresetDoesNotRecolorANamedTheme() {
@@ -91,7 +90,7 @@ class PaletteTest {
         assertEquals(paletteScheme(Palette.CYBER, dark = true).primary, cyber.primary)
         assertNotEquals(Color(Accent.PINK.dark), cyber.primary)
         // ...but it still recolors Classic, as before.
-        val classic = schemeFor(ThemePrefs(ThemeMode.DARK, accent = Accent.PINK), systemDark = false, dynamic = null)
+        val classic = schemeFor(ThemePrefs(ThemeMode.DARK, accent = Accent.PINK, palette = Palette.CLASSIC), systemDark = false, dynamic = null)
         assertEquals(Color(Accent.PINK.dark), classic.primary)
     }
 
@@ -120,7 +119,7 @@ class PaletteTest {
     @Test fun themeNamesAreStableBecauseTheyArePersisted() {
         // Renaming an entry silently resets that user's saved choice to Classic.
         assertEquals(
-            listOf("CLASSIC", "CYBER", "TERMINAL", "OCEAN", "EMBER", "ROSE", "GRAPHITE", "NORD", "FOREST", "DRACULA", "SOLARIZED", "LAVENDER", "SUNSET"),
+            listOf("CLASSIC", "CYBER", "TERMINAL", "OCEAN", "EMBER", "ROSE", "GRAPHITE", "NORD", "FOREST", "DRACULA", "SOLARIZED", "LAVENDER", "SUNSET", "FLEET_NEON"),
             Palette.entries.map { it.name },
         )
     }

@@ -43,7 +43,9 @@ enum class Palette(val label: String, internal val seeds: Seeds?) {
     /** Soft lilac and periwinkle. */
     LAVENDER("Lavender", Seeds(0xFFC4B5FD, 0xFF93C5FD, 0xFF100D18, 0xFF6246C8, 0xFF2F5FB0, 0xFFF6F3FD)),
     /** Coral and gold, a sunset. */
-    SUNSET("Sunset", Seeds(0xFFFF8A65, 0xFFFFD166, 0xFF160A0B, 0xFFB4401C, 0xFF8A5D00, 0xFFFDF4F0));
+    SUNSET("Sunset", Seeds(0xFFFF8A65, 0xFFFFD166, 0xFF160A0B, 0xFFB4401C, 0xFF8A5D00, 0xFFFDF4F0)),
+    /** Don's fleet look and the default: cyan #00E5FF and magenta #FF2BD6 on #0B0F1A. */
+    FLEET_NEON("Fleet neon", Seeds(0xFF00E5FF, 0xFFFF2BD6, 0xFF0B0F1A, 0xFF00687A, 0xFFA3127F, 0xFFF0F7FA));
 
     /** Colour of this theme's chip in Settings. */
     val swatch: Color get() = Color(seeds?.darkPrimary ?: Accent.BLUE.dark)
@@ -52,6 +54,8 @@ enum class Palette(val label: String, internal val seeds: Seeds?) {
 /** Scheme for [palette] in light or dark. CLASSIC returns the original schemes untouched. */
 internal fun paletteScheme(palette: Palette, dark: Boolean): ColorScheme {
     val s = palette.seeds ?: return if (dark) DarkColors else LightColors
+    // Fleet neon in dark is exactly the fleet house scheme (deep containers, not tinted-bright ones).
+    if (palette == Palette.FLEET_NEON && dark) return FleetDarkColors
     return if (dark) {
         darkPaletteScheme(Color(s.darkPrimary), Color(s.darkSecondary), Color(s.darkBackground), Color(s.lightPrimary))
     } else {

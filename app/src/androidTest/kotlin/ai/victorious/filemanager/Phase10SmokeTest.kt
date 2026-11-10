@@ -42,7 +42,7 @@ class Phase10SmokeTest {
 
     @After fun tearDown() {
         root.deleteRecursively()
-        Smoke.app.themeSettings.update { it.copy(mode = ThemeMode.SYSTEM, palette = Palette.CLASSIC) }
+        Smoke.app.themeSettings.update { it.copy(mode = ThemeMode.DARK, palette = Palette.FLEET_NEON) }
     }
 
     @Test fun appearanceSettingsSwitchToAmoled() {
@@ -55,7 +55,10 @@ class Phase10SmokeTest {
     @Test fun colourThemeChipsPersistAndOnlyClassicOffersAccents() {
         Smoke.event(rule, UiEvent.Navigate(Dest.SETTINGS))
         Smoke.waitText(rule, "Appearance")
-        Smoke.waitText(rule, "Accent") // Classic is the default theme and the only one with accent presets
+        // Fleet neon is the default; Classic is the only theme with accent presets.
+        rule.onNode(Smoke.clickable("Classic")).performScrollTo().performClick()
+        Smoke.waitFor(rule, "classic") { Smoke.app.themeSettings.state.value.palette == Palette.CLASSIC }
+        Smoke.waitText(rule, "Accent")
         rule.onNode(Smoke.clickable("Cyber")).performScrollTo().performClick()
         Smoke.waitFor(rule, "theme persisted") { Smoke.app.themeSettings.state.value.palette == Palette.CYBER }
         rule.waitUntil(5_000) { rule.onAllNodes(hasText("Accent")).fetchSemanticsNodes().isEmpty() }

@@ -17,13 +17,14 @@ enum class Accent(val label: String, val light: Long, val dark: Long) {
 }
 
 data class ThemePrefs(
-    val mode: ThemeMode = ThemeMode.SYSTEM,
+    /** Dark by default (Don dislikes white screens). Light stays available as an explicit choice. */
+    val mode: ThemeMode = ThemeMode.DARK,
     val dynamicColor: Boolean = false,
     val accent: Accent = Accent.BLUE,
     /** Show two file panes at once. Off by default: one list on screen, Copy/Move use Paste. */
     val dualPane: Boolean = false,
     /** Colour theme. [Accent] only applies to [Palette.CLASSIC]; dynamic color overrides every palette. */
-    val palette: Palette = Palette.CLASSIC,
+    val palette: Palette = Palette.FLEET_NEON,
     /** File icon and navigation icon family. */
     val iconStyle: IconStyle = IconStyle.OUTLINED,
     /** Show folders as a grid of tiles instead of a list. */
@@ -41,7 +42,7 @@ fun ThemePrefs.effectiveDualPane(expandedWindow: Boolean): Boolean = dualPane ||
 
 /** Persists [ThemePrefs] (appearance and layout) in plain SharedPreferences (nothing secret) and exposes them as a flow. */
 class ThemeSettings(context: Context) {
-    private val prefs = context.getSharedPreferences("fm_theme", Context.MODE_PRIVATE)
+    private val prefs = context.getSharedPreferences("fm_theme", Context.MODE_PRIVATE).also(::migrateToDarkDefault)
     private val _state = MutableStateFlow(read())
     val state: StateFlow<ThemePrefs> = _state
 
@@ -51,11 +52,11 @@ class ThemeSettings(context: Context) {
     val dualPaneNow: Boolean get() = _state.value.effectiveDualPane(expandedWindow.value)
 
     private fun read() = ThemePrefs(
-        mode = enumOr(prefs.getString("mode", null), ThemeMode.SYSTEM),
+        mode = enumOr(prefs.getString("mode", null), ThemeMode.DARK),
         dynamicColor = prefs.getBoolean("dynamic", false),
         accent = enumOr(prefs.getString("accent", null), Accent.BLUE),
         dualPane = prefs.getBoolean("dual_pane", false),
-        palette = enumOr(prefs.getString("palette", null), Palette.CLASSIC),
+        palette = enumOr(prefs.getString("palette", null), Palette.FLEET_NEON),
         iconStyle = enumOr(prefs.getString("icon_style", null), IconStyle.OUTLINED),
         gridView = prefs.getBoolean("grid_view", false),
         autoDualOnWide = prefs.getBoolean("auto_dual_wide", true),
@@ -87,4 +88,26 @@ class ThemeSettings(context: Context) {
 
     private inline fun <reified E : Enum<E>> enumOr(name: String?, default: E): E =
         enumValues<E>().firstOrNull { it.name == name } ?: default
+}
+
+/**
+ * One-time move to the dark fleet look. Saving any setting used to store mode=SYSTEM and palette=CLASSIC,
+ * which shows white screens on a phone in light mode. Those untouched old defaults become DARK + FLEET_NEON;
+ * an explicit Light, AMOLED, named theme, dynamic colour or fleet-theme choice is kept as it is.
+ */
+internal fun migrateToDarkDefault(prefs: android.content.SharedPreferences) {
+    if (prefs.getBoolean(DARK_DEFAULT_KEY, false)) return
+    val edit = prefs.edit().putBoolean(DARK_DEFAULT_KEY, true)
+    val next = darkDefaultMigration(prefs.getString("mode", null), prefs.getString("palette", null))
+    next?.let { (mode, palette) -> edit.putString("mode", mode).putString("palette", palette) }
+    edit.apply()
+}
+
+internal const val DARK_DEFAULT_KEY = "dark_default_v1"
+
+/** Pure rule behind [migrateToDarkDefault]: new (mode, palette) names, or null to leave the user's choice alone. */
+internal fun darkDefaultMigration(mode: String?, palette: String?): Pair<String, String>? {
+    val oldDefaultMode = mode == null || mode == ThemeMode.SYSTEM.name
+    val oldDefaultPalette = palette == null || palette == Palette.CLASSIC.name
+    return if (oldDefaultMode && oldDefaultPalette) ThemeMode.DARK.name to Palette.FLEET_NEON.name else null
 }

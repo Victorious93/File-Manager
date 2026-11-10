@@ -89,7 +89,7 @@ internal val FleetDarkColors = darkColorScheme(
     surfaceContainerHigh = FleetDark.SurfaceHigh,
     surfaceContainerHighest = Color(0xFF222B42),
     error = Color(0xFFFFB4AB),
-    outline = Color(0xFF34405C),
+    outline = Color(0xFF46536F),
     outlineVariant = Color(0xFF242E45),
 )
 

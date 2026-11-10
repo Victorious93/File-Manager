@@ -280,7 +280,10 @@ hints, apply `mapping.txt`), **Extract installed apps**.
 1. Open the **Apps** tab. Filter user / system / all, search and sort.
 2. Actions: Open, App info, Uninstall, **Backup** (APKs, optionally an `.apks` zip, and app data
    when Root is active). Backups go to the focused folder.
-3. Restore: select a backup folder in Files, then **Tools → Restore app backup**.
+3. Restore: select a backup folder in Files, then **Tools → Restore app backup**. Encrypted backups
+   ask for their passphrase first.
+4. **Encrypted backups:** in the Backup dialog tick **Encrypt with a passphrase** and type it twice
+   (at least 8 characters). Without the passphrase the backup cannot be restored, so keep it safe.
 
 ### 3.14 Network, cloud and Wi-Fi transfer
 
@@ -317,6 +320,8 @@ hints, apply `mapping.txt`), **Extract installed apps**.
   **View PDF**, **Preview font**, **Preview image**, **Media info**.
 - **Share to File Manager**: share files from another app, pick a destination folder.
 - Quick Settings tiles: **Open** and **Wi-Fi transfer**.
+- **Media library** (Tools → Media library): a YouTube Music-style home for the music and videos on
+  your phone. See "Media library and YouTube links" below.
 
 ### 3.16 Secure folder
 
@@ -356,8 +361,12 @@ or once on the selection. Scripts run without root.
 
 ### 3.19 Appearance
 
-**Settings → Appearance**: System / Light / Dark / AMOLED (the mode), plus a **Theme**: Classic,
-Cyber, Terminal, Ocean, Ember, Rose or Graphite. Every theme has its own light and dark look, so the
+**Settings → Appearance**: System / Light / Dark / AMOLED (the mode), plus a **Theme**: Fleet neon,
+Classic, Cyber, Terminal, Ocean, Ember, Rose, Graphite and more. The app starts in **Dark + Fleet neon**
+(near-black #0B0F1A with cyan and magenta), so no screen is white unless you choose **Light** yourself.
+If you never changed the look before, updating moves you to Dark + Fleet neon once; a theme you picked
+on purpose is kept. The video player, media library, Wi-Fi transfer, network and tool screens always
+use the dark fleet colours. Every theme has its own light and dark look, so the
 mode and the theme are chosen separately. **Accent** colours recolour the Classic theme only; the
 others bring their own colours. **Dynamic colour** (Android 12+) takes colours from your wallpaper
 and overrides the theme while it is on.
@@ -422,8 +431,17 @@ The **Apps** tab is App Manager Pro (details in `docs/APP_MANAGER.md`).
 - **Logcat** with filters and export; **Usage** (needs the system "Usage access" permission);
   **Running** processes; **Profiles** of saved actions; **Backup** for APK (and data with root).
 
-Actions that change an app always ask you to **Confirm** first. Root or Shizuku is required for
-block / freeze / permission / AppOps changes.
+Actions that change an app always ask you to **Confirm** first, and the confirm box lists the exact
+commands. Root or Shizuku is required for block / freeze / permission / AppOps changes.
+
+- **Install… with options** works for a single `.apk`, an `.apks` / `.xapk` bundle, or a folder of
+  split APKs. Type the path, pick the options, tap **Review**, then **Confirm**.
+- **Logcat → Live** keeps the log scrolling as new lines arrive. Type a package name to follow just
+  that app (Root/Shizuku). Turn **Live** off to stop.
+- **Debloat** tab: tap **Import list…** and pick a text file with one package name per line. Choose
+  Freeze, Disable or Uninstall for this user, check the list, then **Review & apply**. **Undo this list**
+  reverses it. No list comes with the app, and important system apps, this app, your home screen and
+  your keyboard are always skipped.
 
 ## Media Pro (video & music player)
 
@@ -440,9 +458,33 @@ Opening a video or song plays it in **Media Pro** (see `docs/MEDIA_PRO.md` for d
 - **Music:** opening a song queues every song in that folder. Save the queue as a playlist from ⋮ → Playlists.
 - **Resume:** videos and songs continue where you stopped.
 - **Lock screen / notification:** play, pause and skip from the notification or lock screen.
+- **Chapters:** if a video, audiobook or song has chapters inside it (MP4/M4B, MKV/WebM, MP3) or a
+  `name.chapters.txt` file next to it, the chapter name shows above the controls and **⇤ Chapter /
+  Chapter ⇥** jump between chapters. ⋮ → Chapters lists them.
+- **Lyrics:** put a `.lrc` file with the same name next to a song (or use an MP3 with lyrics inside);
+  the current line shows while it plays. ⋮ → Lyrics shows them all.
+- **⋮ → Playback settings:** remember speed, subtitles on/off, chapter buttons, and a top quality for
+  network streams. Shuffle and repeat are remembered too.
 - **Victorious Keyboard:** with **Allow external control** turned on, the Victorious Keyboard (debug
   build) can play, pause, skip, seek, change the volume and read what's playing. It cannot do
   anything else in File Manager.
+
+## Media library and YouTube links
+
+Open **Tools → Media library** (details in `docs/YOUTUBE_MEDIA.md`).
+
+1. **Home** shows Continue watching & listening, Recently played, Favourites and Recently added, plus
+   **Shuffle all songs** and **Play videos**.
+2. **Songs**, **Videos**, **Artists**, **Albums** and **Folders** tabs. Tap an artist, album or folder,
+   then **Play all**, **Shuffle** or **Add to playlist**.
+3. Type in the search box to find any song or video by title, artist, album or file name.
+4. Tap ☆ to favourite a row, **+** to add it to a playlist. **Playlists** tab plays, shuffles or deletes them.
+5. Nothing showing? Give the app storage access, then tap **Rescan**.
+
+**YouTube links tab:** paste a youtube.com, youtu.be or music.youtube.com link and tap **Open**. It
+opens in the official YouTube Music or YouTube app (or your browser). **Save** keeps it in the list;
+**Import from file** reads links from a text, `.url` or `.webloc` file. File Manager does not
+download, play, or change YouTube content, and it does not block ads.
 
 ---
 

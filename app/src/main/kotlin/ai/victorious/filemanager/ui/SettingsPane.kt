@@ -211,7 +211,10 @@ private fun AppearanceSection() {
     if (!dynamicOn) {
         Text("Theme", style = MaterialTheme.typography.titleSmall)
         androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            for (p in ai.victorious.filemanager.ui.theme.Palette.entries) {
+            // Fleet neon (the default) first; the enum order itself is persisted and never changes.
+            val ordered = listOf(ai.victorious.filemanager.ui.theme.Palette.FLEET_NEON) +
+                ai.victorious.filemanager.ui.theme.Palette.entries.filter { it != ai.victorious.filemanager.ui.theme.Palette.FLEET_NEON }
+            for (p in ordered) {
                 FilterChip(
                     selected = prefs.palette == p,
                     onClick = { theme.update { it.copy(palette = p) } },

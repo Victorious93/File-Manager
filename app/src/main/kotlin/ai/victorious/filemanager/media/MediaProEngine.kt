@@ -1,5 +1,6 @@
 package ai.victorious.filemanager.media
 
+import ai.victorious.filemanager.core.media.library.PlaybackPrefs
 import ai.victorious.filemanager.core.media.pro.EqualizerSettings
 import ai.victorious.filemanager.core.media.pro.MediaRemote
 import ai.victorious.filemanager.core.media.pro.MediaState
@@ -89,11 +90,19 @@ object MediaProEngine : MediaRemote {
                 true,
             )
             .build()
+        applyPlaybackPrefs(p, MediaLibraryRepo.playbackPrefs(app))
         p.addListener(object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && sleep.shouldStop(trackEnded = true)) p.pause()
-                mediaItem?.let { applyResume(p, it) }
+                mediaItem?.let {
+                    applyResume(p, it)
+                    MediaLibraryRepo.recordPlay(app, it.mediaId)
+                    MediaLibraryRepo.loadExtras(it.mediaId)
+                }
             }
+            override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) =
+                updatePlaybackPrefs { it.copy(shuffle = shuffleModeEnabled) }
+            override fun onRepeatModeChanged(repeatMode: Int) = updatePlaybackPrefs { it.copy(repeatMode = repeatMode) }
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == Player.STATE_ENDED) { p.currentMediaItem?.let { resume.clear(it.mediaId) }; sleep.shouldStop(trackEnded = true) }
             }
@@ -155,10 +164,10 @@ object MediaProEngine : MediaRemote {
     }
 
     /** Local file + automatic sidecar subtitles (movie.srt / movie.en.ass …). */
-    fun localItem(file: File): MediaItem {
+    fun localItem(file: File, title: String? = null): MediaItem {
         val siblings = file.parentFile?.list()?.toList().orEmpty()
         val subs = SubtitleSupport.sidecars(file.name, siblings).map { Uri.fromFile(File(file.parentFile, it)) to it }
-        return item(file.absolutePath, file.name, subs)
+        return item(file.absolutePath, title?.takeIf { it.isNotBlank() } ?: file.name, subs)
     }
 
     fun playItems(items: List<MediaItem>, start: Int = 0) {
@@ -183,7 +192,55 @@ object MediaProEngine : MediaRemote {
         return true
     }
 
-    fun setSpeed(speed: Float) { player?.playbackParameters = PlaybackParameters(PlaybackSpeed.clamp(speed)) }
+    fun setSpeed(speed: Float) {
+        val v = PlaybackSpeed.clamp(speed)
+        player?.playbackParameters = PlaybackParameters(v)
+        updatePlaybackPrefs { if (it.rememberSpeed) it.copy(speed = v) else it }
+    }
+
+    // ---- remembered player settings (speed, quality cap, subtitles, shuffle/repeat) ----
+    fun playbackPrefs(): PlaybackPrefs = MediaLibraryRepo.playbackPrefs(app)
+
+    fun updatePlaybackPrefs(change: (PlaybackPrefs) -> PlaybackPrefs) {
+        if (!::app.isInitialized) return
+        val next = change(MediaLibraryRepo.playbackPrefs(app)).normalized()
+        MediaLibraryRepo.savePlaybackPrefs(app, next)
+    }
+
+    /** Applies and saves new settings to the live player. */
+    fun setPlaybackPrefs(p: PlaybackPrefs) {
+        val n = p.normalized()
+        MediaLibraryRepo.savePlaybackPrefs(app, n)
+        player?.let { applyPlaybackPrefs(it, n) }
+    }
+
+    private fun applyPlaybackPrefs(p: ExoPlayer, prefs: PlaybackPrefs) {
+        if (prefs.rememberSpeed) p.playbackParameters = PlaybackParameters(prefs.speed)
+        p.shuffleModeEnabled = prefs.shuffle
+        p.repeatMode = prefs.repeatMode
+        val b = p.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !prefs.subtitlesOn)
+        // The quality cap only matters for adaptive network streams (HLS/DASH) that offer several heights.
+        if (prefs.maxVideoHeight > 0) b.setMaxVideoSize(Int.MAX_VALUE, prefs.maxVideoHeight) else b.clearVideoSizeConstraints()
+        p.trackSelectionParameters = b.build()
+    }
+
+    /** Saved resume points (file path -> position ms), for "Continue watching". */
+    fun resumePoints(context: Context): Map<String, Long> { init(context); return resume.snapshot() }
+
+    // ---- chapters (only those already in the file or next to it) ----
+    fun seekToNextChapter(): Boolean {
+        val p = player ?: return false
+        val ex = MediaLibraryRepo.extras.value?.takeIf { it.mediaId == p.currentMediaItem?.mediaId } ?: return false
+        val t = ai.victorious.filemanager.core.media.library.ChapterNav.next(ex.chapters, p.currentPosition) ?: return false
+        p.seekTo(t); return true
+    }
+
+    fun seekToPreviousChapter(): Boolean {
+        val p = player ?: return false
+        val ex = MediaLibraryRepo.extras.value?.takeIf { it.mediaId == p.currentMediaItem?.mediaId && it.chapters.isNotEmpty() } ?: return false
+        p.seekTo(ai.victorious.filemanager.core.media.library.ChapterNav.previous(ex.chapters, p.currentPosition)); return true
+    }
 
     private fun applyResume(p: Player, item: MediaItem) {
         val at = resume.resumeAt(item.mediaId) ?: return
