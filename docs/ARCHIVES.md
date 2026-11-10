@@ -2,8 +2,8 @@
 
 | Format | List | Extract | Create | Library (licence) |
 |---|---|---|---|---|
-| ZIP / JAR / APK | ✓ | ✓ (AES/ZipCrypto password via zip4j) | ✓ (plain + AES-256) | java.util.zip, zip4j (Apache-2.0) |
-| 7z | ✓ | ✓ | ✓ (LZMA2 or store) | Apache Commons Compress (Apache-2.0) + XZ for Java (public domain) |
+| ZIP / JAR / APK | ✓ | ✓ (AES/ZipCrypto password via zip4j) | ✓ (plain + AES-256, any level) | java.util.zip, zip4j (Apache-2.0) |
+| 7z | ✓ | ✓ (7-Zip AES-256 password) | ✓ (LZMA2 or store, optional AES-256 password) | Apache Commons Compress (Apache-2.0) + XZ for Java (public domain) |
 | TAR / TAR.GZ / TAR.BZ2 / TAR.XZ (also `.tgz`, `.tbz2`, `.txz`) | ✓ | ✓ | ✓ (`.tar`, `.tar.gz`, `.tar.bz2`, `.tar.xz`) | Apache Commons Compress (Apache-2.0) + XZ for Java (public domain) |
 | Single file `.gz` / `.bz2` / `.xz` (e.g. `app.log.gz`) | ✓ (one entry, size unknown) | ✓ | – | Apache Commons Compress + XZ for Java |
 | RAR 1.5 – 7 (RAR4, RAR5, solid) | ✓ | ✓ (password prompt) | **never** | junrar 8.1.2 (UnRAR licence) |
@@ -19,14 +19,33 @@
 - Written to `.<name>.part` and renamed at the end, so a failure never leaves a half archive with the real name.
 - Levels: Store / Fast / Normal / Best. XZ and 7z LZMA2 presets are capped at 6 (~94 MB encoder memory);
   presets 7–9 need 186–674 MB and would crash many phones.
-- Password archives stay ZIP-only (AES-256 via zip4j, **Tools → Create password ZIP**).
-- Tests: `ArchiveWriterTest` (every format round-trips through `Archives.list`/`extract`, levels, self-inclusion,
+- Passwords (`create(..., password)`): **ZIP** uses WinZip AES-256 through zip4j's `ZipOutputStream`, entry by
+  entry, so names, empty folders and the four levels behave like the plain ZIP path (folder entries are not
+  encrypted; they carry no data). **7z** uses 7-Zip's own AES-256 + SHA-256 coder from Commons Compress
+  (`SevenZOutputFile(file, password)`), applied after LZMA2/copy. Both encrypt contents only; names stay
+  readable (Commons Compress cannot write encrypted 7z headers). TAR formats refuse a password
+  (`IllegalArgumentException`); an empty password means "no password". The caller wipes the `CharArray`.
+- **Tools → Create password ZIP** still exists as a one-tap AES-256 ZIP.
+- Tests: `PasswordArchiveTest` (7z and ZIP password round trips at every level, wrong / missing password,
+  no partial file after a wrong password, saved-password verification, TAR refusal, empty password),
+  `ArchiveWriterTest` (every format round-trips through `Archives.list`/`extract`, levels, self-inclusion,
   duplicates, unique names, replace + bad input).
 
 Compressed formats are recognised by content, not by extension: a `.gz`/`.bz2`/`.xz` is a tarball only if
 the decompressed stream starts like one (or the name says `.tar.*`/`.tgz`/`.tbz2`/`.txz`), otherwise it is a
 single compressed file named after the archive without its suffix. Multi-member streams (pigz, bgzip) are read to
 the end. A truncated or corrupt stream fails the extraction and does not leave a half-written file behind.
+
+## Password 7z (reading)
+
+- `Archives.isSevenZPasswordProtected` reads one byte of the first file (the AES coder only asks for a password
+  once data is read; the first file starts a block, so this is cheap even for big solid archives). Header-encrypted
+  7z (7-Zip `-mhe`) fails to open at all and is reported as needing a password.
+- `Archives.verifySevenZPassword` decodes the smallest file fully (CRC checked) and discards it. The viewer uses it to
+  try saved passwords without writing anything.
+- `Archives.extractSevenZ(file, dest, password)` maps a wrong password (AES gives garbage, so LZMA2 or the CRC check
+  fails) to `WrongPasswordException`, and a missing one to `ArchivePasswordException`. Both are subclasses of
+  `ArchivePasswordException`, as is `Archives.RarPasswordException`.
 
 Every extractor goes through `Archives.safeTarget`, so `../` and absolute entry names
 cannot escape the destination folder (zip-slip). A RAR fixture with `..\` names

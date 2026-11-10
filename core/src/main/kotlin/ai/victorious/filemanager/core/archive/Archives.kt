@@ -21,6 +21,9 @@ enum class ArchiveFormat { ZIP, SEVEN_Z, TAR, TAR_GZ, TAR_BZ2, TAR_XZ, GZ, BZ2, 
 
 class UnsupportedArchiveException(message: String) : IOException(message)
 
+/** The archive needs a password (none given) or the given one is wrong. */
+open class ArchivePasswordException(message: String) : IOException(message)
+
 /**
  * Archive listing/extraction.
  * ZIP (also JAR/APK): java.util.zip. 7z: Apache Commons Compress + XZ (pure Java).
@@ -49,7 +52,7 @@ object Archives {
         ArchiveFormat.ZIP -> ZipFile(file).use { zip ->
             zip.entries().asSequence().map { ArchiveItem(it.name, it.isDirectory, it.size, it.compressedSize) }.toList()
         }
-        ArchiveFormat.SEVEN_Z -> SevenZFile.builder().setFile(file).get().use { z ->
+        ArchiveFormat.SEVEN_Z -> sevenZ(file, null) { z ->
             z.entries.map { ArchiveItem(it.name, it.isDirectory, if (it.hasStream()) it.size else 0, -1) }
         }
         ArchiveFormat.TAR, ArchiveFormat.TAR_GZ, ArchiveFormat.TAR_BZ2, ArchiveFormat.TAR_XZ -> tarStream(file).use { tar ->
@@ -65,7 +68,89 @@ object Archives {
         ArchiveFormat.UNKNOWN -> throw UnsupportedArchiveException("Unrecognised archive format")
     }
 
-    class RarPasswordException(message: String) : IOException(message)
+    class RarPasswordException(message: String) : ArchivePasswordException(message)
+
+    /**
+     * Opens a 7z. Archives made with "encrypt file names" (7-Zip `-mhe`) can't even be listed without
+     * the password; that surfaces as [ArchivePasswordException] so the UI can ask for one.
+     */
+    private fun <T> sevenZ(file: File, password: CharArray?, block: (SevenZFile) -> T): T {
+        val z = try {
+            SevenZFile.builder().setFile(file).apply { if (password != null) setPassword(password) }.get()
+        } catch (e: org.apache.commons.compress.PasswordRequiredException) {
+            throw ArchivePasswordException("Password required")
+        } catch (e: IOException) {
+            // A wrong password on an archive with encrypted names fails while decoding the header.
+            if (password != null) throw WrongPasswordException("Wrong password") else throw e
+        }
+        return z.use(block)
+    }
+
+    /**
+     * True when a 7z needs a password: its names are encrypted, or its file data is. The AES coder only
+     * asks for the password once data is read, so this reads one byte of the first file. That file
+     * starts a compressed block, so this stays cheap even for big solid archives.
+     */
+    fun isSevenZPasswordProtected(file: File): Boolean = try {
+        sevenZ(file, null) { z ->
+            var e = z.nextEntry
+            while (e != null && (!e.hasStream() || e.size == 0L)) e = z.nextEntry
+            if (e != null) z.read()
+            false
+        }
+    } catch (e: ArchivePasswordException) {
+        true
+    } catch (e: org.apache.commons.compress.PasswordRequiredException) {
+        true
+    } catch (e: IOException) {
+        false
+    }
+
+    /**
+     * True when [password] opens this 7z. Writes nothing: it decodes the smallest file fully
+     * (so the CRC is checked) and discards the bytes. A damaged archive also returns false.
+     */
+    fun verifySevenZPassword(file: File, password: CharArray): Boolean = try {
+        sevenZ(file, password) { z ->
+            val probe = z.entries.filter { it.hasStream() && it.size > 0 }.minByOrNull { it.size } ?: return@sevenZ true
+            z.getInputStream(probe).use { input ->
+                val buf = ByteArray(8192)
+                while (input.read(buf) >= 0) { /* discard */ }
+            }
+            true
+        }
+    } catch (e: IOException) {
+        false
+    }
+
+    /**
+     * Extracts a 7z, decrypting with [password] when it has one. A wrong password shows up as a
+     * checksum / decoder error deep in the stream; it is reported as [WrongPasswordException] and the
+     * half-written file is removed (as for any failed entry).
+     */
+    fun extractSevenZ(file: File, destDir: File, password: CharArray?): Int {
+        destDir.mkdirs()
+        var count = 0
+        val locked = password != null && isSevenZPasswordProtected(file)
+        sevenZ(file, password) { z ->
+            var e = z.nextEntry
+            while (e != null) {
+                val entry = e
+                try {
+                    if (write(destDir, entry.name, entry.isDirectory) { z.getInputStream(entry) }) count++
+                } catch (t: org.apache.commons.compress.PasswordRequiredException) {
+                    throw ArchivePasswordException("Password required")
+                } catch (t: IOException) {
+                    if (locked && t !is ArchivePasswordException &&
+                        !t.message.orEmpty().startsWith("Blocked unsafe")
+                    ) throw WrongPasswordException("Wrong password")
+                    throw t
+                }
+                e = z.nextEntry
+            }
+        }
+        return count
+    }
 
     /** True when a RAR needs a password (encrypted headers or encrypted entries). */
     fun isRarPasswordProtected(file: File): Boolean = runCatching {
@@ -108,14 +193,7 @@ object Archives {
                     if (write(destDir, e.name, e.isDirectory) { zip.getInputStream(e) }) count++
                 }
             }
-            ArchiveFormat.SEVEN_Z -> SevenZFile.builder().setFile(file).get().use { z ->
-                var e = z.nextEntry
-                while (e != null) {
-                    val entry = e
-                    if (write(destDir, entry.name, entry.isDirectory) { z.getInputStream(entry) }) count++
-                    e = z.nextEntry
-                }
-            }
+            ArchiveFormat.SEVEN_Z -> count = extractSevenZ(file, destDir, null)
             ArchiveFormat.TAR, ArchiveFormat.TAR_GZ, ArchiveFormat.TAR_BZ2, ArchiveFormat.TAR_XZ -> tarStream(file).use { tar ->
                 var e = tar.nextEntry
                 while (e != null) {

@@ -173,8 +173,29 @@ On wide screens (600 dp and up) it becomes a rail on the left.
 
 ### 3.6 Storage analyzer and duplicates
 
-- **Tools → Storage analyzer** shows a size breakdown of the focused folder.
-- **Tools → Find duplicates** scans the focused folder recursively and groups identical files.
+- **Tools → Storage analyzer** scans the focused folder once, with a live count of files, folders
+  and bytes (tap **Cancel** or Back to stop). Then:
+  - **Folders** shows the biggest items first with a coloured bar. Tap a folder to go inside; this
+    is instant because the first scan already sized every sub-folder. Back goes up a level.
+  - **Largest files** lists the 100 biggest files anywhere under the folder. Tap the folder icon to
+    open the file's folder, or the bin icon to move it to the trash.
+  - **By type** shows how much space images, videos, audio, documents, archives, APKs and other
+    files take.
+  - Folders the app is not allowed to read (for example `Android/data` on newer Android) are skipped
+    and counted in the summary line. Tap the refresh icon to scan again.
+- **Tools → Find duplicates** scans the focused folder recursively and groups identical files. It
+  shows its progress (listing, quick check, full check) and stops if you leave the screen.
+  - Only files with the same size are read. Big files are first compared by their first and last
+    16 KB, and only files that still match are read in full, on up to 4 threads.
+  - Chips at the top: a minimum size (Any, 100 KB, 1 MB, 10 MB) and **Include hidden folders**
+    (off by default, so `.thumbnails` and app caches are skipped).
+  - Pick which copy to keep in each group: **Keep shortest path** (default), **Keep newest** or
+    **Keep oldest**. Everything else in the group is ticked. **Trash N** moves the ticked files to the
+    trash, so you can restore them.
+  - A second scan in the same session reuses the results for files that have not changed, so it is
+    much faster.
+- From **Home**, the **Storage analyzer** and **Duplicates** tiles scan your whole internal storage,
+  and the **Analyze** button on a storage card scans that drive.
 - **Tools → Compare two folders** shows which files differ between two folders (see 3.7).
 
 ### 3.7 Editors
@@ -215,7 +236,8 @@ Long-press a file to choose how to open it.
 ### 3.8 Archives
 
 - Open an archive by tapping it, or long-press → **Open as archive**.
-- Supported: ZIP/JAR/APK (list, extract, password-protected ZIP), 7z, TAR (plain, `.tar.gz`/`.tgz`,
+- Supported: ZIP/JAR/APK (list, extract, password-protected ZIP), 7z (including password-protected
+  7z), TAR (plain, `.tar.gz`/`.tgz`,
   `.tar.bz2`, `.tar.xz`), single compressed files (`.gz`, `.bz2`, `.xz`), and RAR (list and extract
   only, including password RAR).
 - Extraction goes to the folder in the *other* pane, or to the folder on screen when only one pane is
@@ -227,10 +249,18 @@ Long-press a file to choose how to open it.
      included).
   2. Open **Tools → Create archive**, type a name, choose **ZIP**, **7z**, **TAR**, **TAR.GZ**,
      **TAR.BZ2** or **TAR.XZ**, and a compression level (Store, Fast, Normal, Best).
-  3. Tap **Create**. The archive appears in the focused folder; if the name is taken you get
+  3. Optional, for **7z** and **ZIP** only: tick **Password protect (AES-256)** and type the
+     password twice (**Show password** reveals it). File contents are encrypted with AES-256; file
+     and folder *names* stay visible, as with 7-Zip's default for ZIP. A lost password cannot be
+     recovered. TAR formats have no password option.
+  4. Tap **Create**. The archive appears in the focused folder; if the name is taken you get
      `name (2).tar.gz` instead of overwriting.
   RAR is never created (licence). 7z and XZ use a memory-capped setting so large folders do not
   crash the phone; Best is slower but smaller.
+- Opening a password 7z: tap it, then tap **Extract**. The app first tries passwords you saved
+  earlier (without writing anything); if none fits it asks you, with **Remember** to save the one
+  that worked. A wrong password shows "Wrong password" and leaves no half-written file. 7z files made
+  with 7-Zip's "Encrypt file names" option can't be listed until you extract them with the password.
 
 ### 3.9 APK tools
 
@@ -439,7 +469,8 @@ The **Notes** tab is an Obsidian-style markdown vault (details in `docs/NOTES.md
 2. Create notes, use `[[Other note]]` links and `#tags`.
 3. Split view shows a live preview. Backlinks and outgoing links appear under the editor.
    The preview understands tables (`| a | b |` with a `|---|---|` line), task lists (`- [ ] todo`,
-   tap the checkbox to tick it in the note), nested lists, `~~strikethrough~~`, `==highlight==`,
+   tap the checkbox to tick it in the note; this also works in notes saved on Windows, and keeps
+   their line endings), nested lists, `~~strikethrough~~`, `==highlight==`,
    and web links (`[text](https://…)` or `<https://…>`, which open in your browser). Only `http`,
    `https` and `mailto` links are tappable.
 4. **Quick switch** jumps to a note by title; **Daily** opens today’s note; **Graph** shows how notes link.

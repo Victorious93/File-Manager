@@ -50,12 +50,31 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** "Create archive" options: format, compression level and file name (without extension). */
+/**
+ * "Create archive" options: format, compression level, file name (without extension) and an optional
+ * password (ZIP: AES-256, 7z: 7-Zip AES-256). The password is passed on as a CharArray, never logged.
+ */
 @Composable
-fun CreateArchiveDialog(suggestedBase: String, count: Int, onCreate: (CreateFormat, CompressionLevel, String) -> Unit, onDismiss: () -> Unit) {
+fun CreateArchiveDialog(
+    suggestedBase: String,
+    count: Int,
+    onCreate: (CreateFormat, CompressionLevel, String, CharArray?) -> Unit,
+    onDismiss: () -> Unit,
+) {
     var format by remember { mutableStateOf(CreateFormat.ZIP) }
     var level by remember { mutableStateOf(CompressionLevel.NORMAL) }
     var name by remember { mutableStateOf(suggestedBase) }
+    var protect by remember { mutableStateOf(false) }
+    var pw by remember { mutableStateOf("") }
+    var pw2 by remember { mutableStateOf("") }
+    var showPw by remember { mutableStateOf(false) }
+    val usePassword = protect && format.supportsPassword
+    val pwProblem = when {
+        !usePassword -> null
+        pw.isEmpty() -> "Enter a password"
+        pw != pw2 -> "Passwords don't match"
+        else -> null
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Create archive") },
@@ -77,10 +96,36 @@ fun CreateArchiveDialog(suggestedBase: String, count: Int, onCreate: (CreateForm
                         FilterChip(level == l || levels.size == 1, { level = l }, label = { Text(l.name.lowercase().replaceFirstChar { it.uppercase() }) })
                     }
                 }
+                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    androidx.compose.material3.Checkbox(checked = usePassword, enabled = format.supportsPassword, onCheckedChange = { protect = it })
+                    Text(
+                        if (format.supportsPassword) "Password protect (AES-256)" else "Password: only for 7z and ZIP",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+                if (usePassword) {
+                    val visual = if (showPw) androidx.compose.ui.text.input.VisualTransformation.None
+                    else androidx.compose.ui.text.input.PasswordVisualTransformation()
+                    OutlinedTextField(value = pw, onValueChange = { pw = it }, singleLine = true, label = { Text("Password") }, visualTransformation = visual)
+                    OutlinedTextField(
+                        value = pw2, onValueChange = { pw2 = it }, singleLine = true, label = { Text("Repeat password") },
+                        visualTransformation = visual, isError = pw2.isNotEmpty() && pw != pw2,
+                    )
+                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        androidx.compose.material3.Checkbox(checked = showPw, onCheckedChange = { showPw = it })
+                        Text("Show password", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Text(
+                        "File contents are encrypted; file names stay visible. There is no way to recover a lost password.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    pwProblem?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+                }
                 Text(
                     when (format) {
-                        CreateFormat.ZIP -> "Opens everywhere. For a password, use “Create password ZIP”."
-                        CreateFormat.SEVEN_Z -> "Usually the smallest. Needs a 7-Zip compatible app to open."
+                        CreateFormat.ZIP -> "Opens everywhere. Password ZIPs need an app that supports AES (7-Zip, WinRAR, most file managers)."
+                        CreateFormat.SEVEN_Z -> "Usually the smallest. Needs a 7-Zip compatible app to open (this app opens it too)."
                         CreateFormat.TAR -> "No compression; keeps folders together for Linux tools."
                         CreateFormat.TAR_GZ -> "Common on Linux and servers. Fast."
                         CreateFormat.TAR_BZ2 -> "Smaller than .tar.gz, slower."
@@ -92,9 +137,10 @@ fun CreateArchiveDialog(suggestedBase: String, count: Int, onCreate: (CreateForm
             }
         },
         confirmButton = {
-            TextButton(onClick = {
+            TextButton(enabled = pwProblem == null, onClick = {
                 val effective = if (format == CreateFormat.TAR) CompressionLevel.STORE else level
-                onCreate(format, effective, name.ifBlank { suggestedBase })
+                onCreate(format, effective, name.ifBlank { suggestedBase }, if (usePassword) pw.toCharArray() else null)
+                pw = ""; pw2 = ""
             }) { Text("Create") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },

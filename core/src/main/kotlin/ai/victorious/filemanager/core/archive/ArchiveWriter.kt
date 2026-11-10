@@ -17,19 +17,19 @@ import org.apache.commons.compress.compressors.gzip.GzipParameters
 import org.apache.commons.compress.compressors.xz.XZCompressorOutputStream
 
 /** Formats the app can *create*. RAR is never offered (see [Archives] licence note). */
-enum class CreateFormat(val extension: String, val label: String) {
-    ZIP("zip", "ZIP"),
-    SEVEN_Z("7z", "7z (LZMA2)"),
-    TAR("tar", "TAR (no compression)"),
-    TAR_GZ("tar.gz", "TAR.GZ"),
-    TAR_BZ2("tar.bz2", "TAR.BZ2"),
-    TAR_XZ("tar.xz", "TAR.XZ"),
+enum class CreateFormat(val extension: String, val label: String, val supportsPassword: Boolean) {
+    ZIP("zip", "ZIP", true),
+    SEVEN_Z("7z", "7z (LZMA2)", true),
+    TAR("tar", "TAR (no compression)", false),
+    TAR_GZ("tar.gz", "TAR.GZ", false),
+    TAR_BZ2("tar.bz2", "TAR.BZ2", false),
+    TAR_XZ("tar.xz", "TAR.XZ", false),
 }
 
 /** Fast = quick and larger; Best = slow and smaller. */
 enum class CompressionLevel { STORE, FAST, NORMAL, BEST }
 
-data class CreateResult(val output: File, val files: Int, val folders: Int, val bytesIn: Long)
+data class CreateResult(val output: File, val files: Int, val folders: Int, val bytesIn: Long, val encrypted: Boolean = false)
 
 /**
  * Creates archives from files and folders (recursively), written from scratch on top of
@@ -39,17 +39,30 @@ data class CreateResult(val output: File, val files: Int, val folders: Int, val 
  * so empty folders survive, names always use `/`, and the output file itself is never added even if
  * it sits inside a source folder. Duplicate names (two sources called `a.txt`) keep the first.
  * Symlinks are stored as the file they point to (never followed outside a source on a loop).
+ *
+ * Passwords ([create] `password`): ZIP uses WinZip AES-256 (zip4j, Apache-2.0); 7z uses 7-Zip's own
+ * AES-256 + SHA-256 coder (Commons Compress). Both encrypt file *contents*; like 7-Zip's default for
+ * ZIP, file and folder *names* stay readable. TAR formats have no encryption and refuse a password.
+ * The caller owns the password array and should wipe it afterwards.
  */
 object ArchiveWriter {
-    fun create(sources: List<File>, output: File, format: CreateFormat, level: CompressionLevel = CompressionLevel.NORMAL): CreateResult {
+    fun create(
+        sources: List<File>,
+        output: File,
+        format: CreateFormat,
+        level: CompressionLevel = CompressionLevel.NORMAL,
+        password: CharArray? = null,
+    ): CreateResult {
         require(sources.isNotEmpty()) { "Nothing to compress" }
         sources.forEach { require(it.exists()) { "Missing: ${it.name}" } }
+        val pw = password?.takeIf { it.isNotEmpty() }
+        require(pw == null || format.supportsPassword) { "${format.label} can't be password protected. Use 7z or ZIP." }
         val entries = collect(sources, output)
         val tmp = File(output.parentFile, ".${output.name}.part")
         try {
             when (format) {
-                CreateFormat.ZIP -> writeZip(entries, tmp, level)
-                CreateFormat.SEVEN_Z -> write7z(entries, tmp, level)
+                CreateFormat.ZIP -> if (pw != null) writeEncryptedZip(entries, tmp, level, pw) else writeZip(entries, tmp, level)
+                CreateFormat.SEVEN_Z -> write7z(entries, tmp, level, pw)
                 else -> tmp.outputStream().buffered().use { raw -> writeTar(entries, compressor(format, raw, level)) }
             }
             if (output.exists() && !output.delete()) throw java.io.IOException("Cannot replace ${output.name}")
@@ -58,7 +71,7 @@ object ArchiveWriter {
             tmp.delete()
             throw t
         }
-        return CreateResult(output, entries.count { !it.isDir }, entries.count { it.isDir }, entries.filter { !it.isDir }.sumOf { it.file.length() })
+        return CreateResult(output, entries.count { !it.isDir }, entries.count { it.isDir }, entries.filter { !it.isDir }.sumOf { it.file.length() }, pw != null)
     }
 
     /** "photos" + TAR_GZ -> photos.tar.gz, or photos (2).tar.gz if taken. */
@@ -115,8 +128,41 @@ object ArchiveWriter {
         }
     }
 
-    private fun write7z(entries: List<Entry>, out: File, level: CompressionLevel) {
-        SevenZOutputFile(out).use { z ->
+    /** WinZip AES-256 ZIP, entry by entry so names, folders and levels match the plain ZIP path. */
+    private fun writeEncryptedZip(entries: List<Entry>, out: File, level: CompressionLevel, password: CharArray) {
+        net.lingala.zip4j.io.outputstream.ZipOutputStream(out.outputStream().buffered(), password).use { zos ->
+            for (e in entries) {
+                val p = net.lingala.zip4j.model.ZipParameters().apply {
+                    fileNameInZip = if (e.isDir) "${e.name}/" else e.name
+                    lastModifiedFileTime = e.file.lastModified()
+                    if (e.isDir || level == CompressionLevel.STORE) {
+                        compressionMethod = net.lingala.zip4j.model.enums.CompressionMethod.STORE
+                    } else {
+                        compressionMethod = net.lingala.zip4j.model.enums.CompressionMethod.DEFLATE
+                        compressionLevel = when (level) {
+                            CompressionLevel.FAST -> net.lingala.zip4j.model.enums.CompressionLevel.FASTEST
+                            CompressionLevel.BEST -> net.lingala.zip4j.model.enums.CompressionLevel.MAXIMUM
+                            else -> net.lingala.zip4j.model.enums.CompressionLevel.NORMAL
+                        }
+                    }
+                    // Folder entries carry no data, so there is nothing to encrypt.
+                    isEncryptFiles = !e.isDir
+                    if (!e.isDir) {
+                        encryptionMethod = net.lingala.zip4j.model.enums.EncryptionMethod.AES
+                        aesKeyStrength = net.lingala.zip4j.model.enums.AesKeyStrength.KEY_STRENGTH_256
+                        if (compressionMethod == net.lingala.zip4j.model.enums.CompressionMethod.STORE) entrySize = e.file.length()
+                    }
+                }
+                zos.putNextEntry(p)
+                if (!e.isDir) e.file.inputStream().use { it.copyTo(zos) }
+                zos.closeEntry()
+            }
+        }
+    }
+
+    private fun write7z(entries: List<Entry>, out: File, level: CompressionLevel, password: CharArray? = null) {
+        // With a password, Commons Compress appends 7-Zip's AES-256/SHA-256 coder after the methods below.
+        (if (password != null) SevenZOutputFile(out, password) else SevenZOutputFile(out)).use { z ->
             val method = if (level == CompressionLevel.STORE) SevenZMethod.COPY else SevenZMethod.LZMA2
             // An Int here would be read as the dictionary size; pass a preset object instead.
             val opts: Any? = if (level == CompressionLevel.STORE) null else org.tukaani.xz.LZMA2Options(xzPreset(level))
