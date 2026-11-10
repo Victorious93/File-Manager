@@ -661,6 +661,12 @@ screen lock or biometrics. This cannot be recovered.
 
 **Does this need DroidCommand AI?** No. Everything works without it.
 
+**My PC says "Connection blocked".** The PC answered with a different SSH host key than the one
+pinned. Nothing was sent. If you reinstalled the PC, remove it in Tools → My PC and add it again.
+
+**My PC says the key was refused.** Add the line from **Key** to `~/.ssh/authorized_keys` for that
+user on the PC (one line), then try again.
+
 ---
 
 ## 7. Privacy and data handling
@@ -728,6 +734,26 @@ policy, preview with dry-run, then run. Local deletes go to the trash.
 tap **Save + schedule**. The job runs in the background with Android's WorkManager when those
 conditions are met (remote jobs always wait for a network). Failed network runs retry with
 back-off, and each job in the list shows its last result. Tap **Remove** to stop a schedule.
+
+
+## My PC (your PC over SFTP)
+
+Tools → **My PC** opens your own Ubuntu PC in either pane over SFTP. Full guide: `docs/MYPC.md`.
+
+1. Tap **+** and enter a name, your PC user, the PC's addresses (LAN first, then a Tailscale
+   `*.ts.net` name for away from home), the port, and optionally its host key
+   (`ssh-ed25519:SHA256:…`, from `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on the PC).
+2. Tap **Key**, **Copy line**, and add that line to `~/.ssh/authorized_keys` on the PC. The key is
+   made by and kept inside this phone's Keystore; only the public half is shown.
+3. Tap **Open in pane**. If you did not type the host key, compare the one shown with the PC and tap
+   **It matches, pin it**.
+
+**Host key changed?** The app blocks the connection with a red warning and never offers to connect
+anyway. If you reinstalled the PC yourself, remove it and add it again.
+
+**Copy / Move** between a phone folder and a PC folder runs in the background with a progress
+notification. It writes `name.partial`, resumes after a drop, checks size and SHA-256, and only then
+uses the real name. Move deletes the source only after that check.
 
 
 ## Server mode (FTP / SFTP / web)

@@ -677,6 +677,7 @@ class FileManagerViewModel(
         clearSelection: Boolean,
         onSuccess: () -> Unit = {},
     ) {
+        if ((kind == OpKind.COPY || kind == OpKind.MOVE) && queueMyPcTransfers(kind, sources, destination, clearSelection, onSuccess)) return
         viewModelScope.launch {
             _ui.update { it.copy(busy = true) }
             val result = withContext(Dispatchers.IO) {
@@ -712,6 +713,47 @@ class FileManagerViewModel(
                 },
             )
         }
+    }
+
+    /**
+     * Copy/move between this phone and My PC runs as background WorkManager jobs (foreground
+     * service, resumable .partial files, size + SHA-256 verify) instead of the in-process queue.
+     * Returns false when the selection is not a phone <-> My PC transfer.
+     */
+    private fun queueMyPcTransfers(
+        kind: OpKind,
+        sources: List<String>,
+        destination: () -> String,
+        clearSelection: Boolean,
+        onSuccess: () -> Unit,
+    ): Boolean {
+        val dest = destination()
+        if (!ai.victorious.filemanager.mypc.MyPcTransfers.isPhonePcTransfer(sources, dest)) return false
+        viewModelScope.launch {
+            _ui.update { it.copy(busy = true) }
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val jobs = ai.victorious.filemanager.mypc.MyPcTransfers.plan(sources, dest, kind == OpKind.MOVE, app.myPc)
+                    jobs?.forEach { ai.victorious.filemanager.mypc.MyPcTransfers.enqueue(app, it) }
+                    jobs
+                }
+            }
+            _ui.update { s ->
+                val cleared = if (result.getOrNull() != null && clearSelection) {
+                    if (s.focusedPane == 0) s.copy(left = s.left.copy(selected = emptySet()))
+                    else s.copy(right = s.right.copy(selected = emptySet()))
+                } else s
+                cleared.copy(busy = false)
+            }
+            result.fold(
+                onSuccess = { jobs ->
+                    onSuccess()
+                    snack("Queued ${jobs?.size ?: 0} My PC transfer(s). Progress is in the notification and Tools → My PC.")
+                },
+                onFailure = { snack(ai.victorious.filemanager.mypc.MyPcErrors.explain(it)) },
+            )
+        }
+        return true
     }
 
     private val apkRepo by lazy { ApkRepository(app) }
