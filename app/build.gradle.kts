@@ -68,6 +68,33 @@ android {
                 println("signing: DEBUG_KEYSTORE_* not fully set; using Android default debug key")
             }
         }
+
+        // File-Manager-only release key (alias `fmrelease`, see docs/SIGNING.md). Created only when
+        // ALL of RELEASE_KEYSTORE_FILE / RELEASE_KEYSTORE_PASSWORD / RELEASE_KEY_ALIAS /
+        // RELEASE_KEY_PASSWORD are set (env vars or -P properties) and the keystore file exists.
+        // Otherwise no `release` signingConfig exists and the release build type keeps AGP's
+        // default (unsigned) behaviour, so forks and local builds without secrets still configure.
+        // Never point this at /workspace/fleet-signing. Never print the passwords.
+        fun releaseSecret(name: String): String =
+            (System.getenv(name) ?: (project.findProperty(name) as String?))?.trim().orEmpty()
+        val releaseStorePath = releaseSecret("RELEASE_KEYSTORE_FILE")
+        val releaseStorePass = releaseSecret("RELEASE_KEYSTORE_PASSWORD")
+        val releaseAlias = releaseSecret("RELEASE_KEY_ALIAS")
+        val releaseKeyPass = releaseSecret("RELEASE_KEY_PASSWORD")
+        val releaseStore = if (releaseStorePath.isNotEmpty()) file(releaseStorePath) else null
+        if (releaseStore != null && releaseStore.isFile && releaseStorePass.isNotEmpty() &&
+            releaseAlias.isNotEmpty() && releaseKeyPass.isNotEmpty()
+        ) {
+            create("release") {
+                storeFile = releaseStore
+                storePassword = releaseStorePass
+                keyAlias = releaseAlias
+                keyPassword = releaseKeyPass
+            }
+            println("signing: using VictorFiles release keystore at ${releaseStore.absolutePath}")
+        } else {
+            println("signing: RELEASE_KEYSTORE_* not fully set; release build stays unsigned")
+        }
     }
 
     buildTypes {
@@ -77,6 +104,8 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
         release {
+            // Only when the release key above was actually configured; otherwise leave unset.
+            signingConfigs.findByName("release")?.let { signingConfig = it }
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
