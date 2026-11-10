@@ -4,6 +4,7 @@ import ai.victorious.filemanager.FileManagerApplication
 import ai.victorious.filemanager.core.diff.DiffLine
 import ai.victorious.filemanager.core.diff.DiffOp
 import ai.victorious.filemanager.core.diff.LineDiff
+import ai.victorious.filemanager.core.diff.WordDiff
 import ai.victorious.filemanager.core.dupes.DuplicateFinder
 import ai.victorious.filemanager.core.dupes.DuplicateGroup
 import ai.victorious.filemanager.core.storage.FolderBreakdown
@@ -31,6 +32,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.outlined.Build
+import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Compare
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Folder
@@ -93,6 +95,8 @@ import kotlinx.coroutines.withContext
 
 sealed interface ToolRequest {
     data class Compare(val left: String, val right: String) : ToolRequest
+    /** Recursive two-folder compare (two selected folders, or the left and right pane folders). */
+    data class CompareFolders(val left: String, val right: String) : ToolRequest
     data class Duplicates(val root: String) : ToolRequest
     data class Storage(val root: String) : ToolRequest
     data class ExtractApps(val dest: String) : ToolRequest
@@ -126,6 +130,7 @@ fun ToolsPane(state: UiState, onEvent: (UiEvent) -> Unit) {
     val dir = pane.active.path
     val files = selectedFiles(state)
     var askZipPassword by remember { mutableStateOf(false) }
+    var askCreateArchive by remember { mutableStateOf(false) }
     var restorePassFor by remember { mutableStateOf<File?>(null) }
     val scope = rememberCoroutineScope()
     LazyColumn(Modifier.fillMaxSize()) {
@@ -225,6 +230,18 @@ fun ToolsPane(state: UiState, onEvent: (UiEvent) -> Unit) {
             }
         }
         item {
+            val folders = pane.selected.map(::File).filter { it.isDirectory }
+            val other = if (state.focusedPane == 0) state.right else state.left
+            ToolItem(Icons.Outlined.Compare, "Compare two folders", "Select 2 folders, or compare the left and right pane folders") {
+                when {
+                    folders.size == 2 -> onEvent(UiEvent.OpenTool(ToolRequest.CompareFolders(folders[0].path, folders[1].path)))
+                    pane.selected.isEmpty() && other.active.path != dir ->
+                        onEvent(UiEvent.OpenTool(ToolRequest.CompareFolders(state.left.active.path, state.right.active.path)))
+                    else -> onEvent(UiEvent.ShowMessage("Select exactly 2 folders, or open two different folders in the two panes with nothing selected"))
+                }
+            }
+        }
+        item {
             val apks = files.filter { isApk(it.path) }
             ToolItem(Icons.Outlined.Build, "APK mod", "Manifest / strings / smali → rebuild → sign → verify → install (${apks.size} APK)") {
                 if (apks.size == 1) onEvent(UiEvent.OpenTool(ToolRequest.ApkMod(apks[0].path, dir)))
@@ -274,6 +291,12 @@ fun ToolsPane(state: UiState, onEvent: (UiEvent) -> Unit) {
             }
         }
         item {
+            ToolItem(Icons.Outlined.Archive, "Create archive", "ZIP, 7z, TAR, TAR.GZ, TAR.BZ2 or TAR.XZ from files and folders (${pane.selected.size} selected)") {
+                if (pane.selected.isEmpty()) onEvent(UiEvent.ShowMessage("Select files or folders to compress"))
+                else askCreateArchive = true
+            }
+        }
+        item {
             ToolItem(Icons.Outlined.Lock, "Create password ZIP", "AES-256 from selection (${pane.selected.size} selected)") {
                 if (pane.selected.isEmpty()) onEvent(UiEvent.ShowMessage("Select files to zip"))
                 else askZipPassword = true
@@ -318,6 +341,15 @@ fun ToolsPane(state: UiState, onEvent: (UiEvent) -> Unit) {
             onDismiss = { restorePassFor = null },
         )
     }
+    if (askCreateArchive) {
+        val sources = pane.selected.map(::File)
+        CreateArchiveDialog(
+            suggestedBase = ai.victorious.filemanager.core.archive.ArchiveWriter.suggestedBase(sources),
+            count = sources.size,
+            onCreate = { f, l, name -> askCreateArchive = false; onEvent(UiEvent.CreateArchive(f, l, name)) },
+            onDismiss = { askCreateArchive = false },
+        )
+    }
     if (askZipPassword) {
         PasswordDialog(
             title = "Encrypt ZIP",
@@ -343,6 +375,7 @@ fun ToolHost(request: ToolRequest, onClose: () -> Unit, onEvent: (UiEvent) -> Un
     BackHandler(onBack = onClose)
     when (request) {
         is ToolRequest.Compare -> CompareScreen(File(request.left), File(request.right), onClose)
+        is ToolRequest.CompareFolders -> FolderCompareScreen(File(request.left), File(request.right), onClose, onEvent)
         is ToolRequest.Duplicates -> DuplicatesScreen(File(request.root), onClose, onEvent)
         is ToolRequest.Storage -> StorageScreen(File(request.root), onClose)
         is ToolRequest.ExtractApps -> ExtractAppsScreen(File(request.dest), onClose, onEvent)
@@ -392,7 +425,7 @@ private val addBg = Color(0x3340C057)
 private val delBg = Color(0x33E5484D)
 
 @Composable
-private fun CompareScreen(left: File, right: File, onClose: () -> Unit) {
+internal fun CompareScreen(left: File, right: File, onClose: () -> Unit) {
     var diff by remember { mutableStateOf<List<DiffLine>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var sideBySide by remember { mutableStateOf(false) }
@@ -414,8 +447,15 @@ private fun CompareScreen(left: File, right: File, onClose: () -> Unit) {
             val mono = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp)
             if (sideBySide) {
                 val rows = remember(d) { LineDiff.sideBySide(d) }
+                val delStrong = MaterialTheme.colorScheme.error.copy(alpha = 0.45f)
+                val addStrong = MaterialTheme.colorScheme.primary.copy(alpha = 0.40f)
                 LazyColumn(Modifier.fillMaxSize()) {
                     items(rows) { r ->
+                        // A changed pair: emphasise only the words that differ.
+                        val words = remember(r) {
+                            val a = r.left; val b = r.right
+                            if (a != null && b != null && a.op == DiffOp.DELETE && b.op == DiffOp.INSERT) WordDiff.inline(a.text, b.text) else null
+                        }
                         Row(Modifier.fillMaxWidth()) {
                             listOf(r.left to true, r.right to false).forEach { (l, isLeft) ->
                                 val bg = when {
@@ -425,8 +465,11 @@ private fun CompareScreen(left: File, right: File, onClose: () -> Unit) {
                                     else -> Color.Transparent
                                 }
                                 val num = if (isLeft) l?.oldLine else l?.newLine
+                                val prefix = (num?.toString()?.padStart(4) ?: "    ") + " "
+                                val text = if (words != null) inlineDiffText(prefix, if (isLeft) words.first else words.second, if (isLeft) delStrong else addStrong)
+                                else androidx.compose.ui.text.AnnotatedString(prefix + (l?.text ?: ""))
                                 Text(
-                                    (num?.toString()?.padStart(4) ?: "    ") + " " + (l?.text ?: ""),
+                                    text,
                                     style = mono, maxLines = 1, overflow = TextOverflow.Clip,
                                     modifier = Modifier.weight(1f).background(bg).padding(horizontal = 2.dp),
                                 )

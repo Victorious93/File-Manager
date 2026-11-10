@@ -200,6 +200,12 @@ sealed interface UiEvent {
     class ZipSelectedEncrypted(val password: CharArray) : UiEvent
     data class ShowMessage(val message: String) : UiEvent
     data object ZipSelected : UiEvent
+    /** Compress the selection (files and folders) into [format] in the focused folder. */
+    data class CreateArchive(
+        val format: ai.victorious.filemanager.core.archive.CreateFormat,
+        val level: ai.victorious.filemanager.core.archive.CompressionLevel,
+        val baseName: String,
+    ) : UiEvent
     data class ShowApkInfo(val path: String) : UiEvent
     data object DismissApkInfo : UiEvent
     data class ExtractApk(val path: String) : UiEvent
@@ -402,6 +408,7 @@ class FileManagerViewModel(
             UiEvent.CloseTool -> { _ui.update { it.copy(tool = null) }; refreshAll() }
             is UiEvent.ZipSelectedEncrypted -> zipSelected(event.password)
             UiEvent.ZipSelected -> zipSelected()
+            is UiEvent.CreateArchive -> createArchive(event)
             is UiEvent.ShowApkInfo -> background("Reading APK…", { apkRepo.info(File(event.path)) }) { info ->
                 _ui.update { it.copy(apkInfo = info) }
             }
@@ -761,6 +768,19 @@ class FileManagerViewModel(
                 },
                 onFailure = { snack("Zip failed: ${it.message}") },
             )
+        }
+    }
+
+    private fun createArchive(event: UiEvent.CreateArchive) {
+        val sources = selectedSources()
+        if (sources.isEmpty()) { snack("Select files or folders to compress"); return }
+        val dir = File(pane(_ui.value, _ui.value.focusedPane).active.path)
+        background("Compress…", {
+            val out = ai.victorious.filemanager.core.archive.ArchiveWriter.uniqueName(dir, event.baseName, event.format)
+            ai.victorious.filemanager.core.archive.ArchiveWriter.create(sources.map(::File), out, event.format, event.level)
+        }) { r ->
+            refreshAll()
+            snack("Added ${r.files} file(s) to ${r.output.name}")
         }
     }
 
