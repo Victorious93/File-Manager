@@ -48,6 +48,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
@@ -401,14 +402,14 @@ fun NotesVaultPane(onEvent: (UiEvent) -> Unit) {
                             NotesPane.PREVIEW -> PreviewPane(body, onWiki = { t ->
                                 v.index.pathForTitle(t)?.let { openNote(it) }
                                     ?: onEvent(UiEvent.ShowMessage("Missing note: $t"))
-                            })
+                            }, onToggleTask = { line -> body = NoteOps.toggleTask(body, line); dirty = true })
                             NotesPane.SPLIT -> Row(Modifier.weight(1f)) {
                                 Box(Modifier.weight(1f)) { EditorField(body, links.map { it.target }, v.index) { body = it; dirty = true } }
                                 Box(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
                                     PreviewPane(body, onWiki = { t ->
                                         v.index.pathForTitle(t)?.let { openNote(it) }
                                             ?: onEvent(UiEvent.ShowMessage("Missing note: $t"))
-                                    })
+                                    }, onToggleTask = { line -> body = NoteOps.toggleTask(body, line); dirty = true })
                                 }
                             }
                             else -> Unit
@@ -583,7 +584,7 @@ private fun EditorField(body: String, linkTargets: List<String>, index: Backlink
 }
 
 @Composable
-private fun PreviewPane(body: String, onWiki: (String) -> Unit) {
+private fun PreviewPane(body: String, onWiki: (String) -> Unit, onToggleTask: ((Int) -> Unit)? = null) {
     val blocks = remember(body) { MarkdownPreview.parse(body) }
     Column(Modifier.padding(8.dp)) {
         blocks.forEach { b ->
@@ -593,43 +594,98 @@ private fun PreviewPane(body: String, onWiki: (String) -> Unit) {
                     2 -> MaterialTheme.typography.headlineSmall
                     3 -> MaterialTheme.typography.titleLarge
                     else -> MaterialTheme.typography.titleMedium
-                }, modifier = Modifier.padding(vertical = 4.dp))
-                is MdBlock.Paragraph -> InlineSpans(b.spans, onWiki)
-                is MdBlock.Bullet -> Row { Text("• "); InlineSpans(b.spans, onWiki) }
-                is MdBlock.Numbered -> Row { Text("${b.n}. "); InlineSpans(b.spans, onWiki) }
-                is MdBlock.Quote -> Row(Modifier.padding(start = 8.dp)) { Text("│ "); InlineSpans(b.spans, onWiki) }
-                is MdBlock.Rule -> Box(Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.outline).padding(vertical = 8.dp))
+                }, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(vertical = 4.dp))
+                is MdBlock.Paragraph -> Box(Modifier.padding(vertical = 2.dp)) { InlineSpans(b.spans, onWiki) }
+                is MdBlock.Bullet -> Row(Modifier.padding(start = (12 * b.depth).dp)) { Text(if (b.depth % 2 == 0) "• " else "◦ ", color = MaterialTheme.colorScheme.primary); InlineSpans(b.spans, onWiki) }
+                is MdBlock.Numbered -> Row(Modifier.padding(start = (12 * b.depth).dp)) { Text("${b.n}. ", color = MaterialTheme.colorScheme.primary); InlineSpans(b.spans, onWiki) }
+                is MdBlock.Task -> Row(Modifier.padding(start = (12 * b.depth).dp), verticalAlignment = Alignment.CenterVertically) {
+                    androidx.compose.material3.Checkbox(
+                        checked = b.checked,
+                        onCheckedChange = onToggleTask?.let { t -> { _: Boolean -> t(b.line) } },
+                    )
+                    Box(Modifier.weight(1f)) { InlineSpans(b.spans, onWiki, done = b.checked) }
+                }
+                is MdBlock.Quote -> Row(Modifier.padding(start = 8.dp)) { Text("│ ", color = MaterialTheme.colorScheme.secondary); InlineSpans(b.spans, onWiki) }
+                is MdBlock.Rule -> Box(Modifier.padding(vertical = 8.dp).fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.outline))
                 is MdBlock.Code -> CodeBlock(b.language, b.code)
+                is MdBlock.Table -> MdTable(b, onWiki)
             }
         }
     }
 }
 
 @Composable
-private fun InlineSpans(spans: List<MdSpan>, onWiki: (String) -> Unit) {
+private fun MdTable(t: MdBlock.Table, onWiki: (String) -> Unit) {
+    val border = MaterialTheme.colorScheme.outlineVariant
+    Column(
+        Modifier.padding(vertical = 6.dp).fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+            .horizontalScroll(rememberScrollState()),
+    ) {
+        val rows = listOf(t.header) + t.rows
+        rows.forEachIndexed { r, row ->
+            Row(Modifier.background(if (r == 0) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else Color.Transparent)) {
+                row.forEachIndexed { c, cell ->
+                    Box(
+                        Modifier.width(140.dp).padding(horizontal = 6.dp, vertical = 4.dp),
+                        contentAlignment = when (t.align.getOrNull(c)) {
+                            ai.victorious.filemanager.core.notes.TableAlign.CENTER -> Alignment.Center
+                            ai.victorious.filemanager.core.notes.TableAlign.RIGHT -> Alignment.CenterEnd
+                            else -> Alignment.CenterStart
+                        },
+                    ) { InlineSpans(cell, onWiki, bold = r == 0) }
+                }
+            }
+            Box(Modifier.width((140 * row.size).dp).height(1.dp).background(border))
+        }
+    }
+}
+
+@Composable
+private fun InlineSpans(spans: List<MdSpan>, onWiki: (String) -> Unit, done: Boolean = false, bold: Boolean = false) {
+    val link = MaterialTheme.colorScheme.primary
+    val tag = MaterialTheme.colorScheme.secondary
+    val codeBg = MaterialTheme.colorScheme.surfaceVariant
+    val mark = MaterialTheme.colorScheme.secondary.copy(alpha = 0.30f)
+    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
     val annotated = buildAnnotatedString {
         spans.forEach { s ->
             when (s) {
                 is MdSpan.Text -> append(s.text)
                 is MdSpan.Bold -> withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(s.text) }
                 is MdSpan.Italic -> withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { append(s.text) }
-                is MdSpan.Code -> withStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = Color(0x22000000))) { append(s.text) }
+                is MdSpan.Strike -> withStyle(SpanStyle(textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough)) { append(s.text) }
+                is MdSpan.Highlight -> withStyle(SpanStyle(background = mark)) { append(s.text) }
+                is MdSpan.Code -> withStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = codeBg)) { append(s.text) }
+                is MdSpan.Link -> {
+                    val start = length
+                    withStyle(SpanStyle(color = link, textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline)) { append(s.text) }
+                    addStringAnnotation("url", s.url, start, length)
+                }
                 is MdSpan.Wiki -> {
                     val start = length
-                    withStyle(SpanStyle(color = Color(0xFF1565C0), fontWeight = FontWeight.Medium)) {
+                    withStyle(SpanStyle(color = link, fontWeight = FontWeight.Medium)) {
                         append(s.link.alias ?: s.link.target)
                     }
                     addStringAnnotation("wiki", s.link.target, start, length)
                 }
-                is MdSpan.Tag -> withStyle(SpanStyle(color = Color(0xFF6A1B9A))) { append("#${s.name}") }
+                is MdSpan.Tag -> withStyle(SpanStyle(color = tag)) { append("#${s.name}") }
             }
         }
     }
+    val base = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface)
     androidx.compose.foundation.text.ClickableText(
         text = annotated,
-        style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
+        style = base.copy(
+            fontWeight = if (bold) FontWeight.Bold else base.fontWeight,
+            textDecoration = if (done) androidx.compose.ui.text.style.TextDecoration.LineThrough else null,
+            color = if (done) MaterialTheme.colorScheme.onSurfaceVariant else base.color,
+        ),
         onClick = { offset ->
             annotated.getStringAnnotations("wiki", offset, offset).firstOrNull()?.let { onWiki(it.item) }
+            annotated.getStringAnnotations("url", offset, offset).firstOrNull()?.let { a ->
+                if (MarkdownPreview.isSafeUrl(a.item)) runCatching { uriHandler.openUri(a.item) }
+            }
         },
     )
 }

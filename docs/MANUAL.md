@@ -175,6 +175,7 @@ On wide screens (600 dp and up) it becomes a rail on the left.
 
 - **Tools → Storage analyzer** shows a size breakdown of the focused folder.
 - **Tools → Find duplicates** scans the focused folder recursively and groups identical files.
+- **Tools → Compare two folders** shows which files differ between two folders (see 3.7).
 
 ### 3.7 Editors
 
@@ -194,6 +195,20 @@ Long-press a file to choose how to open it.
 
 1. Select exactly two text files in Files.
 2. Open **Tools → Compare two files** to see a line-by-line diff.
+3. Turn on **Side by side**: changed lines are paired up and the exact words that changed are
+   highlighted, so a one-number edit in a long line is easy to spot.
+
+**Folder compare** (**Tools → Compare two folders**):
+
+1. Either select exactly two folders, or open one folder in each pane with nothing selected.
+2. The list shows files that are **changed**, **only left**, **only right**, or a **file vs folder**
+   clash, with sizes and which side is newer. Filters: Differences, All, Only left, Only right.
+3. **Exact** (default) checks file contents byte-for-byte (SHA-256). Tap it to switch to **Quick**,
+   which only compares size and modified time: much faster on big folders, but it can miss an edit
+   that kept the same size and time.
+4. Tap a changed text file to open its line and word diff.
+5. **Copy only-left → right** (or the reverse) copies the missing files and folders across. It asks
+   first and never overwrites anything that already exists.
 
 `[TODO screenshot: code editor]`
 
@@ -206,7 +221,16 @@ Long-press a file to choose how to open it.
 - Extraction goes to the folder in the *other* pane, or to the folder on screen when only one pane is
   shown. Paths that try to escape the folder are
   blocked.
-- Create: **Zip selected** in the bottom bar, or **Tools → Create password ZIP** for AES-256.
+- Create: **Zip selected** in the bottom bar for a quick ZIP, **Tools → Create password ZIP** for
+  AES-256, or **Tools → Create archive** to pick a format:
+  1. Select files and/or folders in Files (folders are added with everything inside, empty folders
+     included).
+  2. Open **Tools → Create archive**, type a name, choose **ZIP**, **7z**, **TAR**, **TAR.GZ**,
+     **TAR.BZ2** or **TAR.XZ**, and a compression level (Store, Fast, Normal, Best).
+  3. Tap **Create**. The archive appears in the focused folder; if the name is taken you get
+     `name (2).tar.gz` instead of overwriting.
+  RAR is never created (licence). 7z and XZ use a memory-capped setting so large folders do not
+  crash the phone; Best is slower but smaller.
 
 ### 3.9 APK tools
 
@@ -414,6 +438,10 @@ The **Notes** tab is an Obsidian-style markdown vault (details in `docs/NOTES.md
 1. Pick any folder (or accept the suggested app `Notes/` folder).
 2. Create notes, use `[[Other note]]` links and `#tags`.
 3. Split view shows a live preview. Backlinks and outgoing links appear under the editor.
+   The preview understands tables (`| a | b |` with a `|---|---|` line), task lists (`- [ ] todo`,
+   tap the checkbox to tick it in the note), nested lists, `~~strikethrough~~`, `==highlight==`,
+   and web links (`[text](https://…)` or `<https://…>`, which open in your browser). Only `http`,
+   `https` and `mailto` links are tappable.
 4. **Quick switch** jumps to a note by title; **Daily** opens today’s note; **Graph** shows how notes link.
 5. Search looks through note text (and the file index when available).
 
