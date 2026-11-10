@@ -11,6 +11,10 @@ on:
         description: "Tag to publish as a pre-release (e.g. v0.1.0). Empty = just run CI."
         type: string
         default: ""
+      release_signed_apk:
+        description: "Also build a release APK signed with the VictorFiles release key and verify its SHA-256. Needs the RELEASE_* secrets. Does not publish anything."
+        type: boolean
+        default: false
 
 jobs:
   test-and-apk:
@@ -242,6 +246,119 @@ jobs:
       - name: Lint summary
         if: always()
         run: tail -n 1 app/build/reports/lint-results-debug.txt || true
+
+  # Manual only (workflow_dispatch with release_signed_apk = true). Never runs on pull_request or
+  # push, so PRs and forks never need the RELEASE_* secrets. Builds assembleRelease with the
+  # File-Manager-only release key, checks the signer SHA-256, and keeps the APK as a short-lived
+  # artifact. It does not publish a release. See docs/SIGNING.md.
+  release-apk:
+    name: Release-signed APK (manual)
+    if: github.event_name == 'workflow_dispatch' && inputs.release_signed_apk
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Install Android packages
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          SDKMANAGER="$(find "$SDK/cmdline-tools" -name sdkmanager -type f | sort | tail -n1)"
+          yes | "$SDKMANAGER" --sdk_root="$SDK" --licenses >/dev/null || true
+          # NDK: ffmpeg-decoder builds its JNI with cmake when android-libs is present.
+          "$SDKMANAGER" --sdk_root="$SDK" "platform-tools" "build-tools;35.0.0" "platforms;android-35" "ndk;27.0.12077973"
+
+      # Fail closed once someone asked for a release-signed APK: never ship an unsigned one silently.
+      - name: Require VictorFiles release signing secrets
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          missing=()
+          for n in RELEASE_KEYSTORE_BASE64 RELEASE_KEYSTORE_PASSWORD RELEASE_KEY_ALIAS RELEASE_KEY_PASSWORD; do
+            if [ -z "${!n:-}" ]; then missing+=("$n"); fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error title=Release signing secrets missing::Required secret(s) empty: ${missing[*]}."
+            exit 1
+          fi
+          echo "signing: all RELEASE_* secrets present"
+
+      - name: Decode VictorFiles release keystore
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KS="$RUNNER_TEMP/fm-release.jks"
+          echo "$RELEASE_KEYSTORE_BASE64" | base64 -d > "$KS"
+          chmod 600 "$KS"
+          {
+            echo "RELEASE_KEYSTORE_FILE=$KS"
+            echo "RELEASE_KEYSTORE_PASSWORD=$RELEASE_KEYSTORE_PASSWORD"
+            echo "RELEASE_KEY_ALIAS=$RELEASE_KEY_ALIAS"
+            echo "RELEASE_KEY_PASSWORD=$RELEASE_KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
+          echo "signing: decoded VictorFiles release keystore"
+          # Do not print passwords, base64, or keytool -list output here.
+
+      - name: Grant Gradle wrapper execute bit
+        run: chmod +x gradlew
+
+      - name: Assemble release APK
+        run: ./gradlew --no-daemon :app:assembleRelease
+
+      - name: Verify release APK signing fingerprint
+        env:
+          EXPECTED_SHA256: "7C:6E:37:61:21:9D:81:9A:66:B3:17:93:C7:AB:E6:25:A5:B7:DC:10:67:16:FB:0D:6C:48:56:BF:72:26:CB:3C"
+        run: |
+          set -euo pipefail
+          APK="$(ls app/build/outputs/apk/release/*.apk | grep -v -- '-unsigned' | head -n1 || true)"
+          if [ -z "$APK" ]; then
+            echo "::error title=Release APK missing::no signed APK in app/build/outputs/apk/release/"
+            ls -la app/build/outputs/apk/release/ || true
+            exit 1
+          fi
+          echo "APK=$APK"
+          # Print signer cert digests only (no private material).
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$APK" | tee /tmp/apk-certs.txt
+          actual="$(grep -i 'Signer #1 certificate SHA-256 digest' /tmp/apk-certs.txt | head -n1 | sed 's/.*digest:[[:space:]]*//' || true)"
+          norm() { echo "$1" | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]'; }
+          if [ -z "$actual" ]; then
+            echo "::error title=Release APK signature::apksigner printed no Signer #1 SHA-256 digest"
+            exit 1
+          fi
+          if [ "$(norm "$actual")" != "$(norm "$EXPECTED_SHA256")" ]; then
+            echo "::error title=Release APK signed with wrong key::expected SHA-256 $EXPECTED_SHA256, got $actual"
+            exit 1
+          fi
+          echo "signing: release APK SHA-256 matches VictorFiles release key"
+
+      - name: Remove decoded keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/fm-release.jks"
+
+      - name: Upload release APK
+        uses: actions/upload-artifact@v7
+        continue-on-error: true
+        with:
+          name: app-release
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 1
 
   # Manual only (workflow_dispatch with release_tag). The only job with write access. It publishes
   # the exact debug APK that test-and-apk just built and tested; if that job fails or its artifact is

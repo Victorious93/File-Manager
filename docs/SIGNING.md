@@ -1,16 +1,21 @@
-# Debug signing (VictorFiles only)
+# Signing (VictorFiles only)
 
 Debug APKs for `ai.victorious.filemanager.debug` should install over previous
 debug builds. CI and this agent box share one **File-Manager-only** debug
-keystore. It is **not** the fleet shared key under `/workspace/fleet-signing`.
+keystore. Release APKs have their own **File-Manager-only** release keystore
+(see [Release signing](#release-signing) below). Neither is the fleet shared key
+under `/workspace/fleet-signing`.
 
 ## Rules
 
-- Never commit a `.jks` / `.keystore`, `passwords.env`, or `keystore.properties`.
+- Never commit a `.jks` / `.keystore`, `passwords.env`, or `keystore.properties`
+  (debug or release). `.gitignore` blocks these names; do not force-add them.
 - Never use a shared fleet signing key for this app.
-- Release signing is out of scope here (debug only).
+- Never print keystore passwords, the keystore base64, or full `keytool -list`
+  output in logs, chats, PRs or CI.
+- Release signing is in scope: see [Release signing](#release-signing).
 
-## How Gradle picks a key
+## How Gradle picks a debug key
 
 `app/build.gradle.kts` overrides the `debug` `signingConfig` when all of these
 are set (env vars or Gradle `-P` properties):
@@ -71,3 +76,69 @@ keytool -list -v -keystore /path/to/fm-debug.jks -alias fmdebug
 ```
 
 Compare the SHA-256 digest to the value recorded in the store README / CI log.
+
+## Release signing
+
+The release key is **separate** from the debug key and is used only for the
+`release` build type (`ai.victorious.filemanager`, no `.debug` suffix).
+
+| Item | Value |
+|------|-------|
+| Keystore (outside git) | `/cursor/stores/store-9f9373ab-5514-4ce3-a9b8-bb9723c3d9da/release-signing/fm-release.jks` |
+| Alias | `fmrelease` |
+| Certificate SHA-256 | `7C:6E:37:61:21:9D:81:9A:66:B3:17:93:C7:AB:E6:25:A5:B7:DC:10:67:16:FB:0D:6C:48:56:BF:72:26:CB:3C` |
+
+The passwords live next to the keystore in the bot store, never in the repo.
+Losing this keystore means future release builds cannot update installs signed
+with it, so keep the store copy safe.
+
+### How Gradle picks the release key
+
+`app/build.gradle.kts` creates a `release` `signingConfig` and attaches it to the
+`release` build type only when **all** of these are set (env vars or Gradle `-P`
+properties) **and** the keystore file exists:
+
+| Name | Meaning |
+|------|---------|
+| `RELEASE_KEYSTORE_FILE` | Absolute path to the release JKS on disk |
+| `RELEASE_KEYSTORE_PASSWORD` | Keystore password |
+| `RELEASE_KEY_ALIAS` | Key alias (`fmrelease`) |
+| `RELEASE_KEY_PASSWORD` | Key password |
+
+If any are missing, Gradle prints
+`signing: RELEASE_KEYSTORE_* not fully set; release build stays unsigned` and
+leaves the release build type as before (`app-release-unsigned.apk`). The Gradle
+configuration never fails because of missing release values, so forks and local
+machines without the key still build. When the key is used Gradle prints only
+the keystore **path**, never a password.
+
+Local example (on the agent box):
+
+```bash
+export RELEASE_KEYSTORE_FILE=/cursor/stores/store-9f9373ab-5514-4ce3-a9b8-bb9723c3d9da/release-signing/fm-release.jks
+# set RELEASE_KEYSTORE_PASSWORD, RELEASE_KEY_ALIAS, RELEASE_KEY_PASSWORD from the store, without echoing them
+./gradlew :app:assembleRelease
+apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
+```
+
+### GitHub Actions (release)
+
+Repo secrets (set with `gh secret set`, never committed):
+
+- `RELEASE_KEYSTORE_BASE64` — base64 of the release JKS bytes
+- `RELEASE_KEYSTORE_PASSWORD`
+- `RELEASE_KEY_ALIAS`
+- `RELEASE_KEY_PASSWORD`
+
+Regular pull request and push CI **does not** use or require these secrets.
+The optional job **Release-signed APK (manual)** (`release-apk` in
+`.github/workflows/ci.yml`) runs only from Actions → **CI** → *Run workflow*
+with **release_signed_apk** ticked. It:
+
+1. Fails with a clear `::error::` naming any empty `RELEASE_*` secret.
+2. Decodes the keystore to `$RUNNER_TEMP/fm-release.jks` (deleted at the end of
+   the job) and runs `:app:assembleRelease`.
+3. Runs `apksigner verify --print-certs` and fails unless the Signer #1 SHA-256
+   equals the fingerprint above (case-insensitive, colons ignored).
+4. Uploads the APK as a 1-day `app-release` artifact (best effort). It does
+   **not** publish a GitHub release.
