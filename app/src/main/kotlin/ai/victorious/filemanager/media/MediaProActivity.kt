@@ -1,13 +1,17 @@
 package ai.victorious.filemanager.media
 
-import ai.victorious.filemanager.FileManagerApplication
+import ai.victorious.filemanager.core.media.library.Chapter
+import ai.victorious.filemanager.core.media.library.ChapterNav
+import ai.victorious.filemanager.core.media.library.LyricLine
+import ai.victorious.filemanager.core.media.library.Lyrics
+import ai.victorious.filemanager.core.media.library.PlaybackPrefs
 import ai.victorious.filemanager.core.media.pro.EqualizerSettings
+import ai.victorious.filemanager.ui.theme.FleetDark
 import ai.victorious.filemanager.core.media.pro.GestureMath
 import ai.victorious.filemanager.core.media.pro.MediaItemRef
 import ai.victorious.filemanager.core.media.pro.PlaybackSpeed
 import ai.victorious.filemanager.core.media.pro.Playlist
 import ai.victorious.filemanager.core.media.pro.StreamSupport
-import ai.victorious.filemanager.ui.theme.VictoriousTheme
 import android.app.PictureInPictureParams
 import android.content.Context
 import android.content.Intent
@@ -82,14 +86,19 @@ class MediaProActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val path = intent.getStringExtra(EXTRA_PATH)
         val folder = intent.getBooleanExtra(EXTRA_FOLDER_QUEUE, false)
+        val queue = intent.getStringArrayListExtra(EXTRA_PATHS)
+        val titles = intent.getStringArrayListExtra(EXTRA_TITLES)
+        val start = intent.getIntExtra(EXTRA_START, 0)
         setContent {
-            val prefs by (application as FileManagerApplication).themeSettings.state.collectAsState()
-            VictoriousTheme(prefs) {
+            // The player is always the dark fleet look (black video area, cyan/magenta accents), whatever the app theme.
+            ai.victorious.filemanager.ui.theme.FleetDarkScreen {
                 var player by remember { mutableStateOf<ExoPlayer?>(null) }
                 LaunchedEffect(Unit) {
                     MediaProEngine.connect(this@MediaProActivity) { p ->
                         player = p
-                        if (path != null) {
+                        if (!queue.isNullOrEmpty()) {
+                            MediaProEngine.playItems(queue.mapIndexed { i, q -> MediaProEngine.localItem(File(q), titles?.getOrNull(i)) }, start)
+                        } else if (path != null) {
                             val f = File(path)
                             val items = if (folder) siblingsOf(f) else listOf(f)
                             MediaProEngine.playItems(items.map(MediaProEngine::localItem), items.indexOf(f).coerceAtLeast(0))
@@ -137,6 +146,21 @@ class MediaProActivity : ComponentActivity() {
     companion object {
         const val EXTRA_PATH = "path"
         const val EXTRA_FOLDER_QUEUE = "folder_queue"
+        const val EXTRA_PATHS = "paths"
+        const val EXTRA_TITLES = "titles"
+        const val EXTRA_START = "start"
+
+        /** Plays [paths] as the queue, starting at [start] (used by the media library). */
+        fun openQueue(context: Context, paths: List<String>, titles: List<String>, start: Int = 0) {
+            context.startActivity(
+                Intent(context, MediaProActivity::class.java).apply {
+                    putStringArrayListExtra(EXTRA_PATHS, ArrayList(paths))
+                    putStringArrayListExtra(EXTRA_TITLES, ArrayList(titles))
+                    putExtra(EXTRA_START, start)
+                    if (context !is ComponentActivity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                },
+            )
+        }
 
         fun open(context: Context, file: File?, folderQueue: Boolean = false) {
             context.startActivity(
@@ -156,7 +180,7 @@ private fun fmt(ms: Long): String {
     return if (s >= 3600) "%d:%02d:%02d".format(s / 3600, (s / 60) % 60, s % 60) else "%d:%02d".format(s / 60, s % 60)
 }
 
-private enum class Sheet { NONE, SPEED, SLEEP, EQ, QUEUE, STREAM, PLAYLISTS, MORE }
+private enum class Sheet { NONE, SPEED, SLEEP, EQ, QUEUE, STREAM, PLAYLISTS, MORE, CHAPTERS, LYRICS, SETTINGS }
 
 @UnstableApi
 @Composable
@@ -181,6 +205,10 @@ private fun MediaProScreen(player: ExoPlayer, pip: Boolean, onClose: () -> Unit,
     }
 
     @Suppress("UNUSED_VARIABLE") val t = tick
+    val extrasAll by MediaLibraryRepo.extras.collectAsState()
+    val extras = extrasAll?.takeIf { it.mediaId == player.currentMediaItem?.mediaId }
+    val chapters = extras?.chapters.orEmpty()
+    val chapterButtons = remember(sheet) { MediaProEngine.playbackPrefs().chapterButtons }
     val isVideo = player.videoSize.width > 0 || player.currentTracks.groups.any { it.type == C.TRACK_TYPE_VIDEO }
     val title = player.currentMediaItem?.mediaMetadata?.title?.toString() ?: ""
 
@@ -245,8 +273,11 @@ private fun MediaProScreen(player: ExoPlayer, pip: Boolean, onClose: () -> Unit,
             Text(it, color = Color.White, style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.align(Alignment.Center).background(Color(0x99000000)).padding(12.dp))
         }
+        if (!isVideo && extras?.lyrics?.isNotEmpty() == true && !pip) {
+            LyricsLine(extras.lyrics, player.currentPosition, Modifier.align(Alignment.BottomCenter).padding(bottom = 160.dp))
+        }
         if (showControls && !pip) {
-            Controls(player, title, onClose, onPip, onSubs = { subPicker.launch(arrayOf("*/*")) }, onSheet = { sheet = it })
+            Controls(player, title, chapters, chapterButtons, onClose, onPip, onSubs = { subPicker.launch(arrayOf("*/*")) }, onSheet = { sheet = it })
         }
     }
 
@@ -288,6 +319,26 @@ private fun MediaProScreen(player: ExoPlayer, pip: Boolean, onClose: () -> Unit,
             }
         }
         Sheet.PLAYLISTS -> PlaylistsDialog(player) { sheet = Sheet.NONE }
+        Sheet.CHAPTERS -> PickDialog("Chapters", { sheet = Sheet.NONE }) {
+            if (chapters.isEmpty()) Text("This file has no chapters. Chapters are read from the file itself (MP4/M4B, MKV/WebM, MP3) or a sidecar like name.chapters.txt.")
+            val cur = ChapterNav.currentIndex(chapters, player.currentPosition)
+            chapters.forEachIndexed { i, c ->
+                Row(Modifier.fillMaxWidth().clickable { player.seekTo(c.startMs); sheet = Sheet.NONE }.padding(10.dp)) {
+                    Text(fmt(c.startMs), Modifier.padding(end = 12.dp), color = if (i == cur) FleetDark.Cyan else Color.Unspecified)
+                    Text(c.title, color = if (i == cur) FleetDark.Cyan else Color.Unspecified)
+                }
+            }
+        }
+        Sheet.LYRICS -> PickDialog("Lyrics", { sheet = Sheet.NONE }) {
+            val lines = extras?.lyrics.orEmpty()
+            if (lines.isEmpty()) Text("No lyrics found. Put a .lrc file with the same name next to the song, or use an MP3 with embedded lyrics.")
+            val cur = Lyrics.currentIndex(lines, player.currentPosition)
+            lines.forEachIndexed { i, l ->
+                Text(l.text.ifBlank { "♪" }, color = if (i == cur) FleetDark.Magenta else Color.Unspecified,
+                    modifier = Modifier.fillMaxWidth().let { m -> l.timeMs?.let { t -> m.clickable { player.seekTo(t) } } ?: m }.padding(vertical = 4.dp))
+            }
+        }
+        Sheet.SETTINGS -> PlaybackSettingsDialog { sheet = Sheet.NONE }
         Sheet.STREAM -> StreamDialog { sheet = Sheet.NONE }
         Sheet.MORE -> PickDialog("Options", { sheet = Sheet.NONE }) {
             var bg by remember { mutableStateOf(MediaProEngine.backgroundPlay) }
@@ -300,7 +351,8 @@ private fun MediaProScreen(player: ExoPlayer, pip: Boolean, onClose: () -> Unit,
 
             }
             listOf("Speed" to Sheet.SPEED, "Sleep timer" to Sheet.SLEEP, "Equalizer" to Sheet.EQ, "Queue / shuffle" to Sheet.QUEUE,
-                "Playlists" to Sheet.PLAYLISTS, "Open network stream" to Sheet.STREAM).forEach { (l, s) ->
+                "Playlists" to Sheet.PLAYLISTS, "Chapters" to Sheet.CHAPTERS, "Lyrics" to Sheet.LYRICS,
+                "Playback settings (remembered)" to Sheet.SETTINGS, "Open network stream" to Sheet.STREAM).forEach { (l, s) ->
                 Row(Modifier.fillMaxWidth().clickable { sheet = s }.padding(10.dp)) { Text(l) }
             }
         }
@@ -310,7 +362,7 @@ private fun MediaProScreen(player: ExoPlayer, pip: Boolean, onClose: () -> Unit,
 
 @UnstableApi
 @Composable
-private fun Controls(player: ExoPlayer, title: String, onClose: () -> Unit, onPip: () -> Unit, onSubs: () -> Unit, onSheet: (Sheet) -> Unit) {
+private fun Controls(player: ExoPlayer, title: String, chapters: List<Chapter>, chapterButtons: Boolean, onClose: () -> Unit, onPip: () -> Unit, onSubs: () -> Unit, onSheet: (Sheet) -> Unit) {
     Column(Modifier.fillMaxSize().background(Color(0x66000000)).padding(12.dp), verticalArrangement = Arrangement.SpaceBetween) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = onClose) { Text("✕", color = Color.White) }
@@ -323,7 +375,18 @@ private fun Controls(player: ExoPlayer, title: String, onClose: () -> Unit, onPi
             val dur = player.duration.takeIf { it > 0 } ?: 1L
             Slider(player.currentPosition.toFloat().coerceIn(0f, dur.toFloat()), { player.seekTo(it.toLong()) }, valueRange = 0f..dur.toFloat())
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(fmt(player.currentPosition), color = Color.White); Text(fmt(player.duration), color = Color.White)
+                Text(fmt(player.currentPosition), color = Color.White)
+                val ci = ChapterNav.currentIndex(chapters, player.currentPosition)
+                if (ci >= 0) Text(chapters[ci].title, color = FleetDark.Cyan, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f).padding(horizontal = 8.dp).clickable { onSheet(Sheet.CHAPTERS) })
+                Text(fmt(player.duration), color = Color.White)
+            }
+            if (chapters.isNotEmpty() && chapterButtons) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    TextButton(onClick = { MediaProEngine.seekToPreviousChapter() }) { Text("⇤ Chapter", color = FleetDark.Cyan) }
+                    TextButton(onClick = { onSheet(Sheet.CHAPTERS) }) { Text("Chapters (${chapters.size})", color = FleetDark.Cyan) }
+                    TextButton(onClick = { MediaProEngine.seekToNextChapter() }) { Text("Chapter ⇥", color = FleetDark.Cyan) }
+                }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 TextButton(onClick = { player.seekToPrevious() }) { Text("⏮", color = Color.White, style = MaterialTheme.typography.headlineSmall) }
@@ -335,6 +398,38 @@ private fun Controls(player: ExoPlayer, title: String, onClose: () -> Unit, onPi
                 TextButton(onClick = { player.seekToNext() }) { Text("⏭", color = Color.White, style = MaterialTheme.typography.headlineSmall) }
             }
         }
+    }
+}
+
+/** The current synced lyric line over the audio artwork area. */
+@Composable
+private fun LyricsLine(lines: List<LyricLine>, positionMs: Long, modifier: Modifier) {
+    val i = Lyrics.currentIndex(lines, positionMs)
+    if (i < 0) return
+    Column(modifier.padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(lines[i].text, color = FleetDark.Magenta, style = MaterialTheme.typography.titleMedium)
+        lines.getOrNull(i + 1)?.let { Text(it.text, color = Color.LightGray, style = MaterialTheme.typography.bodyMedium) }
+    }
+}
+
+/** Remembered player settings: speed, stream quality cap, subtitles, chapter buttons. */
+@UnstableApi
+@Composable
+private fun PlaybackSettingsDialog(onDismiss: () -> Unit) {
+    var p by remember { mutableStateOf(MediaProEngine.playbackPrefs()) }
+    fun set(n: PlaybackPrefs) { p = n.normalized(); MediaProEngine.setPlaybackPrefs(p) }
+    PickDialog("Playback settings", onDismiss) {
+        Row(verticalAlignment = Alignment.CenterVertically) { Text("Remember speed (${p.speed}×)", Modifier.weight(1f)); Switch(p.rememberSpeed, { set(p.copy(rememberSpeed = it)) }) }
+        Row(verticalAlignment = Alignment.CenterVertically) { Text("Subtitles on by default", Modifier.weight(1f)); Switch(p.subtitlesOn, { set(p.copy(subtitlesOn = it)) }) }
+        Row(verticalAlignment = Alignment.CenterVertically) { Text("Chapter buttons", Modifier.weight(1f)); Switch(p.chapterButtons, { set(p.copy(chapterButtons = it)) }) }
+        Text("Max quality for network streams (HLS/DASH)", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            PlaybackPrefs.QUALITY_CHOICES.forEach { h ->
+                FilterChip(p.maxVideoHeight == h, { set(p.copy(maxVideoHeight = h)) }, { Text(PlaybackPrefs.qualityLabel(h)) })
+            }
+        }
+        Text("Local files always play at their own quality. Shuffle and repeat are remembered from the Queue sheet.",
+            style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
     }
 }
 

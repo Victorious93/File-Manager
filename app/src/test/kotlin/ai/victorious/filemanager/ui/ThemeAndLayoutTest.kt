@@ -3,6 +3,7 @@ package ai.victorious.filemanager.ui
 import ai.victorious.filemanager.ui.theme.Accent
 import ai.victorious.filemanager.ui.theme.ThemeMode
 import ai.victorious.filemanager.ui.theme.ThemePrefs
+import ai.victorious.filemanager.ui.theme.Palette
 import ai.victorious.filemanager.ui.theme.LightColors
 import ai.victorious.filemanager.ui.theme.isDark
 import ai.victorious.filemanager.ui.theme.schemeFor
@@ -23,9 +24,9 @@ class ThemeAndLayoutTest {
     }
 
     @Test fun accentRecolorsPrimaryAndAmoledIsBlack() {
-        val light = schemeFor(ThemePrefs(ThemeMode.LIGHT, accent = Accent.PURPLE), systemDark = false, dynamic = null)
+        val light = schemeFor(ThemePrefs(ThemeMode.LIGHT, accent = Accent.PURPLE, palette = Palette.CLASSIC), systemDark = false, dynamic = null)
         assertEquals(Color(Accent.PURPLE.light), light.primary)
-        val dark = schemeFor(ThemePrefs(ThemeMode.DARK, accent = Accent.TEAL), systemDark = false, dynamic = null)
+        val dark = schemeFor(ThemePrefs(ThemeMode.DARK, accent = Accent.TEAL, palette = Palette.CLASSIC), systemDark = false, dynamic = null)
         assertEquals(Color(Accent.TEAL.dark), dark.primary)
         assertNotEquals(Color.Black, dark.background)
         val amoled = schemeFor(ThemePrefs(ThemeMode.AMOLED), systemDark = false, dynamic = null)

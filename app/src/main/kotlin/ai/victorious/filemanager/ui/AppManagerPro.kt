@@ -75,11 +75,11 @@ fun AppManagerProPane(onEvent: (UiEvent) -> Unit) {
     val app = context.applicationContext as FileManagerApplication
     val service = remember { AppManagerService(app, app.privilege) }
     var tab by remember { mutableIntStateOf(0) }
-    val titles = listOf("Apps", "Trackers", "Logcat", "Usage", "Running", "Profiles", "Backup")
+    val titles = listOf("Apps", "Trackers", "Logcat", "Usage", "Running", "Profiles", "Backup", "Debloat")
     Column(Modifier.fillMaxSize().padding(8.dp)) {
         Text("App Manager Pro", style = MaterialTheme.typography.titleLarge)
         PrivilegeBanner(service, app, onEvent)
-        TabRow(tab) { titles.forEachIndexed { i, t -> Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t) }) } }
+        androidx.compose.material3.ScrollableTabRow(tab, edgePadding = 4.dp) { titles.forEachIndexed { i, t -> Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t) }) } }
         when (tab) {
             0 -> AppsTab(service, onEvent)
             1 -> TrackersTab(service, onEvent)
@@ -92,6 +92,7 @@ fun AppManagerProPane(onEvent: (UiEvent) -> Unit) {
                 java.io.File(dir).mkdirs()
                 AppsPane(backupDir = dir, onEvent = onEvent)
             }
+            7 -> DebloatTab(service, onEvent)
         }
     }
 }
@@ -139,26 +140,34 @@ private fun InstallDialog(service: AppManagerService, onEvent: (UiEvent) -> Unit
     var testOnly by remember { mutableStateOf(false) }
     var grant by remember { mutableStateOf(false) }
     var bypass by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Install APK with options") },
+        title = { Text("Install with options") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
-                OutlinedTextField(path, { path = it }, label = { Text("APK path (.apk)") }, singleLine = true)
+                OutlinedTextField(path, { path = it }, label = { Text("APK, .apks / .xapk bundle, or folder of split APKs") }, singleLine = true)
                 OutlinedTextField(installer, { installer = it }, label = { Text("Installer package (optional)") }, singleLine = true)
                 FilterChip(downgrade, { downgrade = !downgrade }, label = { Text("Allow downgrade") })
                 FilterChip(testOnly, { testOnly = !testOnly }, label = { Text("Allow test-only") })
                 FilterChip(grant, { grant = !grant }, label = { Text("Grant all runtime permissions") })
                 FilterChip(bypass, { bypass = !bypass }, label = { Text("Bypass low target SDK block (Android 14+)") })
-                Text("Needs Root or Shizuku. For split bundles (.apks) use the normal installer.", style = MaterialTheme.typography.bodySmall)
+                Text("Needs Root or Shizuku. Split bundles are installed together in one session with these options.", style = MaterialTheme.typography.bodySmall)
+                if (busy) androidx.compose.material3.LinearProgressIndicator(Modifier.fillMaxWidth())
             }
         },
         confirmButton = {
-            TextButton(onClick = {
-                runCatching {
-                    service.planInstall(path.trim(), InstallOptions(downgrade = downgrade, testOnly = testOnly, grantAllPermissions = grant,
-                        installerPackage = installer.trim().ifBlank { null }, bypassLowTargetSdk = bypass))
-                }.onSuccess { onDismiss(); onPlan(it) }.onFailure { onEvent(UiEvent.ShowMessage(it.message ?: "")) }
+            TextButton(enabled = !busy, onClick = {
+                val opts = InstallOptions(downgrade = downgrade, testOnly = testOnly, grantAllPermissions = grant,
+                    installerPackage = installer.trim().ifBlank { null }, bypassLowTargetSdk = bypass)
+                busy = true
+                scope.launch {
+                    // Bundles are unpacked first, so plan off the main thread.
+                    withContext(Dispatchers.IO) { runCatching { service.planInstallAny(path.trim(), opts) } }
+                        .onSuccess { onDismiss(); onPlan(it) }.onFailure { onEvent(UiEvent.ShowMessage(it.message ?: "")) }
+                    busy = false
+                }
             }) { Text("Review") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
@@ -171,7 +180,18 @@ private fun ConfirmPlan(plan: BatchPlan?, onConfirm: () -> Unit, onDismiss: () -
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Confirm: ${plan.title}") },
-        text = { Text(plan.summary) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text(plan.summary)
+                if (plan.commands.isNotEmpty()) {
+                    Text("Exact commands (${plan.commands.size}):", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))
+                    plan.commands.forEach { c ->
+                        Text(if (c.startsWith("<")) "(Intent Firewall rules file)" else c, style = MaterialTheme.typography.bodySmall,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                    }
+                }
+            }
+        },
         confirmButton = { TextButton(onClick = onConfirm) { Text("Confirm") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
@@ -416,8 +436,28 @@ private fun LogcatTab(service: AppManagerService, onEvent: (UiEvent) -> Unit) {
     var filterTag by remember { mutableStateOf("") }
     var filterMsg by remember { mutableStateOf("") }
     var level by remember { mutableStateOf(setOf('V', 'D', 'I', 'W', 'E', 'F')) }
+    var live by remember { mutableStateOf(false) }
+    var pkgFilter by remember { mutableStateOf("") }
+    val ring = remember { ai.victorious.filemanager.core.appmgr.LogRing(5000) }
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     fun load() = scope.launch { lines = withContext(Dispatchers.IO) { service.dumpLogcat() } }
     LaunchedEffect(Unit) { load() }
+    // Live mode: stream `logcat -T` into a 5000-line ring and refresh twice a second until turned off or the tab closes.
+    androidx.compose.runtime.DisposableEffect(live, pkgFilter) {
+        var handle: AppManagerService.LiveLog? = null
+        val job = if (!live) null else scope.launch {
+            ring.clear()
+            val pid = if (pkgFilter.isNotBlank() && service.needsPrivilege())
+                withContext(Dispatchers.IO) { runCatching { service.pidOf(pkgFilter.trim()) }.getOrNull() } else null
+            handle = withContext(Dispatchers.IO) { runCatching { service.startLiveLogcat(ring, pid) } }
+                .onFailure { onEvent(UiEvent.ShowMessage(it.message ?: "Live logcat failed")); live = false }.getOrNull()
+            while (live) {
+                lines = ring.snapshot()
+                kotlinx.coroutines.delay(500)
+            }
+        }
+        onDispose { job?.cancel(); handle?.stop() }
+    }
     val shown = remember(lines, filterTag, filterMsg, level) {
         service.filterLog(lines, LogFilter(levels = level, tagContains = filterTag, messageContains = filterMsg))
     }
@@ -425,7 +465,8 @@ private fun LogcatTab(service: AppManagerService, onEvent: (UiEvent) -> Unit) {
         Row {
             OutlinedTextField(filterTag, { filterTag = it }, label = { Text("Tag") }, modifier = Modifier.weight(1f), singleLine = true)
             OutlinedTextField(filterMsg, { filterMsg = it }, label = { Text("Text") }, modifier = Modifier.weight(1f), singleLine = true)
-            TextButton(onClick = { load() }) { Text("Refresh") }
+            FilterChip(live, { live = !live }, label = { Text(if (live) "Live ●" else "Live") })
+            if (!live) TextButton(onClick = { load() }) { Text("Refresh") } else TextButton(onClick = { ring.clear(); lines = emptyList() }) { Text("Clear") }
             TextButton(onClick = {
                 scope.launch {
                     val text = service.exportLog(shown)
@@ -438,9 +479,19 @@ private fun LogcatTab(service: AppManagerService, onEvent: (UiEvent) -> Unit) {
         Row { listOf('V', 'D', 'I', 'W', 'E', 'F').forEach { ch ->
             FilterChip(ch in level, { level = if (ch in level) level - ch else level + ch }, label = { Text("$ch") })
         } }
-        LazyColumn(Modifier.weight(1f)) {
-            items(shown.takeLast(500)) { l ->
-                Text("${l.level}/${l.tag}: ${l.message}", style = MaterialTheme.typography.bodySmall)
+        if (live) {
+            OutlinedTextField(pkgFilter, { pkgFilter = it }, label = { Text("Only this package (Root/Shizuku)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            Text(
+                if (service.needsPrivilege()) "Streaming all apps. ${ring.dropped} older lines dropped." else "Streaming this app's own log (Android limits other apps' logs to Root/Shizuku).",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        val tail = shown.takeLast(if (live) 2000 else 500)
+        LaunchedEffect(tail.size, live) { if (live && tail.isNotEmpty()) listState.scrollToItem(tail.lastIndex) }
+        LazyColumn(Modifier.weight(1f), state = listState) {
+            items(tail) { l ->
+                val color = when (l.level) { 'E', 'F' -> MaterialTheme.colorScheme.error; 'W' -> MaterialTheme.colorScheme.tertiary; else -> MaterialTheme.colorScheme.onSurface }
+                Text("${l.timestamp.substringAfter(' ')} ${l.level}/${l.tag}: ${l.message}", style = MaterialTheme.typography.bodySmall, color = color)
             }
         }
     }
@@ -656,4 +707,75 @@ private fun ProfileEditorDialog(profile: AppProfile, onDismiss: () -> Unit, onSa
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+
+/**
+ * Debloater: import YOUR OWN plain-text list of package names (no community list is bundled), choose
+ * freeze / disable / uninstall-for-user, review the exact commands, then confirm. Undo uses the matching command.
+ */
+@Composable
+private fun DebloatTab(service: AppManagerService, onEvent: (UiEvent) -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var parsed by remember { mutableStateOf<ai.victorious.filemanager.core.appmgr.Debloater.Parsed?>(null) }
+    var action by remember { mutableStateOf(ai.victorious.filemanager.core.appmgr.Debloater.Action.FREEZE) }
+    var plan by remember { mutableStateOf<ai.victorious.filemanager.core.appmgr.Debloater.Plan?>(null) }
+    var confirm by remember { mutableStateOf<BatchPlan?>(null) }
+    val importer = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val text = withContext(Dispatchers.IO) {
+                runCatching { context.contentResolver.openInputStream(uri)?.use { s -> s.readBytes().takeIf { it.size <= 1_000_000 }?.decodeToString() } }.getOrNull()
+            }
+            if (text == null) { onEvent(UiEvent.ShowMessage("Could not read that file (plain text, max 1 MB)")); return@launch }
+            parsed = ai.victorious.filemanager.core.appmgr.Debloater.parse(text); plan = null
+        }
+    }
+    fun replan() {
+        val p = parsed ?: return
+        scope.launch {
+            withContext(Dispatchers.IO) { runCatching { service.planDebloat(p.packages, action) } }
+                .onSuccess { plan = it }.onFailure { onEvent(UiEvent.ShowMessage(it.message ?: "")) }
+        }
+    }
+    LaunchedEffect(parsed, action) { replan() }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(4.dp)) {
+        Text(
+            "Import your own list: a plain-text file with one package name per line (# starts a comment). " +
+                "No list is built in. System-critical packages, this app, your home screen and your keyboard are always skipped.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            GatedButton("Import list…", PrivilegeStatus.Need.ELEVATED, service, onEvent) { importer.launch(arrayOf("text/*", "*/*")) }
+        }
+        val p = parsed
+        if (p != null) {
+            Text("${p.packages.size} package names · ${p.duplicates} duplicates · ${p.invalidLines.size} unreadable lines" +
+                (if (p.invalidLines.isNotEmpty()) " (line ${p.invalidLines.take(5).joinToString(", ")})" else ""), style = MaterialTheme.typography.bodySmall)
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                ai.victorious.filemanager.core.appmgr.Debloater.Action.entries.forEach { a ->
+                    FilterChip(action == a, { action = a }, label = { Text(a.label) })
+                }
+            }
+        }
+        plan?.let { pl ->
+            Text("Will change ${pl.targets.size} installed app(s). Not installed: ${pl.notInstalled.size}. Protected, skipped: ${pl.protectedSkipped.size}.",
+                style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))
+            if (pl.protectedSkipped.isNotEmpty()) Text("Skipped: " + pl.protectedSkipped.joinToString(", "), style = MaterialTheme.typography.bodySmall)
+            pl.targets.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(enabled = pl.targets.isNotEmpty(), onClick = { confirm = pl.batch }) { Text("Review & apply") }
+                TextButton(enabled = pl.targets.isNotEmpty(), onClick = { confirm = pl.undo }) { Text("Undo this list") }
+            }
+        }
+    }
+    ConfirmPlan(confirm, onConfirm = {
+        val c = confirm ?: return@ConfirmPlan
+        confirm = null
+        scope.launch {
+            val err = withContext(Dispatchers.IO) { service.execute(c) }
+            onEvent(UiEvent.ShowMessage(if (err == null) "${c.title}: done" else "${c.title}: $err"))
+        }
+    }, onDismiss = { confirm = null })
 }

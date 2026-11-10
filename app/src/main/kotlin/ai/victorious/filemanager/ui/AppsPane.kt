@@ -58,6 +58,9 @@ fun AppsPane(backupDir: String, onEvent: (UiEvent) -> Unit) {
     var busy by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<InstalledAppInfo?>(null) }
     var includeData by remember { mutableStateOf(false) }
+    var encrypt by remember { mutableStateOf(false) }
+    var pass1 by remember { mutableStateOf("") }
+    var pass2 by remember { mutableStateOf("") }
 
     fun reload() {
         scope.launch {
@@ -138,18 +141,34 @@ fun AppsPane(backupDir: String, onEvent: (UiEvent) -> Unit) {
                         Checkbox(includeData, { includeData = it })
                         Text("Include /data (root)")
                     }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(encrypt, { encrypt = it })
+                        Text("Encrypt with a passphrase")
+                    }
+                    if (encrypt) {
+                        OutlinedTextField(pass1, { pass1 = it }, label = { Text("Passphrase (8+ characters)") }, singleLine = true,
+                            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
+                        OutlinedTextField(pass2, { pass2 = it }, label = { Text("Repeat passphrase") }, singleLine = true,
+                            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
+                        Text("AES-256-GCM. If you forget the passphrase the backup cannot be restored.",
+                            style = MaterialTheme.typography.bodySmall)
+                    }
                 }
             },
             confirmButton = {
-                TextButton(onClick = {
+                TextButton(enabled = !encrypt || (pass1.length >= 8 && pass1 == pass2), onClick = {
                     busy = true
                     selected = null
+                    val pass = if (encrypt) pass1.toCharArray() else null
+                    pass1 = ""; pass2 = ""
                     scope.launch {
                         val r = withContext(Dispatchers.IO) {
-                            runCatching { service.backup(a, File(backupDir), includeData = includeData) }
+                            try {
+                                runCatching { service.backup(a, File(backupDir), includeData = includeData, passphrase = pass) }
+                            } finally { pass?.fill(' ') }
                         }
                         busy = false
-                        r.onSuccess { onEvent(UiEvent.ShowMessage("Backed up → ${it.name}")) }
+                        r.onSuccess { onEvent(UiEvent.ShowMessage("Backed up → ${it.name}" + if (pass != null) " (encrypted)" else "")) }
                             .onFailure { onEvent(UiEvent.ShowMessage(it.message ?: "Backup failed")) }
                         onEvent(UiEvent.Refresh)
                     }

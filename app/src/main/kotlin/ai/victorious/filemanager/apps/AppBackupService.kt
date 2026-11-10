@@ -4,6 +4,7 @@ import ai.victorious.filemanager.apk.ApkInstaller
 import ai.victorious.filemanager.core.apps.AppBackup
 import ai.victorious.filemanager.core.apps.AppBackupManifest
 import ai.victorious.filemanager.core.apps.BackupApkEntry
+import ai.victorious.filemanager.core.apps.BackupCrypto
 import ai.victorious.filemanager.core.priv.PrivilegeBackend
 import ai.victorious.filemanager.core.shell.ShellCommands
 import ai.victorious.filemanager.priv.PrivilegeManager
@@ -63,6 +64,8 @@ class AppBackupService(
         destDir: File,
         asApksBundle: Boolean = true,
         includeData: Boolean = false,
+        /** When set, every APK / data / bundle file is stored encrypted (VFBE1, see BackupCrypto). Never stored or logged. */
+        passphrase: CharArray? = null,
     ): File {
         val folder = File(destDir, AppBackup.folderName(app.packageName, app.versionCode)).apply { mkdirs() }
         val entries = ArrayList<BackupApkEntry>()
@@ -90,8 +93,8 @@ class AppBackupService(
             includeData = includeData,
             apks = entries,
             dataArchive = dataName,
+            encryption = if (passphrase != null) BackupCrypto.FORMAT else null,
         )
-        File(folder, "manifest.json").writeText(AppBackup.writeManifest(manifest))
         if (asApksBundle && app.apkPaths.size > 1) {
             val bundle = File(folder, AppBackup.apksBundleName(app.packageName))
             ZipOutputStream(bundle.outputStream()).use { z ->
@@ -103,14 +106,46 @@ class AppBackupService(
                 }
             }
         }
+        if (passphrase != null) {
+            // Encrypt everything except the manifest (it only names the app and its files).
+            try {
+                folder.listFiles().orEmpty().filter { it.isFile && it.name != "manifest.json" }.forEach { BackupCrypto.encryptFile(it, passphrase) }
+            } catch (e: Throwable) {
+                folder.deleteRecursively() // never leave a half-encrypted backup behind
+                throw e
+            }
+        }
+        File(folder, "manifest.json").writeText(AppBackup.writeManifest(manifest))
         return folder
     }
+
+    fun isEncrypted(folder: File): Boolean = readBackup(folder).encryption != null
+
+    /** Decrypts [name] from an encrypted backup into a private temp folder; the caller deletes it. */
+    private fun decryptToTemp(folder: File, name: String, passphrase: CharArray, tmp: File): File {
+        val src = File(folder, name + BackupCrypto.EXTENSION)
+        require(src.isFile) { "Missing ${src.name}" }
+        return BackupCrypto.decryptFile(src, File(tmp, name), passphrase)
+    }
+
+    /** Private temp folder for decrypted files (app cache; the app's own installer session and root can read it). Deleted after use. */
+    private fun tempDir(): File = File(context.cacheDir, "backup-restore-${System.nanoTime()}").apply { mkdirs() }
 
     fun readBackup(folder: File): AppBackupManifest =
         AppBackup.readManifest(File(folder, "manifest.json").readText())
 
-    fun restoreApks(folder: File): String {
+    fun restoreApks(folder: File, passphrase: CharArray? = null): String {
         val m = readBackup(folder)
+        if (m.encryption != null) {
+            requireNotNull(passphrase) { "This backup is encrypted: enter its passphrase" }
+            val tmp = tempDir()
+            try {
+                val apks = m.apks.map { decryptToTemp(folder, it.name, passphrase, tmp) }
+                require(apks.isNotEmpty()) { "No APKs in backup" }
+                // The PackageInstaller session copies the bytes before returning, so the temp copies can go right after.
+                return if (apks.size == 1) installNow(apks) else ApkInstaller.installSplits(context, apks)
+            } finally { tmp.deleteRecursively() }
+        }
         val apks = m.apks.map { File(folder, it.name) }.filter { it.isFile }
         require(apks.isNotEmpty()) { "No APKs in backup" }
         return if (apks.size == 1) {
@@ -120,14 +155,21 @@ class AppBackupService(
         }
     }
 
-    fun restoreData(folder: File) {
+    /** A single decrypted APK goes through the split-session path too: it writes the bytes immediately (the normal queue reads later). */
+    private fun installNow(apks: List<File>) = ApkInstaller.installSplits(context, apks)
+
+    fun restoreData(folder: File, passphrase: CharArray? = null) {
         val m = readBackup(folder)
         val name = m.dataArchive ?: error("Backup has no data archive")
         if (privilege.backend() != PrivilegeBackend.ROOT) error("Data restore requires Root")
-        val tar = File(folder, name)
-        require(tar.isFile) { "Missing $name" }
-        val r = privilege.execElevated(ShellCommands.packageDataRestore(m.packageName, tar.absolutePath))
-        if (!r.ok) error(r.stderr.ifBlank { "data restore failed" })
+        // App data is private: decrypt it to internal cache only (root can read it there).
+        val tmp = if (m.encryption != null) tempDir() else null
+        try {
+            val tar = if (tmp != null) decryptToTemp(folder, name, requireNotNull(passphrase) { "This backup is encrypted: enter its passphrase" }, tmp) else File(folder, name)
+            require(tar.isFile) { "Missing $name" }
+            val r = privilege.execElevated(ShellCommands.packageDataRestore(m.packageName, tar.absolutePath))
+            if (!r.ok) error(r.stderr.ifBlank { "data restore failed" })
+        } finally { tmp?.deleteRecursively() }
     }
 
     fun openApp(packageName: String) {

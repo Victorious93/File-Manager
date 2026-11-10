@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Base theme (light widgets). The launch window is dark in light mode too, so the splash and the
-         frames before Compose draws are never white; white status-bar icons match that window and
-         enableEdgeToEdge() flips them once the real UI is up. values-night swaps the parent for the dark
-         Material theme. The public name is split off so values-v31 can add the splash attribute. -->
-    <style name="Base.Theme.VictoriousFileManager" parent="android:Theme.Material.Light.NoActionBar">
+    <!-- Base theme: dark widgets in every system mode, so the splash, the frames before Compose draws and any
+         platform dialog are never white (Don dislikes white screens; the app defaults to the dark fleet look).
+         A user who picks Light in Settings still gets light Compose screens. The public name is split off so
+         values-v31 can add the splash attribute. -->
+    <style name="Base.Theme.VictoriousFileManager" parent="android:Theme.Material.NoActionBar">
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowBackground">@color/launch_background</item>

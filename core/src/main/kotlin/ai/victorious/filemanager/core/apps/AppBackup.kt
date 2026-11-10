@@ -22,6 +22,8 @@ data class AppBackupManifest(
     val includeData: Boolean = false,
     val apks: List<BackupApkEntry>,
     val dataArchive: String? = null,
+    /** Null for a plain backup; "VFBE1" when every APK/data file is stored encrypted as `<name>.vfbe` (see BackupCrypto). */
+    val encryption: String? = null,
 )
 
 object AppBackup {

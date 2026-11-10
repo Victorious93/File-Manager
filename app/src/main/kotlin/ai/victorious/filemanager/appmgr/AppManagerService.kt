@@ -4,7 +4,12 @@ import ai.victorious.filemanager.core.appmgr.AppComponent
 import ai.victorious.filemanager.core.appmgr.AppOpCatalog
 import ai.victorious.filemanager.core.appmgr.BatchOpsPlus
 import ai.victorious.filemanager.core.appmgr.DexClassLister
+import ai.victorious.filemanager.core.appmgr.Debloater
 import ai.victorious.filemanager.core.appmgr.ExodusTrackers
+import ai.victorious.filemanager.core.appmgr.LiveLogcat
+import ai.victorious.filemanager.core.appmgr.LogRing
+import ai.victorious.filemanager.core.appmgr.SplitApk
+import ai.victorious.filemanager.core.appmgr.SplitInstallCommands
 import ai.victorious.filemanager.core.appmgr.InstallCommands
 import ai.victorious.filemanager.core.appmgr.InstallOptions
 import ai.victorious.filemanager.core.appmgr.LibraryHit
@@ -222,6 +227,93 @@ class AppManagerService(private val context: Context, private val privilege: Pri
         val cmds = InstallCommands.plan(apkPath, o, Build.VERSION.SDK_INT, System.currentTimeMillis())
         return BatchPlan("Install ${File(apkPath).name}", listOf(cmds[1]), cmds)
     }
+
+    /**
+     * Installer options for every kind of input: a single .apk, a .apks / .xapk bundle, or a folder of split APKs.
+     * Bundles are unpacked into the app's external cache (readable by the shell user under Root and Shizuku),
+     * then installed in one privileged pm session. Call off the main thread (bundles can be large).
+     */
+    fun planInstallAny(path: String, o: InstallOptions): BatchPlan {
+        requireElevated("install with options")
+        val f = File(path)
+        require(f.exists()) { "Not found: $path" }
+        val name = f.name.lowercase()
+        if (f.isFile && name.endsWith(".apk")) return planInstall(path, o)
+        val apks: List<File> = when {
+            f.isDirectory -> f.listFiles().orEmpty().filter { it.isFile && it.name.endsWith(".apk", true) }
+                .sortedWith(compareBy({ !it.name.equals("base.apk", true) }, { it.name }))
+            name.endsWith(".apks") || name.endsWith(".xapk") || name.endsWith(".zip") -> unpackBundle(f)
+            name.endsWith(".apkm") -> error(".apkm bundles are encrypted by their publisher and cannot be installed here")
+            else -> error("Pick an .apk, .apks / .xapk bundle, or a folder of split APKs")
+        }
+        require(apks.isNotEmpty()) { "No APKs found in ${f.name}" }
+        val stamp = System.currentTimeMillis()
+        val cmds = SplitInstallCommands.plan(apks.map { SplitApk(it.absolutePath, it.length()) }, o, Build.VERSION.SDK_INT, stamp)
+        return BatchPlan("Install ${f.name} (${apks.size} APKs)", apks.map { it.name }, cmds)
+    }
+
+    private fun unpackBundle(bundle: File): List<File> {
+        val base = context.externalCacheDir ?: context.cacheDir
+        File(base, "split-install").deleteRecursively()
+        val dest = File(base, "split-install/${System.currentTimeMillis()}").apply { mkdirs() }
+        java.util.zip.ZipFile(bundle).use { zip ->
+            val entries = SplitInstallCommands.bundleApkEntries(zip.entries().asSequence().map { it.name }.toList())
+            return entries.mapIndexed { i, e ->
+                val out = File(dest, SplitInstallCommands.safeName(e, i))
+                zip.getInputStream(zip.getEntry(e)).use { input -> out.outputStream().use { input.copyTo(it) } }
+                out
+            }
+        }
+    }
+
+    // ---- debloater (user-imported list only; nothing bundled) ----
+
+    /** Packages that must never be debloated on this phone: this app, the home screen and the keyboard in use. */
+    fun debloatKeep(): Set<String> {
+        val keep = mutableSetOf(context.packageName)
+        runCatching {
+            val home = android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_HOME)
+            pm.resolveActivity(home, PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName?.let { keep += it }
+        }
+        runCatching {
+            android.provider.Settings.Secure.getString(context.contentResolver, android.provider.Settings.Secure.DEFAULT_INPUT_METHOD)
+                ?.substringBefore('/')?.takeIf { it.isNotBlank() }?.let { keep += it }
+        }
+        return keep
+    }
+
+    fun planDebloat(list: List<String>, action: Debloater.Action): Debloater.Plan {
+        requireElevated("debloat")
+        val installed = pm.getInstalledApplications(PackageManager.MATCH_UNINSTALLED_PACKAGES or PackageManager.MATCH_DISABLED_COMPONENTS)
+            .map { it.packageName }.toSet()
+        return Debloater.plan(list, installed, action, debloatKeep())
+    }
+
+    // ---- live logcat ----
+
+    /**
+     * Starts `logcat -T` streaming into [ring]. With Root or Shizuku it shows every app; without, Android only
+     * lets an app read its own log. Returns a handle whose [LiveLog.stop] ends the stream.
+     */
+    fun startLiveLogcat(ring: LogRing, pid: Int? = null): LiveLog {
+        val cmd = LiveLogcat.command(backlog = 300, pid = pid)
+        val proc = if (needsPrivilege()) privilege.executor().openShell(cmd) else
+            runCatching { ProcessBuilder(*cmd).redirectErrorStream(true).start() }.getOrNull()
+        proc ?: error("Could not start logcat")
+        val reader = Thread({
+            runCatching {
+                proc.inputStream.bufferedReader().useLines { lines -> lines.forEach { if (it.isNotBlank()) ring.add(LogcatParser.parse(it)) } }
+            }
+        }, "live-logcat").apply { isDaemon = true; start() }
+        return LiveLog(proc, reader)
+    }
+
+    class LiveLog(private val proc: Process, private val reader: Thread) {
+        val running: Boolean get() = reader.isAlive
+        fun stop() { runCatching { proc.destroy() }; reader.interrupt() }
+    }
+
+    fun pidOf(pkg: String): Int? = LiveLogcat.parsePidof(run("pidof ${ShellCommands.quote(pkg)}").lineSequence().firstOrNull().orEmpty())
 
     /** Batch APK backup via the existing AppBackupService (APK only — no data). */
     fun backupApks(pkgs: List<String>, destDir: File): Pair<Int, List<String>> {

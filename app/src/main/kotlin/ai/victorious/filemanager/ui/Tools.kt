@@ -51,6 +51,7 @@ import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material.icons.outlined.QrCode
 import androidx.compose.material.icons.automirrored.outlined.Label
 import androidx.compose.material3.Button
@@ -113,6 +114,8 @@ sealed interface ToolRequest {
     data class Organize(val selected: List<String>, val dir: String) : ToolRequest
     data class Snapshots(val selected: List<String>, val dir: String) : ToolRequest
     data object WifiQrShare : ToolRequest
+    /** Local music/video library with YouTube-style home, plus YouTube link handoff to the official apps. */
+    data object MediaLibrary : ToolRequest
 }
 
 @Composable
@@ -123,6 +126,7 @@ fun ToolsPane(state: UiState, onEvent: (UiEvent) -> Unit) {
     val dir = pane.active.path
     val files = selectedFiles(state)
     var askZipPassword by remember { mutableStateOf(false) }
+    var restorePassFor by remember { mutableStateOf<File?>(null) }
     val scope = rememberCoroutineScope()
     LazyColumn(Modifier.fillMaxSize()) {
         item {
@@ -146,6 +150,11 @@ fun ToolsPane(state: UiState, onEvent: (UiEvent) -> Unit) {
         item {
             ToolItem(Icons.Outlined.History, "File version snapshots", "Keep, diff and restore earlier versions (${files.size} selected)") {
                 onEvent(UiEvent.OpenTool(ToolRequest.Snapshots(files.map { it.absolutePath }, dir)))
+            }
+        }
+        item {
+            ToolItem(Icons.Outlined.LibraryMusic, "Media library", "Music & videos on this phone: continue watching, artists, albums, playlists, YouTube links") {
+                onEvent(UiEvent.OpenTool(ToolRequest.MediaLibrary))
             }
         }
         item {
@@ -283,6 +292,8 @@ fun ToolsPane(state: UiState, onEvent: (UiEvent) -> Unit) {
                     val svc = ai.victorious.filemanager.apps.AppBackupService(appCtx, appCtx.privilege)
                     // PackageInstaller session writes stream whole APKs: never on the main thread.
                     scope.launch {
+                        val encrypted = withContext(Dispatchers.IO) { runCatching { svc.isEncrypted(folders.first()) }.getOrDefault(false) }
+                        if (encrypted) { restorePassFor = folders.first(); return@launch }
                         withContext(Dispatchers.IO) { runCatching { svc.restoreApks(folders.first()) } }
                             .onSuccess { onEvent(UiEvent.ShowMessage(it)) }
                             .onFailure { onEvent(UiEvent.ShowMessage(it.message ?: "Restore failed")) }
@@ -290,6 +301,22 @@ fun ToolsPane(state: UiState, onEvent: (UiEvent) -> Unit) {
                 }
             }
         }
+    }
+    restorePassFor?.let { folder ->
+        PasswordDialog(
+            title = "Backup passphrase",
+            confirmLabel = "Restore",
+            onConfirm = { pw ->
+                restorePassFor = null
+                val svc = ai.victorious.filemanager.apps.AppBackupService(appCtx, appCtx.privilege)
+                scope.launch {
+                    withContext(Dispatchers.IO) { try { runCatching { svc.restoreApks(folder, pw) } } finally { pw.fill(' ') } }
+                        .onSuccess { onEvent(UiEvent.ShowMessage(it)) }
+                        .onFailure { onEvent(UiEvent.ShowMessage(it.message ?: "Restore failed")) }
+                }
+            },
+            onDismiss = { restorePassFor = null },
+        )
     }
     if (askZipPassword) {
         PasswordDialog(
@@ -336,6 +363,7 @@ fun ToolHost(request: ToolRequest, onClose: () -> Unit, onEvent: (UiEvent) -> Un
         is ToolRequest.Organize -> OrganizeScreen(request.selected, request.dir, onClose, onEvent)
         is ToolRequest.Snapshots -> SnapshotsScreen(request.selected, onClose, onEvent)
         ToolRequest.WifiQrShare -> WifiQrScreen(onClose)
+        ToolRequest.MediaLibrary -> MediaLibraryScreen(onClose, onEvent)
     }
 }
 
