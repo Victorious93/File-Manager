@@ -9,7 +9,7 @@ Code: `core/.../notes/` (wikilinks, backlinks, vault, preview) and `app/.../note
 | Feature | How |
 |---|---|
 | Any folder as a vault | Pick a path (or use app `Notes/`). All `*.md` files are notes. |
-| Markdown editor + live preview | Editor / Preview / Split panes. Preview renders headings, nested lists, tappable task lists (`- [ ]` / `- [x]`, ticks write back to the note), pipe tables with `:---:` alignment, quotes, fences, bold/italic/`~~strike~~`/`==highlight==`, `[text](url)` and `<url>` links (http/https/mailto only), `[[wikilinks]]`, `#tags`. |
+| Markdown editor + live preview | Editor / Preview / Split panes. Preview renders headings, nested lists, tappable task lists (`- [ ]` / `- [x]`, ticks write back to the note; notes with Windows `\r\n` line endings work too and keep them), pipe tables with `:---:` alignment, quotes, fences, bold/italic/`~~strike~~`/`==highlight==`, `[text](url)` and `<url>` links (http/https/mailto only), `[[wikilinks]]`, `#tags`. |
 | `[[wikilinks]]` | `[[Target]]`, `[[Target\|Alias]]`, `[[Target#Heading]]`, `[[Target#Heading\|Alias]]`. Autocomplete while typing `[[`. Unresolved links can create the note. |
 | Backlinks / outgoing | Side panes on the open note. Index rebuilt on vault open and on save. |
 | `#tags` | Parsed outside frontmatter and wikilinks; ATX headings are not tags. |
@@ -23,4 +23,4 @@ Code: `core/.../notes/` (wikilinks, backlinks, vault, preview) and `app/.../note
 
 ## Tests
 
-`NotesVaultTest` — wikilink/tag/frontmatter parsing, backlink index (outgoing/backlinks/unresolved/suggest/orphans), vault daily/templates/search, markdown preview blocks. `MarkdownPreviewExtrasTest` — task line numbers (frontmatter included) round-trip through `NoteOps.toggleTask`, tables (alignment, escaped pipes, short rows), inline strike/highlight/links, unsafe link schemes stay text, nested list depth.
+`NotesVaultTest` — wikilink/tag/frontmatter parsing, backlink index (outgoing/backlinks/unresolved/suggest/orphans), vault daily/templates/search, markdown preview blocks. `MarkdownPreviewExtrasTest` — task line numbers (frontmatter included) round-trip through `NoteOps.toggleTask`, tables (alignment, escaped pipes, short rows), inline strike/highlight/links, unsafe link schemes stay text, nested list depth. `NoteOpsTest.toggleTasksInWindowsLineEndingNote` — CRLF notes (with CRLF frontmatter) toggle the line the preview reports and keep every `\r\n`.

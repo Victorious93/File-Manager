@@ -88,6 +88,20 @@ class NoteOpsTest {
         assertEquals(NoteOps.TaskStats(1, 1), NoteOps.taskStats(b))
     }
 
+    @Test fun toggleTasksInWindowsLineEndingNote() {
+        val b = "# List\r\n- [ ] a\r\n  * [X] b\r\nplain\r\n"
+        assertEquals("# List\r\n- [x] a\r\n  * [X] b\r\nplain\r\n", NoteOps.toggleTask(b, 1))
+        assertEquals("# List\r\n- [ ] a\r\n  * [ ] b\r\nplain\r\n", NoteOps.toggleTask(b, 2))
+        assertEquals(b, NoteOps.toggleTask(b, 3))
+        // The line the preview reports for a task is the line toggleTask flips, CRLF or not.
+        val withFm = "---\r\ntags: x\r\n---\r\n- [ ] first\r\n- [ ] second"
+        val tasks = MarkdownPreview.parse(withFm).filterIsInstance<MdBlock.Task>()
+        assertEquals(2, tasks.size)
+        val flipped = NoteOps.toggleTask(withFm, tasks[1].line)
+        assertEquals("---\r\ntags: x\r\n---\r\n- [ ] first\r\n- [x] second", flipped)
+        assertEquals(NoteOps.TaskStats(1, 1), NoteOps.taskStats(flipped))
+    }
+
     @Test fun localGraphDepth() {
         val idx = BacklinkIndex()
         idx.setNote("A.md", "[[B]]"); idx.setNote("B.md", "[[C]]"); idx.setNote("C.md", ""); idx.setNote("D.md", "")

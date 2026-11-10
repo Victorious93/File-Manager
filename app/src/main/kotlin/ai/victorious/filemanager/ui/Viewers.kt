@@ -506,6 +506,7 @@ private fun ArchiveScreen(file: File, extractTo: File, onClose: () -> Unit, onMe
     var editText by remember { mutableStateOf<Pair<String, String>?>(null) }
     var renaming by remember { mutableStateOf<String?>(null) }
     var zipFormat by remember { mutableStateOf(false) }
+    var isSevenZ by remember { mutableStateOf(false) }
     fun editArchive(edit: ZipEdit, done: String) {
         busy = true
         scope.launch {
@@ -522,6 +523,7 @@ private fun ArchiveScreen(file: File, extractTo: File, onClose: () -> Unit, onMe
                 runCatching {
                     when {
                         isRar -> Archives.extractRar(file, dest, password?.let(::String))
+                        isSevenZ -> Archives.extractSevenZ(file, dest, password)
                         encrypted -> EncryptedZip.extract(file, dest, password)
                         else -> Archives.extract(file, dest)
                     }.also {
@@ -535,7 +537,7 @@ private fun ArchiveScreen(file: File, extractTo: File, onClose: () -> Unit, onMe
                     onMessage(
                         when {
                             it is WrongPasswordException -> "Wrong password"
-                            it is Archives.RarPasswordException -> it.message ?: "Wrong password"
+                            it is ai.victorious.filemanager.core.archive.ArchivePasswordException -> it.message ?: "Wrong password"
                             else -> "Extract failed: ${it.message}"
                         },
                     )
@@ -548,10 +550,12 @@ private fun ArchiveScreen(file: File, extractTo: File, onClose: () -> Unit, onMe
         val format = withContext(Dispatchers.IO) { runCatching { Archives.format(file) }.getOrDefault(ArchiveFormat.UNKNOWN) }
         isRar = format == ArchiveFormat.RAR
         zipFormat = format == ArchiveFormat.ZIP
+        isSevenZ = format == ArchiveFormat.SEVEN_Z
         encrypted = withContext(Dispatchers.IO) {
             runCatching {
                 when (format) {
                     ArchiveFormat.ZIP -> EncryptedZip.isEncrypted(file)
+                    ArchiveFormat.SEVEN_Z -> Archives.isSevenZPasswordProtected(file)
                     ArchiveFormat.RAR -> Archives.isRarPasswordProtected(file)
                     else -> false
                 }
@@ -560,8 +564,8 @@ private fun ArchiveScreen(file: File, extractTo: File, onClose: () -> Unit, onMe
         withContext(Dispatchers.IO) { runCatching { Archives.list(file) } }
             .onSuccess { items = it }
             .onFailure {
-                // RAR5 with encrypted headers cannot be listed without the password; still allow extract.
-                if (it is Archives.RarPasswordException) { items = emptyList(); encrypted = true }
+                // RAR5 / 7z with encrypted names cannot be listed without the password; still allow extract.
+                if (it is ai.victorious.filemanager.core.archive.ArchivePasswordException) { items = emptyList(); encrypted = true }
                 else error = it.message ?: "Cannot read archive"
             }
     }
@@ -580,7 +584,11 @@ private fun ArchiveScreen(file: File, extractTo: File, onClose: () -> Unit, onMe
                     scope.launch {
                         // Verify saved passwords without writing anything; extract only with a confirmed match.
                         val match = withContext(Dispatchers.IO) {
-                            runCatching { savedPasswords.list().firstOrNull { EncryptedZip.verifyPassword(file, it.toCharArray()) } }
+                            runCatching {
+                                savedPasswords.list().firstOrNull {
+                                    if (isSevenZ) Archives.verifySevenZPassword(file, it.toCharArray()) else EncryptedZip.verifyPassword(file, it.toCharArray())
+                                }
+                            }
                                 .getOrNull()
                         }
                         busy = false

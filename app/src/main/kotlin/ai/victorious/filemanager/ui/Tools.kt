@@ -5,9 +5,6 @@ import ai.victorious.filemanager.core.diff.DiffLine
 import ai.victorious.filemanager.core.diff.DiffOp
 import ai.victorious.filemanager.core.diff.LineDiff
 import ai.victorious.filemanager.core.diff.WordDiff
-import ai.victorious.filemanager.core.dupes.DuplicateFinder
-import ai.victorious.filemanager.core.dupes.DuplicateGroup
-import ai.victorious.filemanager.core.storage.FolderBreakdown
 import ai.victorious.filemanager.core.storage.StorageAnalyzer
 import ai.victorious.filemanager.core.text.TextFiles
 import androidx.activity.compose.BackHandler
@@ -18,13 +15,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -36,7 +30,6 @@ import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Compare
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material.icons.outlined.InsertDriveFile
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PieChart
 import androidx.compose.material.icons.outlined.Cloud
@@ -61,7 +54,6 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -346,7 +338,7 @@ fun ToolsPane(state: UiState, onEvent: (UiEvent) -> Unit) {
         CreateArchiveDialog(
             suggestedBase = ai.victorious.filemanager.core.archive.ArchiveWriter.suggestedBase(sources),
             count = sources.size,
-            onCreate = { f, l, name -> askCreateArchive = false; onEvent(UiEvent.CreateArchive(f, l, name)) },
+            onCreate = { f, l, name, pw -> askCreateArchive = false; onEvent(UiEvent.CreateArchive(f, l, name, pw)) },
             onDismiss = { askCreateArchive = false },
         )
     }
@@ -377,7 +369,7 @@ fun ToolHost(request: ToolRequest, onClose: () -> Unit, onEvent: (UiEvent) -> Un
         is ToolRequest.Compare -> CompareScreen(File(request.left), File(request.right), onClose)
         is ToolRequest.CompareFolders -> FolderCompareScreen(File(request.left), File(request.right), onClose, onEvent)
         is ToolRequest.Duplicates -> DuplicatesScreen(File(request.root), onClose, onEvent)
-        is ToolRequest.Storage -> StorageScreen(File(request.root), onClose)
+        is ToolRequest.Storage -> StorageScreen(File(request.root), onClose, onEvent)
         is ToolRequest.ExtractApps -> ExtractAppsScreen(File(request.dest), onClose, onEvent)
         is ToolRequest.Plugins -> PluginsScreen(request.selected, request.dir, onClose, onEvent)
         is ToolRequest.Scripts -> ScriptsScreen(request.selected, request.dir, onClose)
@@ -490,128 +482,6 @@ internal fun CompareScreen(left: File, right: File, onClose: () -> Unit) {
                             "${l.oldLine?.toString()?.padStart(4) ?: "    "} ${l.newLine?.toString()?.padStart(4) ?: "    "} $sign ${l.text}",
                             style = mono, softWrap = false,
                             modifier = Modifier.background(bg).padding(horizontal = 4.dp),
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun DuplicatesScreen(root: File, onClose: () -> Unit, onEvent: (UiEvent) -> Unit) {
-    val app = LocalContext.current.applicationContext as FileManagerApplication
-    val scope = rememberCoroutineScope()
-    var groups by remember { mutableStateOf<List<DuplicateGroup>?>(null) }
-    var error by remember { mutableStateOf<String?>(null) }
-    val selected = remember { mutableStateListOf<File>() }
-    var busy by remember { mutableStateOf(false) }
-    LaunchedEffect(root) {
-        withContext(Dispatchers.IO) { runCatching { DuplicateFinder.scan(root) } }
-            .onSuccess { groups = it; selected.clear(); selected.addAll(DuplicateFinder.defaultSelection(it)) }
-            .onFailure { error = it.message ?: "Scan failed" }
-    }
-    ToolScaffold("Duplicates · ${root.name}", onClose, actions = {
-        TextButton(enabled = selected.isNotEmpty() && !busy, onClick = {
-            busy = true
-            val toTrash = selected.toList()
-            scope.launch {
-                val moved = withContext(Dispatchers.IO) { toTrash.count { runCatching { app.trash.moveToTrash(it.path) }.isSuccess } }
-                groups = groups?.map { g -> g.copy(files = g.files - toTrash.toSet()) }?.filter { it.files.size > 1 }
-                selected.clear()
-                busy = false
-                onEvent(UiEvent.ShowMessage("Moved $moved file(s) to trash"))
-                onEvent(UiEvent.Refresh)
-            }
-        }) { Text("Trash ${selected.size}") }
-    }) { modifier ->
-        val g = groups
-        if (g == null) Loading(modifier, error) else if (g.isEmpty()) Loading(modifier, "No duplicates found") else Column(modifier) {
-            if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-            Text(
-                "${g.size} group(s) · ${StorageAnalyzer.human(g.sumOf { it.wasted })} reclaimable · " +
-                    "selected ${StorageAnalyzer.human(selected.sumOf { it.length() })}",
-                style = MaterialTheme.typography.labelMedium,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-            )
-            LazyColumn(Modifier.fillMaxSize()) {
-                g.forEach { group ->
-                    item(key = "h" + group.hash) {
-                        Text(
-                            "${group.files.size} × ${StorageAnalyzer.human(group.size)}",
-                            style = MaterialTheme.typography.titleSmall,
-                            modifier = Modifier.padding(start = 12.dp, top = 12.dp),
-                        )
-                    }
-                    items(group.files, key = { group.hash + it.path }) { f ->
-                        Row(
-                            Modifier.fillMaxWidth().clickable { if (f in selected) selected.remove(f) else selected.add(f) }.padding(horizontal = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Checkbox(checked = f in selected, onCheckedChange = { if (it) selected.add(f) else selected.remove(f) })
-                            Text(f.path.removePrefix(root.path).trimStart('/'), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        }
-                    }
-                    item(key = "d" + group.hash) { HorizontalDivider(Modifier.padding(top = 4.dp)) }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun StorageScreen(root: File, onClose: () -> Unit) {
-    val stack = remember { mutableStateListOf(root) }
-    val current = stack.last()
-    var result by remember { mutableStateOf<FolderBreakdown?>(null) }
-    var error by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(current) {
-        result = null; error = null
-        withContext(Dispatchers.IO) { runCatching { StorageAnalyzer.analyze(current) } }
-            .onSuccess { result = it }.onFailure { error = it.message ?: "Cannot analyze" }
-    }
-    val back = { if (stack.size > 1) stack.removeAt(stack.lastIndex) else onClose() }
-    BackHandler(onBack = { back() })
-    ToolScaffold("Storage · ${current.name.ifEmpty { current.path }}", onBack = { back() }) { modifier ->
-        val r = result
-        if (r == null) Loading(modifier, error) else Column(modifier) {
-            Text(
-                "Total ${StorageAnalyzer.human(r.total)} · ${r.entries.size} item(s)",
-                style = MaterialTheme.typography.titleSmall,
-                modifier = Modifier.padding(12.dp),
-            )
-            // Stacked bar "chart" of the top entries.
-            val palette = listOf(Color(0xFF4F8EF7), Color(0xFF34C38F), Color(0xFFF1B44C), Color(0xFFF46A6A), Color(0xFF9C6ADE), Color(0xFF50A5F1))
-            Row(Modifier.fillMaxWidth().height(18.dp).padding(horizontal = 12.dp)) {
-                r.entries.take(6).forEachIndexed { i, e ->
-                    val f = r.fraction(e)
-                    if (f > 0.005f) Box(Modifier.weight(f).fillMaxHeight().background(palette[i]))
-                }
-                val rest = 1f - r.entries.take(6).sumOf { r.fraction(it).toDouble() }.toFloat()
-                if (rest > 0.005f) Box(Modifier.weight(rest).fillMaxHeight().background(Color.Gray))
-            }
-            Spacer(Modifier.height(8.dp))
-            LazyColumn(Modifier.fillMaxSize()) {
-                items(r.entries, key = { it.file.path }) { e ->
-                    val i = r.entries.indexOf(e)
-                    Column(
-                        Modifier.fillMaxWidth()
-                            .clickable(enabled = e.isDirectory) { stack.add(e.file) }
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Box(Modifier.width(10.dp).height(10.dp).background(if (i < 6) palette[i] else Color.Gray))
-                            Icon(if (e.isDirectory) Icons.Outlined.Folder else Icons.Outlined.InsertDriveFile, contentDescription = null)
-                            Text(e.file.name, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(StorageAnalyzer.human(e.bytes), style = MaterialTheme.typography.bodySmall)
-                        }
-                        LinearProgressIndicator(
-                            progress = { r.fraction(e) },
-                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                        )
-                        if (e.isDirectory) Text(
-                            "${e.fileCount} file(s) · ${"%.1f".format(r.fraction(e) * 100)}%",
-                            style = MaterialTheme.typography.labelSmall,
                         )
                     }
                 }

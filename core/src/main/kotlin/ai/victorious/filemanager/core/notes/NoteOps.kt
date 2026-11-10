@@ -101,11 +101,16 @@ object NoteOps {
 
     /** Toggle `- [ ]` ↔ `- [x]` on [line] (0-based). Returns body unchanged if not a task. */
     fun toggleTask(body: String, line: Int): String {
+        // Split on '\n' only so line numbers match MarkdownPreview (which treats "\r\n" as one break).
+        // A Windows-style note keeps a trailing '\r' on each line; it is set aside before matching and
+        // put back afterwards, so the note's line endings are never changed by a tap.
         val lines = body.split('\n').toMutableList()
         if (line !in lines.indices) return body
-        val m = TASK.matchEntire(lines[line]) ?: return body
+        val raw = lines[line]
+        val cr = if (raw.endsWith('\r')) "\r" else ""
+        val m = TASK.matchEntire(raw.removeSuffix("\r")) ?: return body
         val mark = if (m.groupValues[2] == " ") "x" else " "
-        lines[line] = m.groupValues[1] + mark + m.groupValues[3]
+        lines[line] = m.groupValues[1] + mark + m.groupValues[3] + cr
         return lines.joinToString("\n")
     }
 

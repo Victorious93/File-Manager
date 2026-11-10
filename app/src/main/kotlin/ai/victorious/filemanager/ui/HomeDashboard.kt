@@ -36,6 +36,8 @@ import androidx.compose.material.icons.outlined.Lan
 import androidx.compose.material.icons.outlined.RestoreFromTrash
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.SdStorage
+import androidx.compose.material.icons.outlined.PieChart
+import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material.icons.outlined.Wifi
 import androidx.compose.material3.ElevatedCard
@@ -140,6 +142,12 @@ fun HomeDashboard(state: UiState, onEvent: (UiEvent) -> Unit) {
         QuickTool("Find files", Icons.Outlined.Search) { onEvent(UiEvent.Navigate(Dest.SEARCH)) },
         QuickTool("Notes vault", Icons.Outlined.Description) { onEvent(UiEvent.Navigate(Dest.NOTES)) },
         QuickTool("Recycle bin", Icons.Outlined.RestoreFromTrash) { onEvent(UiEvent.Navigate(Dest.TRASH)) },
+        QuickTool("Storage analyzer", Icons.Outlined.PieChart) {
+            onEvent(UiEvent.OpenTool(ToolRequest.Storage(Environment.getExternalStorageDirectory().path)))
+        },
+        QuickTool("Duplicates", Icons.Outlined.ContentCopy) {
+            onEvent(UiEvent.OpenTool(ToolRequest.Duplicates(Environment.getExternalStorageDirectory().path)))
+        },
     )
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = 104.dp),
@@ -155,7 +163,11 @@ fun HomeDashboard(state: UiState, onEvent: (UiEvent) -> Unit) {
             item(key = "storage-loading", span = full) { LinearProgressIndicator(Modifier.fillMaxWidth()) }
         } else {
             items(vols, key = { "vol-" + it.path }, span = { full() }) { v ->
-                StorageCard(v) {
+                StorageCard(
+                    v,
+                    // The system partition is read-only and mostly unreadable; analyzing it is not useful.
+                    onAnalyze = if (v.label == "System") null else { { onEvent(UiEvent.OpenTool(ToolRequest.Storage(v.path))) } },
+                ) {
                     onEvent(UiEvent.Open(state.focusedPane, v.path))
                     onEvent(UiEvent.Navigate(Dest.FILES))
                 }
@@ -197,7 +209,7 @@ private fun SectionTitle(text: String) {
 }
 
 @Composable
-private fun StorageCard(v: StorageVolumeInfo, onClick: () -> Unit) {
+private fun StorageCard(v: StorageVolumeInfo, onAnalyze: (() -> Unit)? = null, onClick: () -> Unit) {
     val progress by animateFloatAsState(v.usedFraction, tween(600), label = "storage")
     ElevatedCard(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.padding(Spacing.l), verticalAlignment = Alignment.CenterVertically) {
@@ -222,6 +234,9 @@ private fun StorageCard(v: StorageVolumeInfo, onClick: () -> Unit) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+            if (onAnalyze != null) {
+                androidx.compose.material3.TextButton(onClick = onAnalyze) { Text("Analyze") }
             }
         }
     }

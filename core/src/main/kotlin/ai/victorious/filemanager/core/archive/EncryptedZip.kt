@@ -7,7 +7,7 @@ import net.lingala.zip4j.model.ZipParameters
 import net.lingala.zip4j.model.enums.AesKeyStrength
 import net.lingala.zip4j.model.enums.EncryptionMethod
 
-class WrongPasswordException(message: String) : java.io.IOException(message)
+class WrongPasswordException(message: String) : ArchivePasswordException(message)
 
 /** Password-protected ZIP support via zip4j (Apache-2.0). */
 object EncryptedZip {

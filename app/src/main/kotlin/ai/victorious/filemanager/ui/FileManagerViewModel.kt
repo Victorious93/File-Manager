@@ -200,11 +200,12 @@ sealed interface UiEvent {
     class ZipSelectedEncrypted(val password: CharArray) : UiEvent
     data class ShowMessage(val message: String) : UiEvent
     data object ZipSelected : UiEvent
-    /** Compress the selection (files and folders) into [format] in the focused folder. */
-    data class CreateArchive(
+    /** Compress the selection (files and folders) into [format] in the focused folder; [password] is wiped after use. */
+    class CreateArchive(
         val format: ai.victorious.filemanager.core.archive.CreateFormat,
         val level: ai.victorious.filemanager.core.archive.CompressionLevel,
         val baseName: String,
+        val password: CharArray? = null,
     ) : UiEvent
     data class ShowApkInfo(val path: String) : UiEvent
     data object DismissApkInfo : UiEvent
@@ -773,14 +774,18 @@ class FileManagerViewModel(
 
     private fun createArchive(event: UiEvent.CreateArchive) {
         val sources = selectedSources()
-        if (sources.isEmpty()) { snack("Select files or folders to compress"); return }
+        if (sources.isEmpty()) { event.password?.fill('\u0000'); snack("Select files or folders to compress"); return }
         val dir = File(pane(_ui.value, _ui.value.focusedPane).active.path)
         background("Compress…", {
-            val out = ai.victorious.filemanager.core.archive.ArchiveWriter.uniqueName(dir, event.baseName, event.format)
-            ai.victorious.filemanager.core.archive.ArchiveWriter.create(sources.map(::File), out, event.format, event.level)
+            try {
+                val out = ai.victorious.filemanager.core.archive.ArchiveWriter.uniqueName(dir, event.baseName, event.format)
+                ai.victorious.filemanager.core.archive.ArchiveWriter.create(sources.map(::File), out, event.format, event.level, event.password)
+            } finally {
+                event.password?.fill('\u0000')
+            }
         }) { r ->
             refreshAll()
-            snack("Added ${r.files} file(s) to ${r.output.name}")
+            snack("Added ${r.files} file(s) to ${r.output.name}" + if (r.encrypted) " (password protected)" else "")
         }
     }
 
