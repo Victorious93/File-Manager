@@ -28,6 +28,15 @@ Built from scratch. No MT Manager code was copied or decompiled.
 - **Security:** `GatedPrivilegedOps` + `ConfirmGate`: every mutation via `ops()` needs a single-use approval for that exact action + target, granted only by the confirm dialog. Command output is never logged or shown; errors carry only the first stderr line. Arguments validated (`PowerCommands`). Permission is only requested from a user tap. Interactive terminal still uses the reflective `newProcess` (UserService has no PTY).
 - **UX:** Material 3 `ShizukuStatusCard` with a neon dot per state, fleet copy from `ShizukuCopy`, one action (Grant access / Open Shizuku / Get Shizuku) and Re-check. Not running ⇒ copy explains starting via Wireless debugging or root; unprivileged browsing keeps working.
 
+### Operations waiting for Root/Shizuku (engine in `:core`, no screen yet)
+
+`PendingElevatedOps` parks a copy/move/delete/rename that failed only because the path needs
+elevated access (`/data`, `Android/data`, ...) and neither Root nor Shizuku was usable. Once access
+is granted, `resume` / `resumeAll` finish them. It never runs by itself: the call is meant for a tap,
+in line with the confirm gate. Power actions (chmod, chown, remount, install) cannot be parked. Entries
+expire after 10 minutes, at most 20 are kept, and an entry is removed before it runs, so it cannot run
+twice or retry in a loop. If access is still missing, `resume` returns the reason and keeps them.
+
 ## Terminal
 
 - **Tools → Terminal** (or full-screen session UI).

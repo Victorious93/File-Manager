@@ -68,6 +68,63 @@ object Archives {
         ArchiveFormat.UNKNOWN -> throw UnsupportedArchiveException("Unrecognised archive format")
     }
 
+    /**
+     * [list] through [ArchiveIndexCache]: a repeated listing of an unchanged archive (reopening it,
+     * the second pane, the viewer after a search) does not re-read the central directory.
+     */
+    fun listCached(file: File): List<ArchiveItem> = ArchiveIndexCache.list(file)
+
+    /**
+     * Streams every entry of [file] to [visitor] together with a lazy opener for its bytes. The opener
+     * is valid only inside the callback (TAR, 7z and RAR are sequential). Return false to stop early.
+     * Encrypted 7z / RAR need [sevenZPassword] / [rarPassword]; encrypted ZIP entries are not readable
+     * here and their opener throws, which the caller decides how to treat.
+     */
+    fun visit(
+        file: File,
+        sevenZPassword: CharArray? = null,
+        rarPassword: String? = null,
+        visitor: (ArchiveItem, () -> InputStream) -> Boolean,
+    ) {
+        when (val kind = format(file)) {
+            ArchiveFormat.ZIP -> ZipFile(file).use { zip ->
+                for (e in zip.entries()) {
+                    val item = ArchiveItem(e.name, e.isDirectory, e.size, e.compressedSize)
+                    if (!visitor(item) { zip.getInputStream(e) }) return
+                }
+            }
+            ArchiveFormat.SEVEN_Z -> sevenZ(file, sevenZPassword) { z ->
+                var e = z.nextEntry
+                while (e != null) {
+                    val entry = e
+                    val item = ArchiveItem(entry.name, entry.isDirectory, if (entry.hasStream()) entry.size else 0, -1)
+                    if (!visitor(item) { z.getInputStream(entry) }) return@sevenZ
+                    e = z.nextEntry
+                }
+            }
+            ArchiveFormat.TAR, ArchiveFormat.TAR_GZ, ArchiveFormat.TAR_BZ2, ArchiveFormat.TAR_XZ -> tarStream(file).use { tar ->
+                var e = tar.nextEntry
+                while (e != null) {
+                    val item = ArchiveItem(e.name, e.isDirectory, e.size, -1)
+                    if (!visitor(item) { NonClosing(tar) }) return
+                    e = tar.nextEntry
+                }
+            }
+            ArchiveFormat.GZ, ArchiveFormat.BZ2, ArchiveFormat.XZ -> {
+                val item = ArchiveItem(decompressedName(file.name), false, -1, file.length())
+                visitor(item) { decompress(kind, BufferedInputStream(file.inputStream())) }
+            }
+            ArchiveFormat.RAR -> rar(file, rarPassword) { a ->
+                if (a.hasBrokenHeaders()) throw IOException("Corrupt or truncated RAR")
+                for (h in a.fileHeaders) {
+                    val item = ArchiveItem(rarName(h), h.isDirectory, h.fullUnpackSize, h.fullPackSize)
+                    if (!visitor(item) { a.getInputStream(h) }) return@rar
+                }
+            }
+            ArchiveFormat.UNKNOWN -> throw UnsupportedArchiveException("Unrecognised archive format")
+        }
+    }
+
     class RarPasswordException(message: String) : ArchivePasswordException(message)
 
     /**

@@ -35,6 +35,7 @@ object ZipEditor {
             Files.move(tmp.toPath(), zip.toPath(), StandardCopyOption.REPLACE_EXISTING)
             return written
         } finally {
+            ArchiveIndexCache.invalidate(zip)
             tmp.delete()
         }
     }
