@@ -64,6 +64,9 @@ class FileManagerApplication : Application() {
         private set
     lateinit var privilege: PrivilegeManager
         private set
+
+    /** Copy/move/delete that failed only for lack of Root/Shizuku; resumed by a tap on the banner. */
+    val pendingElevated = ai.victorious.filemanager.core.priv.PendingElevatedOps()
     lateinit var shizuku: ShizukuController
         private set
     lateinit var terminals: TerminalSessionManager

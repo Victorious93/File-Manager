@@ -102,4 +102,42 @@ class PendingElevatedOpsTest {
         assertFalse(p.discard(e.id))
         assertTrue(p.waiting().isEmpty())
     }
+
+    @Test fun onlyCopyMoveDeleteOnElevatedPathsAreParkable() {
+        val elevated = "/storage/emulated/0/Android/data/com.x/a"
+        val plain = "/storage/emulated/0/Download/a"
+        assertEquals(elevated, PendingElevatedOps.parkablePath(OpKind.COPY, listOf(plain, elevated), plain))
+        assertEquals(elevated, PendingElevatedOps.parkablePath(OpKind.MOVE, listOf(plain), elevated)) // destination counts
+        assertEquals(elevated, PendingElevatedOps.parkablePath(OpKind.DELETE, listOf(elevated), null))
+        assertNull(PendingElevatedOps.parkablePath(OpKind.COPY, listOf(plain), plain))
+        assertNull(PendingElevatedOps.parkablePath(OpKind.RENAME, listOf(elevated), null))
+        assertNull(PendingElevatedOps.parkablePath(OpKind.CREATE_FOLDER, listOf(elevated), null))
+        assertNull(PendingElevatedOps.parkablePath(OpKind.BATCH_RENAME, listOf(elevated), null))
+    }
+
+    @Test fun labelsReadNaturally() {
+        assertEquals("Copy 1 item", PendingElevatedOps.label(OpKind.COPY, 1))
+        assertEquals("Delete 3 items", PendingElevatedOps.label(OpKind.DELETE, 3))
+    }
+
+    @Test fun summaryCoversEmptyBlockedDoneAndFailed() {
+        assertEquals("Nothing was waiting", PendingElevatedOps.summarize(emptyList()))
+
+        val p = ops()
+        val blocked = p.park(OpKind.COPY, "Copy 1 item", path) {}
+        val b = p.resumeAll(shizukuNoPerm)
+        assertTrue(PendingElevatedOps.summarize(b).contains("no permission"))
+        assertEquals(blocked.id, p.waiting().single().id)
+
+        p.clear()
+        p.park(OpKind.COPY, "Copy 1 item", path) {}
+        p.park(OpKind.DELETE, "Delete 2 items", path) { throw PrivilegedOpException("denied") }
+        assertEquals(
+            "Finished 1 of 2 waiting operation(s). Delete 2 items failed: denied",
+            PendingElevatedOps.summarize(p.resumeAll(shizukuUp)),
+        )
+
+        p.park(OpKind.COPY, "Copy 1 item", path) {}
+        assertEquals("Finished 1 of 1 waiting operation(s)", PendingElevatedOps.summarize(p.resumeAll(shizukuUp)))
+    }
 }
