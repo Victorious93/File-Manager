@@ -51,6 +51,25 @@ Every extractor goes through `Archives.safeTarget`, so `../` and absolute entry 
 cannot escape the destination folder (zip-slip). A RAR fixture with `..\` names
 (`parent-dir.rar`) is part of the unit tests.
 
+## Searching inside an archive (engine in `:core`, no screen yet)
+
+`ArchiveSearch` looks inside ZIP/JAR/APK, 7z, TAR family, single `.gz`/`.bz2`/`.xz` and RAR without
+extracting to disk. It matches entry **names** and/or the **text lines** of entries (plain or regex,
+case-insensitive by default), optionally limited to name globs such as `*.xml`.
+
+Limits, because archives can lie about their size: an entry is read through a hard byte cap
+(default 4 MB), one search decompresses at most 256 MB in total, and results stop at 500. Binary
+entries are skipped, nested archives are not opened, and encrypted entries are counted in
+`skippedEncrypted` instead of aborting the search. 7z and RAR take a password. The result says
+whether it was cut short (`truncated`).
+
+## Listing cache
+
+`Archives.listCached` keeps the last 8 archive listings in memory (at most 200,000 entries in
+total). An entry is reused only while the archive's path, length and modification time are
+unchanged; editing a ZIP through the app also clears it. Failed listings are never cached. The
+archive viewer uses it, so reopening an archive or showing it in the second pane does not re-read it.
+
 ## RAR and the UnRAR licence: compliance notes
 
 junrar is a Java port of RARLAB's UnRAR source and is distributed under the **UnRAR

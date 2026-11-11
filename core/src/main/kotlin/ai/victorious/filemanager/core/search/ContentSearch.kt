@@ -30,15 +30,18 @@ object ContentSearch {
         return Regex(sb.toString(), RegexOption.IGNORE_CASE)
     }
 
+    /** Compiles a plain or regex query; shared with the archive search so both behave the same. */
+    fun compile(text: String, regex: Boolean, caseSensitive: Boolean): Pattern = try {
+        var flags = 0
+        if (!caseSensitive) flags = flags or Pattern.CASE_INSENSITIVE or Pattern.UNICODE_CASE
+        if (regex) Pattern.compile(text, flags) else Pattern.compile(Pattern.quote(text), flags)
+    } catch (e: PatternSyntaxException) {
+        throw InvalidQuery("Invalid pattern: ${e.description}")
+    }
+
     fun search(root: File, query: ContentQuery, isCancelled: () -> Boolean = { false }): List<ContentHit> {
         if (query.text.isEmpty()) return emptyList()
-        val pattern = try {
-            var flags = 0
-            if (!query.caseSensitive) flags = flags or Pattern.CASE_INSENSITIVE or Pattern.UNICODE_CASE
-            if (query.regex) Pattern.compile(query.text, flags) else Pattern.compile(Pattern.quote(query.text), flags)
-        } catch (e: PatternSyntaxException) {
-            throw InvalidQuery("Invalid pattern: ${e.description}")
-        }
+        val pattern = compile(query.text, query.regex, query.caseSensitive)
         val globs = query.nameGlobs.filter { it.isNotBlank() }.map(::globToRegex)
         val hits = mutableListOf<ContentHit>()
         val stack = ArrayDeque<File>()

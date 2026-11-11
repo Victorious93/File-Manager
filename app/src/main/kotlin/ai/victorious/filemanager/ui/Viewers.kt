@@ -561,7 +561,7 @@ private fun ArchiveScreen(file: File, extractTo: File, onClose: () -> Unit, onMe
                 }
             }.getOrDefault(false)
         }
-        withContext(Dispatchers.IO) { runCatching { Archives.list(file) } }
+        withContext(Dispatchers.IO) { runCatching { Archives.listCached(file) } }
             .onSuccess { items = it }
             .onFailure {
                 // RAR5 / 7z with encrypted names cannot be listed without the password; still allow extract.
