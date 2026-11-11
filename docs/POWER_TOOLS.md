@@ -28,9 +28,9 @@ Built from scratch. No MT Manager code was copied or decompiled.
 - **Security:** `GatedPrivilegedOps` + `ConfirmGate`: every mutation via `ops()` needs a single-use approval for that exact action + target, granted only by the confirm dialog. Command output is never logged or shown; errors carry only the first stderr line. Arguments validated (`PowerCommands`). Permission is only requested from a user tap. Interactive terminal still uses the reflective `newProcess` (UserService has no PTY).
 - **UX:** Material 3 `ShizukuStatusCard` with a neon dot per state, fleet copy from `ShizukuCopy`, one action (Grant access / Open Shizuku / Get Shizuku) and Re-check. Not running ⇒ copy explains starting via Wireless debugging or root; unprivileged browsing keeps working.
 
-### Operations waiting for Root/Shizuku (engine in `:core`, no screen yet)
+### Operations waiting for Root/Shizuku
 
-`PendingElevatedOps` parks a copy/move/delete/rename that failed only because the path needs
+When a copy, move or delete fails only because the path needs elevated access (`/data`, `Android/data`, ...) and neither Root nor Shizuku is usable, the file browser shows a **banner** above the toolbar: "Waiting for Root/Shizuku: Copy 3 items". After you enable Root or grant Shizuku, tap **Resume** to finish them; the cross forgets them. If access is still missing, Resume tells you why and keeps them waiting. An operation that already changed some items before failing is not parked, because repeating it would duplicate items; rename and create are never parked. Under the screen, `PendingElevatedOps` parks a copy/move/delete/rename that failed only because the path needs
 elevated access (`/data`, `Android/data`, ...) and neither Root nor Shizuku was usable. Once access
 is granted, `resume` / `resumeAll` finish them. It never runs by itself: the call is meant for a tap,
 in line with the confirm gate. Power actions (chmod, chown, remount, install) cannot be parked. Entries

@@ -507,6 +507,7 @@ private fun ArchiveScreen(file: File, extractTo: File, onClose: () -> Unit, onMe
     var renaming by remember { mutableStateOf<String?>(null) }
     var zipFormat by remember { mutableStateOf(false) }
     var isSevenZ by remember { mutableStateOf(false) }
+    var searching by remember { mutableStateOf(false) }
     fun editArchive(edit: ZipEdit, done: String) {
         busy = true
         scope.launch {
@@ -570,10 +571,14 @@ private fun ArchiveScreen(file: File, extractTo: File, onClose: () -> Unit, onMe
             }
     }
     BackHandler(onBack = onClose)
+    BackHandler(enabled = searching) { searching = false }
     ViewerScaffold(
         title = file.name,
         onClose = onClose,
         actions = {
+            IconButton(enabled = items != null && !busy && !encrypted, onClick = { searching = !searching }) {
+                Icon(Icons.Outlined.Search, contentDescription = "Search in archive")
+            }
             IconButton(enabled = items != null && !busy, onClick = {
                 if (!encrypted) {
                     runExtract(null)
@@ -599,7 +604,9 @@ private fun ArchiveScreen(file: File, extractTo: File, onClose: () -> Unit, onMe
         },
     ) { modifier ->
         val list = items
-        if (list == null) Centered(modifier, error) else Column(modifier) {
+        if (list == null) Centered(modifier, error)
+        else if (searching) ArchiveSearchPanel(file, onClose = { searching = false }, modifier = modifier)
+        else Column(modifier) {
             Text(
                 (if (encrypted) "🔒 password protected · " else "") +
                     "${list.count { !it.isDirectory }} file(s) · extract goes to ${extractTo.path}",

@@ -34,6 +34,39 @@ class PendingElevatedOps(
         data class Blocked(override val entry: Entry, val reason: String) : Outcome
     }
 
+    companion object {
+        /**
+         * The first path that needs Root/Shizuku, when [kind] is an operation that may be parked
+         * (copy, move, delete); null otherwise. Rename and create stay immediate: they are one
+         * quick step, and re-running a half-done batch would duplicate items.
+         */
+        fun parkablePath(kind: OpKind, sources: List<String>, destination: String?): String? {
+            if (kind != OpKind.COPY && kind != OpKind.MOVE && kind != OpKind.DELETE) return null
+            return (sources + listOfNotNull(destination)).firstOrNull { PrivilegeSelector.needsElevation(it) }
+        }
+
+        /** "Copy 3 items", "Delete 1 item", for the waiting banner. */
+        fun label(kind: OpKind, itemCount: Int): String {
+            val verb = when (kind) {
+                OpKind.COPY -> "Copy"
+                OpKind.MOVE -> "Move"
+                OpKind.DELETE -> "Delete"
+                else -> kind.name.lowercase().replaceFirstChar { it.uppercase() }
+            }
+            return "$verb $itemCount ${if (itemCount == 1) "item" else "items"}"
+        }
+
+        /** One line for the snackbar after a resume. */
+        fun summarize(outcomes: List<Outcome>): String {
+            if (outcomes.isEmpty()) return "Nothing was waiting"
+            (outcomes.firstOrNull() as? Outcome.Blocked)?.let { return it.reason }
+            val done = outcomes.count { it is Outcome.Done }
+            val failed = outcomes.filterIsInstance<Outcome.Failed>()
+            val head = "Finished $done of ${outcomes.size} waiting operation(s)"
+            return if (failed.isEmpty()) head else "$head. ${failed.first().entry.label} failed: ${failed.first().message}"
+        }
+    }
+
     private class Parked(val entry: Entry, val action: () -> Unit)
 
     private val parked = LinkedHashMap<String, Parked>()

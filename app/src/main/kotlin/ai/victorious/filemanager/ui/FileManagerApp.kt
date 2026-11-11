@@ -314,6 +314,7 @@ fun FileManagerApp(
                         )
                     }
                     state.clipboard?.let { ClipboardBar(it, onEvent) }
+                    if (state.waitingOps.isNotEmpty()) WaitingOpsBar(state.waitingOps, onEvent)
                     BottomAppBar(
                         actions = {
                             IconButton(onClick = { onEvent(UiEvent.CopyToOther) }) {
@@ -524,6 +525,35 @@ private fun ClipboardBar(clip: Clipboard, onEvent: (UiEvent) -> Unit) {
             TextButton(onClick = { onEvent(UiEvent.PasteHere) }) { Text("Paste here") }
             IconButton(onClick = { onEvent(UiEvent.ClearClipboard) }) {
                 Icon(Icons.Outlined.Close, contentDescription = "Clear clipboard")
+            }
+        }
+    }
+}
+
+/**
+ * Copy/move/delete that failed only because Root or Shizuku was not usable. Nothing runs by itself:
+ * "Resume" is the user's tap, and if access is still missing the snackbar says why and the
+ * operations stay waiting.
+ */
+@Composable
+private fun WaitingOpsBar(waiting: List<String>, onEvent: (UiEvent) -> Unit) {
+    Surface(
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+        tonalElevation = 3.dp,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(Modifier.padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                if (waiting.size == 1) "Waiting for Root/Shizuku: ${waiting.first()}"
+                else "${waiting.size} operations waiting for Root/Shizuku",
+                modifier = Modifier.weight(1f).padding(vertical = 8.dp),
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 2,
+            )
+            TextButton(onClick = { onEvent(UiEvent.ResumeWaiting) }) { Text("Resume") }
+            IconButton(onClick = { onEvent(UiEvent.DiscardWaiting) }) {
+                Icon(Icons.Outlined.Close, contentDescription = "Discard waiting operations")
             }
         }
     }

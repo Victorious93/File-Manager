@@ -11,7 +11,10 @@ import ai.victorious.filemanager.core.bookmarks.Bookmark
 import ai.victorious.filemanager.core.fs.FileEntry
 import ai.victorious.filemanager.core.fs.FileIo
 import ai.victorious.filemanager.core.ops.OpKind
+import ai.victorious.filemanager.core.ops.OpStatus
 import ai.victorious.filemanager.core.ops.processAllOrThrow
+import ai.victorious.filemanager.core.priv.PendingElevatedOps
+import ai.victorious.filemanager.core.priv.PrivilegeBackend
 import ai.victorious.filemanager.core.rename.BatchRename
 import ai.victorious.filemanager.core.rename.RenamePlan
 import ai.victorious.filemanager.core.rename.RenameSpec
@@ -130,6 +133,8 @@ data class UiState(
     val showWifiTransfer: Boolean = false,
     /** Items staged by Copy/Move while one pane is shown, waiting for "Paste here". */
     val clipboard: Clipboard? = null,
+    /** Labels of copy/move/delete waiting for Root/Shizuku (oldest first); drives the banner. */
+    val waitingOps: List<String> = emptyList(),
 )
 
 /** [move] true = cut (the sources are moved when pasted), false = copy. */
@@ -163,6 +168,10 @@ sealed interface UiEvent {
     data object MoveToOther : UiEvent
     data object PasteHere : UiEvent
     data object ClearClipboard : UiEvent
+    /** Banner tap: finish the operations that were waiting for Root/Shizuku. */
+    data object ResumeWaiting : UiEvent
+    /** Banner dismiss: forget the operations that were waiting for Root/Shizuku. */
+    data object DiscardWaiting : UiEvent
     data object DeleteSelected : UiEvent
     data object RequestRename : UiEvent
     data class ConfirmRename(val newName: String) : UiEvent
@@ -342,6 +351,11 @@ class FileManagerViewModel(
             UiEvent.MoveToOther -> if (dualPane) runOp(OpKind.MOVE) else stage(move = true)
             UiEvent.PasteHere -> pasteHere()
             UiEvent.ClearClipboard -> _ui.update { it.copy(clipboard = null) }
+            UiEvent.ResumeWaiting -> resumeWaiting()
+            UiEvent.DiscardWaiting -> {
+                app.pendingElevated.clear()
+                syncWaiting()
+            }
             UiEvent.DeleteSelected -> runOp(OpKind.DELETE)
             UiEvent.RequestRename -> requestRename()
             is UiEvent.ConfirmRename -> confirmRename(event.newName)
@@ -680,16 +694,25 @@ class FileManagerViewModel(
         if ((kind == OpKind.COPY || kind == OpKind.MOVE) && queueMyPcTransfers(kind, sources, destination, clearSelection, onSuccess)) return
         viewModelScope.launch {
             _ui.update { it.copy(busy = true) }
+            var destinationUsed: String? = null
+            val historyBefore = app.queue.snapshot().history.size
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     when (kind) {
-                        OpKind.COPY, OpKind.MOVE -> app.queue.enqueue(kind, sources, destination())
+                        OpKind.COPY, OpKind.MOVE -> {
+                            val dest = destination()
+                            destinationUsed = dest
+                            app.queue.enqueue(kind, sources, dest)
+                        }
                         OpKind.DELETE -> app.queue.enqueue(kind, sources)
                         OpKind.RENAME, OpKind.BATCH_RENAME, OpKind.CREATE_FOLDER, OpKind.CREATE_FILE -> error("not a selection op")
                     }
                     app.queue.processAllOrThrow()
                 }
             }
+            val parkedNote = if (result.isFailure) {
+                withContext(Dispatchers.IO) { parkIfWaitingForAccess(kind, sources, destinationUsed, historyBefore) }
+            } else null
             // Clear the selection in the same state update that ends `busy`: the sources are gone
             // (move/delete) or done with (copy), and a separate update left a window where a quick
             // next tap toggled a stale selection.
@@ -709,9 +732,49 @@ class FileManagerViewModel(
                 // A batch that failed part-way has still changed files (and is undoable): refresh.
                 onFailure = {
                     refreshAll()
-                    snack(it.message ?: "Operation failed")
+                    snack((it.message ?: "Operation failed") + (parkedNote?.let { note -> " — $note" } ?: ""))
                 },
             )
+        }
+    }
+
+    /**
+     * Parks a failed copy/move/delete when the only thing missing is Root/Shizuku, so the banner can
+     * finish it later. Done only when the operation changed nothing (a half-done batch would be
+     * repeated and duplicate items) and when elevated access really is unavailable right now (any
+     * other failure is not fixed by granting access). Blocking: call from Dispatchers.IO.
+     */
+    private fun parkIfWaitingForAccess(kind: OpKind, sources: List<String>, destination: String?, historyBefore: Int): String? {
+        val path = PendingElevatedOps.parkablePath(kind, sources, destination) ?: return null
+        // Nothing changed if the queue refused the operation up front (history did not grow) or it
+        // failed on its first item (a failed result that carries no completed work).
+        val history = app.queue.snapshot().history
+        val changedNothing = history.size == historyBefore ||
+            (history.size == historyBefore + 1 && history.last().let { it.status == OpStatus.FAILED && it.completed == null })
+        if (!changedNothing) return null
+        if (app.privilege.backend() != PrivilegeBackend.NORMAL) return null
+        app.pendingElevated.park(kind, PendingElevatedOps.label(kind, sources.size), path) {
+            app.queue.enqueue(kind, sources, destination)
+            app.queue.processAllOrThrow()
+        }
+        syncWaiting()
+        return "waiting for Root/Shizuku; resume it from the banner"
+    }
+
+    private fun syncWaiting() {
+        val labels = app.pendingElevated.waiting().map { it.label }
+        _ui.update { if (it.waitingOps == labels) it else it.copy(waitingOps = labels) }
+    }
+
+    /** Banner tap. Runs only now, on this tap; if access is still missing it says why and keeps them. */
+    private fun resumeWaiting() {
+        viewModelScope.launch {
+            _ui.update { it.copy(busy = true) }
+            val outcomes = withContext(Dispatchers.IO) { app.pendingElevated.resumeAll(app.privilege.availability()) }
+            _ui.update { it.copy(busy = false) }
+            refreshAll()
+            snack(PendingElevatedOps.summarize(outcomes))
+            syncWaiting()
         }
     }
 
@@ -989,6 +1052,7 @@ class FileManagerViewModel(
 
     private fun snack(message: String) {
         _ui.update { it.copy(snackbar = message, canUndo = app.queue.snapshot().canUndo) }
+        syncWaiting()
     }
 
     private fun parentOrSelf(path: String): String = File(path).parent ?: path

@@ -51,9 +51,9 @@ Every extractor goes through `Archives.safeTarget`, so `../` and absolute entry 
 cannot escape the destination folder (zip-slip). A RAR fixture with `..\` names
 (`parent-dir.rar`) is part of the unit tests.
 
-## Searching inside an archive (engine in `:core`, no screen yet)
+## Searching inside an archive
 
-`ArchiveSearch` looks inside ZIP/JAR/APK, 7z, TAR family, single `.gz`/`.bz2`/`.xz` and RAR without
+Open an archive and tap the **search** icon in the top bar. Type a query and press the keyboard's search key. **Names** is on by default; turn on **Contents** to look inside text entries, **Regex** for a pattern, **Aa** for case-sensitive. The cross cancels a running search and **Back to list** returns to the archive listing. Results are read-only, and password-protected archives are not searched (extract them first). Under the screen, `ArchiveSearch` looks inside ZIP/JAR/APK, 7z, TAR family, single `.gz`/`.bz2`/`.xz` and RAR without
 extracting to disk. It matches entry **names** and/or the **text lines** of entries (plain or regex,
 case-insensitive by default), optionally limited to name globs such as `*.xml`.
 
