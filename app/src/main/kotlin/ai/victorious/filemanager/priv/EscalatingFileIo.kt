@@ -4,6 +4,7 @@ import ai.victorious.filemanager.core.fs.FileEntry
 import ai.victorious.filemanager.core.fs.FileIo
 import ai.victorious.filemanager.core.fs.FileIoException
 import ai.victorious.filemanager.core.priv.PrivilegeBackend
+import ai.victorious.filemanager.core.shell.ElevatedFileTransfer
 import ai.victorious.filemanager.core.shell.ShellCommands
 import ai.victorious.filemanager.core.shell.ShellListParser
 import java.io.File
@@ -17,6 +18,9 @@ class EscalatingFileIo(
     private val privilege: PrivilegeManager,
 ) : FileIo {
     private fun elevated(): Boolean = privilege.backend() != PrivilegeBackend.NORMAL
+
+    /** Exact, size-safe file contents through the privileged shell. */
+    private val shell = ElevatedFileTransfer.Shell { command, stdin -> privilege.execElevated(command, stdin) }
 
     private fun runOrThrow(cmd: String) {
         val r = privilege.execElevated(cmd)
@@ -123,9 +127,11 @@ class EscalatingFileIo(
             return delegate.readText(path)
         } catch (e: Exception) {
             if (!elevated()) throw e
-            val r = privilege.execElevated(ShellCommands.cat(path))
-            if (!r.ok) throw FileIoException(r.stderr.ifBlank { "read failed" }, e)
-            return r.stdout
+            return try {
+                ElevatedFileTransfer.readText(path, shell)
+            } catch (t: FileIoException) {
+                throw FileIoException(t.message ?: "read failed", e)
+            }
         }
     }
 
@@ -134,9 +140,7 @@ class EscalatingFileIo(
             delegate.writeText(path, text)
         } catch (e: Exception) {
             if (!elevated()) throw e
-            val q = ShellCommands.quote(path)
-            val escaped = text.replace("'", "'\"'\"'")
-            runOrThrow("printf '%s' '$escaped' > $q")
+            ElevatedFileTransfer.writeText(path, text, shell)
         }
     }
 

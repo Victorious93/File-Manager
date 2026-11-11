@@ -1,6 +1,7 @@
 package ai.victorious.filemanager.priv
 
 import ai.victorious.filemanager.core.priv.PrivilegeBackend
+import ai.victorious.filemanager.core.shell.ShellCommands
 import ai.victorious.filemanager.core.shell.ShellResult
 import ai.victorious.filemanager.core.priv.ShizukuState
 import com.topjohnwu.superuser.Shell
@@ -10,18 +11,27 @@ import rikka.shizuku.Shizuku
 
 interface ShellExecutor {
     val backend: PrivilegeBackend
-    fun exec(command: String, timeoutSec: Long = 60): ShellResult
+
+    /**
+     * Runs [command]. [stdin], when given, is fed to the command's standard input, so file
+     * contents never have to travel inside the command line (see ElevatedFileTransfer).
+     */
+    fun exec(command: String, timeoutSec: Long = 60, stdin: String? = null): ShellResult
     fun openShell(command: Array<String> = arrayOf("sh", "-")): Process?
 }
 
 class NormalShellExecutor : ShellExecutor {
     override val backend = PrivilegeBackend.NORMAL
 
-    override fun exec(command: String, timeoutSec: Long): ShellResult {
+    override fun exec(command: String, timeoutSec: Long, stdin: String?): ShellResult {
         val p = ProcessBuilder("sh", "-c", command).start()
+        // Feed stdin from a thread so a large input cannot deadlock against the output pipes.
+        val feeder = Thread { runCatching { p.outputStream.use { o -> if (stdin != null) o.write(stdin.toByteArray()) } } }
+            .apply { start() }
         val out = p.inputStream.bufferedReader().readText()
         val err = p.errorStream.bufferedReader().readText()
         val finished = p.waitFor(timeoutSec, TimeUnit.SECONDS)
+        feeder.join(1000)
         if (!finished) {
             p.destroyForcibly()
             return ShellResult(124, out, err + "\n(timeout)")
@@ -36,11 +46,13 @@ class NormalShellExecutor : ShellExecutor {
 class RootShellExecutor : ShellExecutor {
     override val backend = PrivilegeBackend.ROOT
 
-    override fun exec(command: String, timeoutSec: Long): ShellResult {
+    override fun exec(command: String, timeoutSec: Long, stdin: String?): ShellResult {
         if (Shell.isAppGrantedRoot() != true) {
             return ShellResult(126, "", "Root not granted")
         }
-        val r = Shell.cmd(command).exec()
+        // printf is a shell builtin, so a large input is not limited by the argv size.
+        val line = if (stdin == null) command else "printf '%s' ${ShellCommands.quote(stdin)} | $command"
+        val r = Shell.cmd(line).exec()
         return ShellResult(r.code, r.out.joinToString("\n"), r.err.joinToString("\n"))
     }
 
@@ -92,8 +104,8 @@ object ShizukuProcesses {
 class ShizukuShellExecutor(private val controller: ShizukuController) : ShellExecutor {
     override val backend = PrivilegeBackend.SHIZUKU
 
-    override fun exec(command: String, timeoutSec: Long): ShellResult =
-        controller.exec(command, null, timeoutSec)
+    override fun exec(command: String, timeoutSec: Long, stdin: String?): ShellResult =
+        controller.exec(command, stdin, timeoutSec)
 
     override fun openShell(command: Array<String>): Process? {
         if (controller.refresh() != ShizukuState.GRANTED) return null

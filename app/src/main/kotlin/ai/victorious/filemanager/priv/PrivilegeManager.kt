@@ -54,6 +54,9 @@ class PrivilegeManager(val settings: PrivilegeSettings, val shizukuController: S
 
     fun execElevated(command: String): ShellResult = executor().exec(command)
 
+    /** Same, feeding [stdin] to the command (used to move file contents without argv limits). */
+    fun execElevated(command: String, stdin: String?): ShellResult = executor().exec(command, 60, stdin)
+
     /** Explicit user tap only. Returns false when the dialog cannot be shown in this state. */
     fun requestShizukuPermission(): Boolean = shizukuController.requestPermission()
 

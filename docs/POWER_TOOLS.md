@@ -28,6 +28,17 @@ Built from scratch. No MT Manager code was copied or decompiled.
 - **Security:** `GatedPrivilegedOps` + `ConfirmGate`: every mutation via `ops()` needs a single-use approval for that exact action + target, granted only by the confirm dialog. Command output is never logged or shown; errors carry only the first stderr line. Arguments validated (`PowerCommands`). Permission is only requested from a user tap. Interactive terminal still uses the reflective `newProcess` (UserService has no PTY).
 - **UX:** Material 3 `ShizukuStatusCard` with a neon dot per state, fleet copy from `ShizukuCopy`, one action (Grant access / Open Shizuku / Get Shizuku) and Re-check. Not running ⇒ copy explains starting via Wireless debugging or root; unprivileged browsing keeps working.
 
+### Reading and writing elevated files
+
+Opening or saving a file under `/data`, `Android/data` and similar paths through Root or Shizuku goes
+through `ElevatedFileTransfer`. The bytes travel as base64 in 96 KB chunks, written on the command's
+standard input (never inside the command line), and the length is checked before the target is
+touched: a write is staged in `/data/local/tmp`, its size verified, then copied over the existing file,
+so a failed or short transfer leaves the original as it was, and the file keeps its inode, owner,
+permissions and SELinux label. Files over 8 MB are refused for in-app editing. This replaces putting
+the whole file in one `sh -c` string (limited to about 128 KB by the kernel, and about 1 MB by Binder)
+and reading it back as text lines.
+
 ### Operations waiting for Root/Shizuku
 
 When a copy, move or delete fails only because the path needs elevated access (`/data`, `Android/data`, ...) and neither Root nor Shizuku is usable, the file browser shows a **banner** above the toolbar: "Waiting for Root/Shizuku: Copy 3 items". After you enable Root or grant Shizuku, tap **Resume** to finish them; the cross forgets them. If access is still missing, Resume tells you why and keeps them waiting. An operation that already changed some items before failing is not parked, because repeating it would duplicate items; rename and create are never parked. Under the screen, `PendingElevatedOps` parks a copy/move/delete/rename that failed only because the path needs
