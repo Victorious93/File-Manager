@@ -28,6 +28,10 @@ Built from scratch. No MT Manager code was copied or decompiled.
 - **Security:** `GatedPrivilegedOps` + `ConfirmGate`: every mutation via `ops()` needs a single-use approval for that exact action + target, granted only by the confirm dialog. Command output is never logged or shown; errors carry only the first stderr line. Arguments validated (`PowerCommands`). Permission is only requested from a user tap. Interactive terminal still uses the reflective `newProcess` (UserService has no PTY).
 - **UX:** Material 3 `ShizukuStatusCard` with a neon dot per state, fleet copy from `ShizukuCopy`, one action (Grant access / Open Shizuku / Get Shizuku) and Re-check. Not running ⇒ copy explains starting via Wireless debugging or root; unprivileged browsing keeps working.
 
+### priv-kit (in the build, not used yet)
+
+[priv-kit](https://github.com/priv-kit/priv-kit) 0.18.0 (Apache-2.0, `io.github.priv-kit:priv-core`) is a dependency of `:app`, but **no code calls it**: Root and Shizuku remain the only elevated backends, as above. It is there because it lets an app start its own privileged server over Root or wireless ADB, which would remove the need for the separate Shizuku app. Adding it required the Kotlin 2.4 toolchain and `compileSdk` 37 (its libraries are built for them), and its manifest adds `WRITE_SECURE_SETTINGS`, `ACCESS_LOCAL_NETWORK`, `USE_LOOPBACK_INTERFACE`, `CHANGE_WIFI_MULTICAST_STATE` and an exported provider guarded by `INTERACT_ACROSS_USERS_FULL` (those manifest entries are taken from the library's own manifest; they were not checked in a built APK). Using it would be a new, opt-in, off-by-default backend behind `PrivilegedOps`; that has not been designed or tested on a device, and it has to be reconciled with the Fleet Shizuku standard above first. If it is not going to be used, the dependency should be removed again so these manifest entries are not shipped for nothing.
+
 ### Reading and writing elevated files
 
 Opening or saving a file under `/data`, `Android/data` and similar paths through Root or Shizuku goes

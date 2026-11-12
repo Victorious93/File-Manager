@@ -13,7 +13,7 @@
 <p align="center">
   <a href="https://github.com/Victorious93/File-Manager/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Victorious93/File-Manager/actions/workflows/ci.yml/badge.svg"></a>
   <img alt="Android 8.0+" src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white">
-  <img alt="Kotlin 2.1" src="https://img.shields.io/badge/Kotlin-2.1-7F52FF?logo=kotlin&logoColor=white">
+  <img alt="Kotlin 2.4" src="https://img.shields.io/badge/Kotlin-2.4-7F52FF?logo=kotlin&logoColor=white">
   <img alt="Jetpack Compose and Material 3" src="https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4?logo=jetpackcompose&logoColor=white">
 </p>
 
@@ -64,7 +64,7 @@
 | --- | --- |
 | Package | `ai.victorious.filemanager` (debug builds: `ai.victorious.filemanager.debug`) |
 | Version | `0.1.1`, from `versionName` in `app/build.gradle.kts` |
-| SDK | `minSdk` 26 · `targetSdk` and `compileSdk` 35 |
+| SDK | `minSdk` 26 · `targetSdk` 35 · `compileSdk` 37 |
 
 ## Build from source
 
@@ -86,7 +86,7 @@ The APK is written to `app/build/outputs/apk/debug/app-debug.apk`. For the UI sm
 | `:app` | The Android app: Jetpack Compose and Material 3 UI, services, and the optional Messenger bridge. |
 | `:ffmpeg-decoder` | The Media3 FFmpeg decoder library. Its native part is built only when the FFmpeg libraries are present. See [FFmpeg media](docs/FFMPEG_MEDIA.md). |
 
-Built with Kotlin 2.1, Jetpack Compose (Material 3), AndroidX Media3, and Gradle with a version catalog (`gradle/libs.versions.toml`).
+Built with Kotlin 2.4, Jetpack Compose (Material 3), AndroidX Media3, and Gradle with a version catalog (`gradle/libs.versions.toml`).
 
 ## Testing and CI
 
