@@ -121,10 +121,6 @@ android {
         isCoreLibraryDesugaringEnabled = true
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
     buildFeatures {
         compose = true
         buildConfig = true
@@ -145,6 +141,12 @@ android {
 // subtle Ed25519/X25519 ones), so keep one copy to avoid duplicate classes in the APK.
 configurations.configureEach {
     exclude(group = "com.google.crypto.tink", module = "tink")
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
 }
 
 dependencies {
