@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "ai.victorious.filemanager"
-    compileSdk = 35
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "ai.victorious.filemanager"
@@ -121,10 +121,6 @@ android {
         isCoreLibraryDesugaringEnabled = true
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
     buildFeatures {
         compose = true
         buildConfig = true
@@ -147,6 +143,12 @@ configurations.configureEach {
     exclude(group = "com.google.crypto.tink", module = "tink")
 }
 
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
+}
+
 dependencies {
     implementation(project(":core"))
     coreLibraryDesugaring(libs.desugar.jdk.libs)
@@ -166,6 +168,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.libsu.core)
+    implementation(libs.privkit.core)
     implementation(libs.shizuku.api)
     implementation(libs.shizuku.provider)
     implementation(libs.androidx.security.crypto)

@@ -1,14 +1,14 @@
 [versions]
 agp = "8.13.0"
-kotlin = "2.1.20"
+kotlin = "2.4.21"
 composeBom = "2025.10.01"
 activityCompose = "1.10.1"
 lifecycle = "2.8.7"
 window = "1.3.0"
 coreKtx = "1.16.0"
 junit = "4.13.2"
-serialization = "1.8.1"
-coroutines = "1.10.2"
+serialization = "1.11.0"
+coroutines = "1.11.0"
 commonsCompress = "1.27.1"
 xz = "1.10"
 apksig = "8.13.0"
@@ -16,6 +16,7 @@ smali = "3.0.9"
 zip4j = "2.11.5"
 libsu = "6.0.0"
 shizuku = "13.1.5"
+privkit = "0.18.0"
 commonsNet = "3.11.1"
 jsch = "0.2.21"
 bouncycastle = "1.79"
@@ -68,6 +69,7 @@ smali-baksmali = { module = "com.android.tools.smali:smali-baksmali", version.re
 smali-smali = { module = "com.android.tools.smali:smali", version.ref = "smali" }
 zip4j = { module = "net.lingala.zip4j:zip4j", version.ref = "zip4j" }
 libsu-core = { module = "com.github.topjohnwu.libsu:core", version.ref = "libsu" }
+privkit-core = { module = "io.github.priv-kit:priv-core", version.ref = "privkit" }
 shizuku-api = { module = "dev.rikka.shizuku:api", version.ref = "shizuku" }
 shizuku-provider = { module = "dev.rikka.shizuku:provider", version.ref = "shizuku" }
 commons-net = { module = "commons-net:commons-net", version.ref = "commonsNet" }
