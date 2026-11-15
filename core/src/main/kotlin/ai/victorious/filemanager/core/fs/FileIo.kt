@@ -26,4 +26,4 @@ interface FileIo {
     fun writeText(path: String, text: String)
 }
 
-class FileIoException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
+open class FileIoException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)

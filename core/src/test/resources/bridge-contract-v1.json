@@ -1,0 +1,30 @@
+{
+  "contract": "victorious-bridge",
+  "bridge_api_version": 1,
+  "application_id": "ai.victorious.bridge",
+  "provider_authority_suffix": ".victoriousbridge",
+  "client_support_meta_data": "ai.victorious.bridge.client.SUPPORT",
+  "operations": {
+    "diagnostics.read": "diagnostics.read",
+    "settings.list": "settings.read",
+    "settings.get": "settings.read",
+    "settings.put": "settings.write",
+    "files.stat": "files.read",
+    "files.list": "files.read",
+    "files.read": "files.read",
+    "files.write": "files.write",
+    "files.mkdir": "files.write",
+    "files.delete": "files.write",
+    "packages.list": "packages.read",
+    "packages.info": "packages.read",
+    "packages.setEnabled": "packages.manage",
+    "packages.forceStop": "packages.manage",
+    "shell.exec": "shell.exec"
+  },
+  "error_codes": [
+    "NOT_ATTACHED", "DENIED", "EXPIRED", "REVOKED", "IDENTITY_MISMATCH", "APPROVAL_DENIED", "APPROVAL_TIMEOUT",
+    "UNSUPPORTED_CAPABILITY", "UNSUPPORTED_OPERATION", "INVALID_ARGUMENT", "PATH_OUT_OF_SCOPE", "NOT_FOUND",
+    "BACKEND_POLICY", "CANCELLED", "TIMEOUT", "IO_ERROR", "EXEC_FAILED", "TOO_LARGE", "OVERLOADED", "INTERNAL"
+  ],
+  "backend_requirements": ["any", "adb", "root"]
+}
