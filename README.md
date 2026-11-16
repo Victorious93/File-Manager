@@ -110,10 +110,11 @@ Start with the **[User Manual](docs/MANUAL.md)**, which describes only features 
 | Using the app | [Manual](docs/MANUAL.md) · [Browsing](docs/BROWSING.md) · [Batch rename](docs/BATCH_RENAME.md) · [Archives](docs/ARCHIVES.md) · [Storage and duplicates](docs/STORAGE_DUPES.md) |
 | APK and code | [APK tools](docs/APK_TOOLS.md) · [Java view](docs/JAVA_VIEW.md) · [Deep edit](docs/APK_DEEP_EDIT.md) · [DEX and ARSC](docs/MT_NP_FINISH.md) · [Patch presets](docs/PATCH_PRESETS.md) · [App Manager](docs/APP_MANAGER.md) |
 | Media and notes | [Media](docs/MEDIA.md) · [Media Pro](docs/MEDIA_PRO.md) · [FFmpeg media](docs/FFMPEG_MEDIA.md) · [Photo tools](docs/PHOTO_TOOLS.md) · [Notes](docs/NOTES.md) · [Notes and profiles](docs/POLISH_NOTES_PROFILES.md) |
-| Network | [Network](docs/NETWORK.md) · [Cloud](docs/CLOUD.md) · [Server mode](docs/SERVER_MODE.md) · [Folder sync](docs/FOLDER_SYNC.md) |
+| Network | [Network](docs/NETWORK.md) · [My PC](docs/MYPC.md) · [Cloud](docs/CLOUD.md) · [Server mode](docs/SERVER_MODE.md) · [Folder sync](docs/FOLDER_SYNC.md) |
 | Power and security | [Power tools](docs/POWER_TOOLS.md) · [Plugins](docs/PLUGINS.md) · [Secure folder](docs/SECURE_FOLDER.md) |
 | Fleet | [Fleet bridge](docs/FLEET_BRIDGE.md) · [VictorSuite panel](docs/VICTORSUITE_PANEL.md) |
 | Project | [Testing](docs/TESTING.md) · [Signing](docs/SIGNING.md) · [Releasing](docs/RELEASING.md) |
+| Plans (not in the app yet) | [VictorLinux integration (design only)](docs/design/VICTORLINUX_INTEGRATION.md) · [Connect a VictorLinux PC (draft)](docs/VICTORLINUX.md) |
 
 ## Victorious fleet
 

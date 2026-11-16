@@ -628,6 +628,8 @@ anyway. If you reinstalled the PC yourself, remove it and add it again.
 notification. It writes `name.partial`, resumes after a drop, checks size and SHA-256, and only then
 uses the real name. Move deletes the source only after that check.
 
+Related (not in the app yet): a draft guide for using My PC with a VictorLinux machine is in `docs/VICTORLINUX.md`, and the design is in `docs/design/VICTORLINUX_INTEGRATION.md`.
+
 ### 3.28 Server mode (FTP / SFTP / web)
 
 Tools → Wi-Fi file transfer / Server mode: start a **LAN-only** FTP, SFTP, or web file manager
