@@ -26,8 +26,10 @@ Checked against:
   the Debian Tk Control Center (`victor-control`, tab **Remote access**),
   and `victor-priv` in both editions.
 
-Facts that could not be confirmed in those sources are marked **to confirm with
-VictorLinux**.
+Q1–Q4 below were then answered by the VictorLinux bot against that same
+`01fdd30` tree. This revision folds those answers in. One follow-up question
+(whether SSH host keys and `authorized_keys` should be stored on `VICTORDATA`)
+is still open for Don and VictorLinux.
 
 ## 1. Standalone in both directions (hard rule)
 
@@ -80,60 +82,75 @@ SSH and files:
 
 - SSH is **key-only**. Password SSH is not supported.
 - The account is **`victor`**. `AllowUsers victor`, `PermitRootLogin no`.
-- SSH is **off by default** (`sshd` / `ssh` is disabled in the image). You turn it
-  on in the Control Center after adding a public key.
+- SSH is **off by default** (`sshd` / `ssh` is disabled in the image).
 - **Arch edition** Control Center, tab **Server & Access**, card **"SSH (off by
   default)"**: field **"Public key (ssh-ed25519 …)"**, buttons **Add key**,
   **Enable**, **Disable**, **Remove all keys & disable**, and a listen-address
   field that defaults to `127.0.0.1`. Status reads `SSH RUNNING on <address>` or
   `SSH stopped`, plus the key count and "key authentication only". Enabling
   prints the host-key fingerprint from
-  `ssh-keygen -l -f /etc/ssh/ssh_host_ed25519_key.pub`.
-- The Arch helper `victor-priv ssh-add-key` accepts **one plain public key line**.
-  The first token must be a key type (`ssh-ed25519`, `ecdsa-sha2-nistp256`, …).
-  A line that starts with `restrict` is rejected: *"Unsupported key type or key
-  options present. Paste a plain public key (ssh-ed25519 …)."* File Manager's
-  **Copy line** includes `restrict`, so that full line cannot be pasted into the
-  Arch Control Center as-is. See open question Q1.
-- **Debian edition:** docs say enable SSH in **Control Center → Remote access**
-  with your public key, and `victor-priv ssh-enable <keyfile> <bind>` exists.
-  In the Tk UI on `main` (`01fdd30`), the **Remote access** tab only covers the
-  inference API (listen address, HTTPS, **Revoke ALL remote access**). No SSH
-  add-key or enable controls were found there, and first-run only sets the owner
-  password. **To confirm with VictorLinux:** how a Debian user is meant to enable
-  SSH today (Q2).
-- Host keys are generated when SSH is enabled (`ssh-keygen -A`), and the ISO
-  ships with none. **To confirm with VictorLinux:** whether those host keys and
-  `/home/victor/.ssh/authorized_keys` survive a live reboot onto `VICTORDATA`.
-  Debian's persistence doc says files under `/home/victor` do not survive unless
-  they live on the data partition (Q3). A new host key after reboot would hit
-  File Manager's hard stop, which is correct, but it would surprise someone who
-  only rebooted the live image.
+  `ssh-keygen -l -f /etc/ssh/ssh_host_ed25519_key.pub`. Arch does not start SSH
+  at boot, so after a reboot SSH is off until you enable it again.
+- The Arch helper `victor-priv ssh-add-key` accepts **one plain public key line**,
+  by design. The first token must be a key type (`ssh-ed25519`,
+  `ecdsa-sha2-nistp256`, …). A line that starts with options such as `restrict`
+  is rejected: *"Unsupported key type or key options present. Paste a plain
+  public key (ssh-ed25519 …)."* File Manager's **Copy line** includes `restrict`,
+  so that full line cannot be pasted into the Arch Control Center. Use a
+  **plain** key for now (type, blob, optional `victorpc:…:filemanager` comment).
+  VictorLinux may later propose a whitelist of allowed options. After approval,
+  File Manager should also offer a **Copy plain public key** button so the
+  `restrict` line is not the only thing on the clipboard.
+- **Debian edition** has **no SSH controls** in the Control Center. The
+  **Remote access** tab is API-only (listen address, HTTPS, API key). Turn SSH
+  on from the command line:
+
+  ```sh
+  victor-priv ssh-enable KEYFILE BIND
+  ```
+
+  `KEYFILE` is a file owned by `victor` that contains the plain public key.
+  `BIND` is the LAN or Tailscale IP the phone will use, not `127.0.0.1`.
+  **Revoke ALL** on that same tab turns SSH off and removes the keys.
+- **Keys do not survive a reboot on either edition.** `authorized_keys` and
+  the `/etc/ssh` host keys live on the live root, which is reset every boot.
+  After a reboot, SSH is off, the phone's key is gone, and the next enable
+  creates a **new** host key. File Manager's pin will no longer match. That
+  is a hard stop, not a reason to trust the new key automatically. See §7.
 
 Files are SFTP only:
 
-- The VictorLinux **gateway** (`gateway.py`) exposes inference routes only
+- The VictorLinux **gateway** (`gateway.py`) is **HTTP-only** on
+  `127.0.0.1:8080` by default. It exposes inference routes only
   (`/victor/health`, `/victor/capabilities`, OpenAI / Ollama / llama.cpp paths).
   `docs/remote-access.md` and `docs/security.md` state it has no shell, file,
-  storage or volume routes. The phone-companion API is the same. So this app
+  storage or volume routes. The phone-companion API is the same. This app
   will not send models or documents through the gateway. Copies stay on the
   existing My PC SFTP session.
 
-Folder paths (optional destinations, not fixed):
+Folder paths (confirmed by the VictorLinux bot against `01fdd30`):
 
-- **Arch edition:** after `victor-storage use models|documents|backups …`,
-  desktop links appear at `~/victor-storage/models`, `~/victor-storage/documents`
-  and `~/victor-storage/backups`. Volumes mount under `/mnt/victor-vol/<UUID>`.
-  If the drive is missing, the link dangles and "resolves to no path".
-- **Debian edition** does not have that destination feature yet. Persistent
-  models and documents live on `VICTORDATA` as `models/` and `documents/`,
-  and the persistence doc tells users to keep work in `~/VictorData/documents/`.
-  There is no `backups` destination in that layout. **To confirm with
-  VictorLinux:** the exact user-visible paths (and whether `~/VictorData/models`
-  is a stable symlink) (Q4).
+- **Debian edition:** models and documents live at
+  `/run/victor/data/models/` and `/run/victor/data/documents/`. The same tree
+  is also reachable as `/run/victor/root/…` and as `~/VictorData/…`. Debian
+  has **no backups folder**.
+- **Arch edition:** the data root is `/mnt/victordata/victorlinux` (legacy
+  `tori/`), linked as `~/victor-data`. After `victor-storage use
+  models|documents|backups …`, destination links also appear at
+  `~/victor-storage/models`, `~/victor-storage/documents` and
+  `~/victor-storage/backups`. Volumes mount under `/mnt/victor-vol/<UUID>`.
+  If a destination drive is missing, that link dangles and "resolves to no
+  path". Arch has a backups destination role; Debian does not.
+
+Quick links must `stat` a list of candidate paths (see §5) and show only the
+ones that exist. There is no special-case "this is Debian, hide Backups"
+beyond the fact that those paths will be missing.
 
 Do not confuse **Server & Access** / **Remote access** (inference API key,
-"Revoke all remote access") with **SSH**. They are different services.
+"Revoke all remote access" / **Revoke ALL**) with turning SSH on. On Debian,
+**Revoke ALL** does also stop SSH and delete the keys. On Arch, "Revoke all
+remote access" is the API key only; SSH has its own **Disable** and **Remove
+all keys & disable** buttons.
 
 ## 4. Item 1 — Connect to VictorLinux (high priority, small)
 
@@ -144,14 +161,22 @@ Until then, the guide stays in docs only.
 
 What the guide covers:
 
-1. On the PC, open the Control Center and turn SSH on (Arch wording above).
-2. Add File Manager's **plain** public key for user `victor` (see Q1).
-3. Set the listen address to the PC's LAN or Tailscale IP, not `127.0.0.1`.
+1. Turn SSH on: Arch uses the Control Center (**Server & Access**, **SSH
+   (off by default)**); Debian uses `victor-priv ssh-enable KEYFILE BIND`.
+2. Add File Manager's **plain** public key for user `victor` (no `restrict`
+   prefix in the Control Center or in `KEYFILE`).
+3. Set the listen address / `BIND` to the PC's LAN or Tailscale IP, not
+   `127.0.0.1`.
 4. In the app, add the PC with user `victor`, then verify the host-key
    fingerprint on first connect (`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`
    on the PC) and pin it.
+5. After **every VictorLinux reboot**, turn SSH on again, add the phone's
+   key again, then explicitly re-pin the new host key (see §7). Nothing
+   is re-pinned automatically.
 
-Effort after approval: small (docs are in this PR; an in-app link is a short follow-up).
+Effort after approval: the written guide is in this PR (small). The
+in-app hint plus the identity-changed / re-pin screen in §7 is part of
+VL-A, not a silent change to pinning.
 
 ## 5. Item 2 — Optional quick links (medium priority, medium size)
 
@@ -169,17 +194,23 @@ Rules:
 - No link is shown before the first successful, pinned login.
 - The app never creates these folders just to show a link.
 
-Path list, tried in this order, first hit wins per role:
+Path list, tried in this order, first hit wins per role. Absolute paths
+are as written; the others are relative to the login home (`/home/victor`
+on VictorLinux). The probe does not have to know which edition is running:
+it checks every candidate and shows only the directories that exist.
 
-| Role | Paths to `stat` (relative to the login home unless absolute) |
+| Role | Paths to `stat` |
 | --- | --- |
-| Models | `victor-storage/models`, `VictorData/models`, `models` |
-| Documents | `victor-storage/documents`, `VictorData/documents`, `documents`, `Documents` |
-| Backups | `victor-storage/backups`, `VictorData/backups`, `backups`, `Backups` |
+| Models | `/run/victor/data/models`, `/run/victor/root/models`, `VictorData/models`, `/mnt/victordata/victorlinux/models`, `/mnt/victordata/tori/models`, `victor-data/models`, `victor-storage/models`, `models` |
+| Documents | `/run/victor/data/documents`, `/run/victor/root/documents`, `VictorData/documents`, `/mnt/victordata/victorlinux/documents`, `/mnt/victordata/tori/documents`, `victor-data/documents`, `victor-storage/documents`, `documents`, `Documents` |
+| Backups | `victor-storage/backups`, `/mnt/victordata/victorlinux/backups`, `/mnt/victordata/tori/backups`, `victor-data/backups`, `backups`, `Backups` |
 
-`Documents` / `Backups` with a capital letter are included because many ordinary
-Linux and desktop homes already use them. There is no special-case detection of
-"this is VictorLinux". If none of a role's paths exist, that role has no chip.
+Debian has no backups folder, so the Backups chip stays hidden there unless
+a generic `backups` / `Backups` directory happens to exist. `Documents` and
+`Backups` with a capital letter are included because many ordinary Linux
+homes already use them. There is no special-case detection of "this is
+VictorLinux" beyond the candidate list. If none of a role's paths exist,
+that role has no chip.
 
 Caching and refresh:
 
@@ -253,25 +284,50 @@ Effort after approval: medium (wire the action, destination pick, optional
 `statvfs`, tests including >4 GiB sizes in the copier; about two to three
 days). The heavy lifting is already in `#62`.
 
-## 7. Host-key pinning stays unchanged
+## 7. Host-key pinning stays a hard stop (with a clearer re-pin flow)
 
-This plan does not relax pinning.
+This plan does not relax pinning. A changed host key is never accepted
+automatically, including during a "send to models folder" job.
 
 - Format remains `<keytype>:SHA256:<base64 without padding>`.
-- A changed key is still a hard stop, including during a "send to models
-  folder" job.
 - First connect to a VictorLinux PC uses the same compare-and-pin flow as any
   other PC. The user-guide text tells people to compare with
   `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`.
-- If a live image regenerates host keys on reboot (Q3), the app will block,
-  which is the specified behaviour.
+- After a VictorLinux reboot, the next connect **will** miss the pin: SSH was
+  off, `authorized_keys` was wiped, and enabling SSH again created a new host
+  key. The app still hard-stops. It must not re-pin on its own, and it must
+  not offer "connect anyway" without showing the fingerprints.
+
+When the presented key does not match the pin, show a clear screen, in the
+dark fleet theme (red warning, no white):
+
+- Title along the lines of **"This PC's identity changed"**.
+- If this profile was added as a VictorLinux PC (or the user opened the
+  VictorLinux connect help), add: **"which is expected after a VictorLinux
+  reboot."** Do not assume that wording for an ordinary SSH PC; a surprise
+  change on a normal Ubuntu box is still treated as a possible attack.
+- Show the **old (pinned)** fingerprint and the **new (presented)** one,
+  both in the fleet pin form, plus the `ssh-keygen -lf` command to run on
+  the PC.
+- Remind the user that, after a VictorLinux reboot, they must first turn
+  SSH back on and add the phone's **plain** public key again. Re-pinning
+  alone is not enough, because the authorized key is also gone.
+- An explicit action such as **"It matches, pin the new key"** is the only
+  way to replace the pin. Nothing is re-pinned automatically, not even when
+  the copy says a reboot is expected.
+- If the user did not reboot the PC and the fingerprint does not match
+  what is on the PC, they leave it blocked.
+
+Today's phase 1 copy tells people to remove the PC and add it again. The
+explicit re-pin flow above is the planned replacement for that dead-end,
+after Don approves implementation. The hard stop itself stays.
 
 ## 8. Phases (only after Don says yes)
 
 | Phase | What | Size |
 | --- | --- | --- |
 | This PR | Design doc + draft user guide + links from existing docs | docs only |
-| VL-A | In-app pointer to the guide, path probe, quick-link chips, cache and refresh | Medium |
+| VL-A | In-app pointer to the guide, path probe, quick-link chips, cache and refresh, and the identity-changed / explicit re-pin screen | Medium |
 | VL-B | "Send to PC models folder" on `.gguf`, `statvfs` warning, missing-folder and name-conflict handling | Medium |
 
 VictorSuite P3 pairing stays on its own track (blocked on VictorSuite PR 8) and
@@ -299,6 +355,11 @@ Unit tests (`:core`), against fakes, not a real PC:
   refused with a clear reason.
 - Host-key mismatch during a send still fails without retry (existing
   connect-plan tests plus one job-level case).
+- Identity-changed screen: both fingerprints are shown; the pin is replaced
+  only after an explicit confirm; a mismatch with no confirm leaves the
+  old pin in place. The "expected after a VictorLinux reboot" sentence is
+  used only when the profile is marked as VictorLinux, not for a generic
+  SSH PC.
 
 Emulator / JVM sshlib tests (as in `#62`, in-process Apache SSHD where useful):
 
@@ -309,33 +370,66 @@ Manual, after a feature PR, on real hardware (not claimed until done):
 
 - Arch VictorLinux: enable SSH from **Server & Access**, add the plain key,
   pin the host key, open the pane, confirm chips match real folders, send a
-  small `.gguf`, then a large one if a drive allows it.
-- Debian VictorLinux, once Q2/Q4 are answered.
-- A plain Ubuntu PC with only `~/models` present (chips and send still work).
+  small `.gguf`, then a large one if a drive allows it. Reboot the PC,
+  re-enable SSH, add the key again, and confirm the identity-changed screen
+  shows both fingerprints and will not connect until the user re-pins.
+- Debian VictorLinux: enable with `victor-priv ssh-enable KEYFILE BIND`,
+  confirm models/documents chips against `/run/victor/data/…` (and the
+  aliases), confirm no Backups chip unless a generic folder exists, and
+  repeat the reboot / re-pin check.
+- A plain Ubuntu PC with only `~/models` present (chips and send still work;
+  a host-key change must **not** say it is expected after a VictorLinux
+  reboot).
 - A PC with none of the paths (no chips, no send action).
 
 ## 10. Risks
 
-- Pasting File Manager's `restrict …` line into the Arch Control Center fails
-  today (Q1). The draft guide already tells people to paste the plain key.
-- Live-image reboot may change the host key or drop `authorized_keys` (Q3):
-  the app will hard-stop, which can look like a break.
+- Pasting File Manager's `restrict …` line into the Arch Control Center (or
+  into Debian's `KEYFILE`) is rejected by design. The guide tells people to
+  use a plain key; a **Copy plain public key** button should follow in VL-A.
+- A VictorLinux reboot always drops SSH, `authorized_keys`, and the host
+  key. If the identity-changed screen is unclear, this will look like a
+  break every boot. The re-pin flow must stay explicit and must also tell
+  people to add the phone key and turn SSH on again first.
 - Dangling `~/victor-storage/…` links when a destination drive is unplugged:
   the probe must treat a failed `stat` as "hide".
 - FAT32 and other 4 GiB limits: a silent start would waste time; `statvfs`
   plus a clear error are required when we can read them.
-- People may confuse "Revoke all remote access" (gateway API) with turning
-  SSH off. The user guide calls this out.
+- People may confuse **Revoke all remote access** / **Revoke ALL** (API, and
+  on Debian also SSH) with the Arch SSH buttons. The user guide calls this
+  out.
 - Large GGUF files over a 32 KB unpipelined SFTP stream will be slow. That is
   an existing phase 2 item, not a blocker for the action, but it should be
   mentioned in the confirmation step.
-- Debian SSH and folder paths are not fully confirmed (Q2, Q4). Shipping
-  chips that only `stat` known paths still works; the written steps for
-  Debian may need a correction from the VictorLinux bot.
 
 ## 11. Open questions
 
-For Don:
+Answered by the VictorLinux bot, against `main` at `01fdd30`:
+
+- **Q1.** The Arch Control Center rejects any `authorized_keys` line that
+  starts with options such as `restrict`, by design. Use a plain key for
+  now. VictorLinux may propose a whitelist of allowed options later.
+- **Q2.** Debian has no SSH control in the Control Center; **Remote access**
+  is API-only. Enable SSH with `victor-priv ssh-enable KEYFILE BIND`.
+  **Revoke ALL** turns SSH off and removes the keys.
+- **Q3 (fact).** Keys do not survive a reboot on either edition.
+  `authorized_keys` and `/etc/ssh` host keys sit on the live root, which
+  resets every boot, and Arch does not start SSH at boot. After a reboot,
+  SSH is off, the key is gone, and the next enable creates a new host key.
+- **Q4.** Debian paths are `/run/victor/data/models/` and
+  `/run/victor/data/documents/`, also reached as `/run/victor/root` and
+  `~/VictorData`. Debian has no backups folder. Arch's data root is
+  `/mnt/victordata/victorlinux` (legacy `tori/`), linked as `~/victor-data`,
+  plus a backups destination role.
+
+Still open, for Don and the VictorLinux bot:
+
+- **Q3b.** Should SSH host keys and `authorized_keys` be kept on the
+  `VICTORDATA` drive so they survive a reboot? Until that exists, File
+  Manager will keep the hard stop and the explicit re-pin flow in §7, and
+  the user must re-add the phone key and turn SSH on after every boot.
+
+Still open, for Don:
 
 - **Q5.** If the models folder is missing, should "Send to PC models folder"
   stay hidden, or offer to create one of the standard paths after a confirm?
@@ -344,26 +438,11 @@ For Don:
 - **Q7.** Is the path order in §5 right, or should a later settings field let
   you set custom models/documents/backups folders per PC?
 
-For the VictorLinux bot:
-
-- **Q1.** The Arch Control Center rejects key options, so File Manager's
-  `restrict ecdsa-sha2-nistp256 …` line cannot be pasted into **Add key**.
-  Should VictorLinux accept a leading `restrict` (and a trailing
-  `victorpc:…:filemanager` comment), or should File Manager grow a second
-  "Copy plain public key" button for this flow?
-- **Q2.** On Debian `main` (`01fdd30`), **Control Center → Remote access**
-  has no SSH controls, while the docs say to enable SSH there. What should
-  a Debian user actually do today?
-- **Q3.** Do SSH host keys and `/home/victor/.ssh/authorized_keys` persist
-  across a live reboot when `VICTORDATA` is mounted? If not, File Manager
-  will hard-stop on the next connect after a reboot.
-- **Q4.** Please confirm the stable, user-visible paths for models,
-  documents and backups on Debian (and that Arch is
-  `~/victor-storage/{models,documents,backups}`).
-
 ## 12. Theme notes
 
 Any UI added later uses the dark fleet theme only: background `#0B0F1A`,
 accents `#00E5FF` and `#FF2BD6`. No white or light-grey surfaces, no light
 chips, no white dialogs. English only. Connection-blocked and transfer-failed
-states stay red warnings, in line with the existing My PC hard stop.
+states stay red warnings, in line with the existing My PC hard stop. The
+identity-changed screen in §7 is the same: dark background, red warning,
+both fingerprints readable, no white dialog.
