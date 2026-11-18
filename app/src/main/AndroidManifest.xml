@@ -148,6 +148,9 @@
             tools:ignore="ExportedService">
             <intent-filter>
                 <action android:name="ai.victorious.filemanager.action.BRIDGE" />
+                <!-- DroidCommand binds "<package>.action.BRIDGE". For the debug build that is
+                     ai.victorious.filemanager.debug.action.BRIDGE, which the fixed action above never matched. -->
+                <action android:name="${applicationId}.action.BRIDGE" />
             </intent-filter>
         </service>
 

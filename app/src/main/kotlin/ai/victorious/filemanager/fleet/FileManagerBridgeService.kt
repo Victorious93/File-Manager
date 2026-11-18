@@ -53,7 +53,9 @@ class FileManagerBridgeService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? {
-        if (intent?.action != BRIDGE_ACTION) return null
+        // The fixed action, or "<applicationId>.action.BRIDGE" (what DroidCommand derives; differs on debug builds).
+        val action = intent?.action
+        if (action != BRIDGE_ACTION && action != "$packageName.action.BRIDGE") return null
         return messenger.binder
     }
 }
