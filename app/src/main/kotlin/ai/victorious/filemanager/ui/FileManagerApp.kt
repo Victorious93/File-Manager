@@ -62,7 +62,8 @@ import androidx.compose.material.icons.outlined.Splitscreen
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.automirrored.outlined.Undo
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.BottomAppBar
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.material.icons.automirrored.outlined.Sort
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
@@ -288,6 +289,13 @@ fun FileManagerApp(
                                 contentDescription = "Bookmark",
                             )
                         }
+                        // Undo lives up here (only when there is something to undo) so the selection bar can
+                        // disappear when nothing is selected and give its height back to the file list.
+                        if (state.canUndo) {
+                            IconButton(onClick = { onEvent(UiEvent.Undo) }) {
+                                Icon(Icons.AutoMirrored.Outlined.Undo, contentDescription = "Undo")
+                            }
+                        }
                     }
                     IconButton(onClick = { onEvent(UiEvent.ToggleAbout) }) {
                         Icon(Icons.Outlined.Info, contentDescription = "About")
@@ -307,50 +315,31 @@ fun FileManagerApp(
                         enter = expandVertically() + fadeIn(),
                         exit = shrinkVertically() + fadeOut(),
                     ) {
-                        SelectionBar(
+                        SelectionActionBar(
                             count = focused.selected.size,
+                            // Without the NavigationBar underneath (wide windows) this bar owns the bottom inset.
+                            modifier = if (wideWindow) Modifier.navigationBarsPadding() else Modifier,
                             onSelectAll = { onEvent(UiEvent.SelectAll(state.focusedPane)) },
                             onClear = { onEvent(UiEvent.ClearSelection(state.focusedPane)) },
+                            onCopy = { onEvent(UiEvent.CopyToOther) },
+                            onMove = { onEvent(UiEvent.MoveToOther) },
+                            onDelete = { onEvent(UiEvent.DeleteSelected) },
+                            onRename = { onEvent(UiEvent.RequestRename) },
+                            onZip = { onEvent(UiEvent.ZipSelected) },
+                            onInstall = {
+                                val apks = selectedApks(state)
+                                if (apks.isEmpty()) onEvent(UiEvent.ShowMessage("Select one or more .apk files"))
+                                else apkAction(context, onEvent) { ai.victorious.filemanager.apk.ApkInstaller.install(context, apks) }
+                            },
+                            onShare = {
+                                val files = selectedFiles(state)
+                                if (files.isEmpty()) onEvent(UiEvent.ShowMessage("Select files to share"))
+                                else apkAction(context, onEvent) { ai.victorious.filemanager.apk.ApkInstaller.share(context, files); null }
+                            },
                         )
                     }
                     state.clipboard?.let { ClipboardBar(it, onEvent) }
                     if (state.waitingOps.isNotEmpty()) WaitingOpsBar(state.waitingOps, onEvent)
-                    BottomAppBar(
-                        actions = {
-                            IconButton(onClick = { onEvent(UiEvent.CopyToOther) }) {
-                                Icon(Icons.Outlined.ContentCopy, contentDescription = "Copy")
-                            }
-                            IconButton(onClick = { onEvent(UiEvent.MoveToOther) }) {
-                                Icon(Icons.AutoMirrored.Outlined.DriveFileMove, contentDescription = "Move")
-                            }
-                            IconButton(onClick = { onEvent(UiEvent.DeleteSelected) }) {
-                                Icon(Icons.Outlined.Delete, contentDescription = "Delete")
-                            }
-                            IconButton(onClick = { onEvent(UiEvent.RequestRename) }) {
-                                Icon(Icons.Outlined.DriveFileRenameOutline, contentDescription = "Rename")
-                            }
-                            IconButton(onClick = { onEvent(UiEvent.ZipSelected) }) {
-                                Icon(Icons.Outlined.Archive, contentDescription = "Zip selected")
-                            }
-                            IconButton(onClick = {
-                                val apks = selectedApks(state)
-                                if (apks.isEmpty()) onEvent(UiEvent.ShowMessage("Select one or more .apk files"))
-                                else apkAction(context, onEvent) { ai.victorious.filemanager.apk.ApkInstaller.install(context, apks) }
-                            }) {
-                                Icon(Icons.Outlined.Android, contentDescription = "Install selected APKs")
-                            }
-                            IconButton(onClick = {
-                                val files = selectedFiles(state)
-                                if (files.isEmpty()) onEvent(UiEvent.ShowMessage("Select files to share"))
-                                else apkAction(context, onEvent) { ai.victorious.filemanager.apk.ApkInstaller.share(context, files); null }
-                            }) {
-                                Icon(Icons.Outlined.Share, contentDescription = "Share / export")
-                            }
-                            IconButton(onClick = { onEvent(UiEvent.Undo) }, enabled = state.canUndo) {
-                                Icon(Icons.AutoMirrored.Outlined.Undo, contentDescription = "Undo")
-                            }
-                        },
-                    )
                 }
                 if (!wideWindow) {
                     NavigationBar {
@@ -359,7 +348,7 @@ fun FileManagerApp(
                                 selected = state.destination == item.dest,
                                 onClick = { onEvent(UiEvent.Navigate(item.dest)) },
                                 icon = { Icon(item.icon, contentDescription = null) },
-                                label = { Text(item.label) },
+                                label = { Text(item.label, style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false) },
                             )
                         }
                     }
@@ -495,19 +484,53 @@ private fun SinglePane(state: UiState, grid: Boolean, onEvent: (UiEvent) -> Unit
     FilePane(index, pane(state), true, state.listing, grid, state.busy, onEvent, onCreate, Modifier.fillMaxSize())
 }
 
-/** Contextual bar while items are selected: how many, select all, clear. Sits above the action bar. */
+/**
+ * Contextual bar while items are selected: a slim header (count, select all, clear) over one row of actions.
+ * It only exists while something is selected, and applies no window insets of its own on phones (the
+ * NavigationBar below already does) — the old always-on BottomAppBar stacked both insets, which was the big gap.
+ */
 @Composable
-private fun SelectionBar(count: Int, onSelectAll: () -> Unit, onClear: () -> Unit) {
-    Surface(color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.fillMaxWidth()) {
-        Row(Modifier.padding(start = Spacing.l, end = Spacing.xs), verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                "$count selected",
-                modifier = Modifier.weight(1f).testTag("selection-count"),
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
-            )
-            IconButton(onClick = onSelectAll) { Icon(Icons.Outlined.SelectAll, contentDescription = "Select all") }
-            IconButton(onClick = onClear) { Icon(Icons.Outlined.ClearAll, contentDescription = "Clear selection") }
+private fun SelectionActionBar(
+    count: Int,
+    modifier: Modifier = Modifier,
+    onSelectAll: () -> Unit,
+    onClear: () -> Unit,
+    onCopy: () -> Unit,
+    onMove: () -> Unit,
+    onDelete: () -> Unit,
+    onRename: () -> Unit,
+    onZip: () -> Unit,
+    onInstall: () -> Unit,
+    onShare: () -> Unit,
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Column {
+            Row(Modifier.padding(start = Spacing.l, end = Spacing.xs), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "$count selected",
+                    modifier = Modifier.weight(1f).testTag("selection-count"),
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                IconButton(onClick = onSelectAll, modifier = Modifier.size(40.dp)) { Icon(Icons.Outlined.SelectAll, contentDescription = "Select all") }
+                IconButton(onClick = onClear, modifier = Modifier.size(40.dp)) { Icon(Icons.Outlined.ClearAll, contentDescription = "Clear selection") }
+            }
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = Spacing.xs),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = onCopy) { Icon(Icons.Outlined.ContentCopy, contentDescription = "Copy") }
+                IconButton(onClick = onMove) { Icon(Icons.AutoMirrored.Outlined.DriveFileMove, contentDescription = "Move") }
+                IconButton(onClick = onDelete) { Icon(Icons.Outlined.Delete, contentDescription = "Delete") }
+                IconButton(onClick = onRename) { Icon(Icons.Outlined.DriveFileRenameOutline, contentDescription = "Rename") }
+                IconButton(onClick = onZip) { Icon(Icons.Outlined.Archive, contentDescription = "Zip selected") }
+                IconButton(onClick = onInstall) { Icon(Icons.Outlined.Android, contentDescription = "Install selected APKs") }
+                IconButton(onClick = onShare) { Icon(Icons.Outlined.Share, contentDescription = "Share / export") }
+            }
         }
     }
 }
@@ -1095,17 +1118,49 @@ private fun ListingBar(
     onEvent: (UiEvent) -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
-    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        OutlinedTextField(
-            options.filter,
-            { onEvent(UiEvent.SetListing(options.copy(filter = it))) },
-            placeholder = { Text("Filter") },
-            singleLine = true,
-            modifier = Modifier.weight(1f).testTag("listing-filter"),
-        )
-        TextButton(onClick = { onEvent(UiEvent.SelectAll(pane)) }) { Text("All") }
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = Spacing.s, vertical = Spacing.xs),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // A slim 40dp pill instead of a 56dp outlined field: the file list is what the screen is for.
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            shape = androidx.compose.foundation.shape.CircleShape,
+            modifier = Modifier.weight(1f).height(40.dp),
+        ) {
+            Row(Modifier.padding(horizontal = Spacing.m), verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Outlined.Search, contentDescription = null, modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.width(Spacing.s))
+                Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                    if (options.filter.isEmpty()) {
+                        Text("Filter", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    androidx.compose.foundation.text.BasicTextField(
+                        value = options.filter,
+                        onValueChange = { onEvent(UiEvent.SetListing(options.copy(filter = it))) },
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
+                        cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
+                        modifier = Modifier.fillMaxWidth().testTag("listing-filter"),
+                    )
+                }
+                if (options.filter.isNotEmpty()) {
+                    IconButton(onClick = { onEvent(UiEvent.SetListing(options.copy(filter = ""))) }, modifier = Modifier.size(28.dp)) {
+                        Icon(Icons.Outlined.Close, contentDescription = "Clear filter", modifier = Modifier.size(16.dp))
+                    }
+                }
+            }
+        }
+        IconButton(onClick = { onEvent(UiEvent.SelectAll(pane)) }) {
+            Icon(Icons.Outlined.SelectAll, contentDescription = "Select all in folder")
+        }
         Box {
-            TextButton(onClick = { menu = true }) { Text("Sort") }
+            IconButton(onClick = { menu = true }) {
+                Icon(Icons.AutoMirrored.Outlined.Sort, contentDescription = "Sort and view options")
+            }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 ai.victorious.filemanager.core.listing.SortKey.entries.forEach { key ->
                     DropdownMenuItem(

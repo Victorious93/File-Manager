@@ -23,6 +23,20 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.MusicNote
+import androidx.compose.material.icons.outlined.Movie
+import androidx.compose.material.icons.outlined.PhotoCamera
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Surface
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -44,7 +58,6 @@ import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -111,12 +124,28 @@ private fun formatBytes(bytes: Long): String {
 
 private class QuickTool(val label: String, val icon: ImageVector, val onClick: () -> Unit)
 
-/** Landing dashboard: storage, quick tools, bookmarks and recent files. Everything slow loads off the main thread. */
+/** A well-known folder worth one tap from Home. */
+private class FolderShortcut(val label: String, val path: String, val icon: ImageVector)
+
+private val CommonFolders = listOf(
+    "Download" to Icons.Outlined.Download,
+    "DCIM" to Icons.Outlined.PhotoCamera,
+    "Pictures" to Icons.Outlined.Image,
+    "Documents" to Icons.Outlined.Description,
+    "Music" to Icons.Outlined.MusicNote,
+    "Movies" to Icons.Outlined.Movie,
+)
+
+/**
+ * Landing dashboard, top to bottom: search, storage, jump-to folders, quick tools, bookmarks, recent files.
+ * Everything slow loads off the main thread.
+ */
 @Composable
 fun HomeDashboard(state: UiState, onEvent: (UiEvent) -> Unit) {
     val context = LocalContext.current
     var volumes by remember { mutableStateOf<List<StorageVolumeInfo>?>(null) }
     var recent by remember { mutableStateOf<List<RecentFile>?>(null) }
+    var folders by remember { mutableStateOf<List<FolderShortcut>>(emptyList()) }
     LaunchedEffect(state.hasStorageAccess) {
         withContext(Dispatchers.IO) {
             val vols = buildList {
@@ -130,57 +159,93 @@ fun HomeDashboard(state: UiState, onEvent: (UiEvent) -> Unit) {
             }
             volumes = vols
             val base = Environment.getExternalStorageDirectory()
+            folders = CommonFolders.mapNotNull { (name, icon) ->
+                File(base, name).takeIf { it.isDirectory }?.let { FolderShortcut(name, it.absolutePath, icon) }
+            }
             recent = runCatching {
                 scanRecent(listOf("Download", "DCIM", "Documents", "Pictures", "Movies", "Music").map { File(base, it) })
             }.getOrDefault(emptyList())
         }
     }
+    val openFolder: (String) -> Unit = { path ->
+        onEvent(UiEvent.Open(state.focusedPane, path))
+        onEvent(UiEvent.Navigate(Dest.FILES))
+    }
     val tools = listOf(
         QuickTool("Terminal", Icons.Outlined.Terminal) { onEvent(UiEvent.OpenTerminal) },
         QuickTool("Wi-Fi transfer", Icons.Outlined.Wifi) { onEvent(UiEvent.OpenWifiTransfer) },
         QuickTool("Network", Icons.Outlined.Lan) { onEvent(UiEvent.OpenNetwork) },
-        QuickTool("Find files", Icons.Outlined.Search) { onEvent(UiEvent.Navigate(Dest.SEARCH)) },
         QuickTool("Notes vault", Icons.Outlined.Description) { onEvent(UiEvent.Navigate(Dest.NOTES)) },
-        QuickTool("Recycle bin", Icons.Outlined.RestoreFromTrash) { onEvent(UiEvent.Navigate(Dest.TRASH)) },
-        QuickTool("Storage analyzer", Icons.Outlined.PieChart) {
+        QuickTool("Analyzer", Icons.Outlined.PieChart) {
             onEvent(UiEvent.OpenTool(ToolRequest.Storage(Environment.getExternalStorageDirectory().path)))
         },
         QuickTool("Duplicates", Icons.Outlined.ContentCopy) {
             onEvent(UiEvent.OpenTool(ToolRequest.Duplicates(Environment.getExternalStorageDirectory().path)))
         },
+        QuickTool("Recycle bin", Icons.Outlined.RestoreFromTrash) { onEvent(UiEvent.Navigate(Dest.TRASH)) },
+        QuickTool("Bookmarks", Icons.Outlined.Bookmark) { onEvent(UiEvent.Navigate(Dest.BOOKMARKS)) },
     )
     LazyVerticalGrid(
-        columns = GridCells.Adaptive(minSize = 104.dp),
+        columns = GridCells.Adaptive(minSize = 72.dp),
         modifier = Modifier.fillMaxSize().testTag("home"),
-        contentPadding = PaddingValues(Spacing.l),
-        horizontalArrangement = Arrangement.spacedBy(Spacing.m),
-        verticalArrangement = Arrangement.spacedBy(Spacing.m),
+        contentPadding = PaddingValues(horizontal = Spacing.l, vertical = Spacing.s),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s),
+        verticalArrangement = Arrangement.spacedBy(Spacing.xs),
     ) {
         val full: (androidx.compose.foundation.lazy.grid.LazyGridItemSpanScope.() -> GridItemSpan) = { GridItemSpan(maxLineSpan) }
+
+        item(key = "search", span = full) {
+            SearchEntry { onEvent(UiEvent.Navigate(Dest.SEARCH)) }
+        }
+
         item(key = "h-storage", span = full) { SectionTitle("Storage") }
         val vols = volumes
         if (vols == null) {
             item(key = "storage-loading", span = full) { LinearProgressIndicator(Modifier.fillMaxWidth()) }
         } else {
-            items(vols, key = { "vol-" + it.path }, span = { full() }) { v ->
-                StorageCard(
-                    v,
+            item(key = "storage", span = full) {
+                StorageSummary(
+                    vols,
+                    onOpen = { openFolder(it.path) },
                     // The system partition is read-only and mostly unreadable; analyzing it is not useful.
-                    onAnalyze = if (v.label == "System") null else { { onEvent(UiEvent.OpenTool(ToolRequest.Storage(v.path))) } },
-                ) {
-                    onEvent(UiEvent.Open(state.focusedPane, v.path))
-                    onEvent(UiEvent.Navigate(Dest.FILES))
+                    onAnalyze = { onEvent(UiEvent.OpenTool(ToolRequest.Storage(it.path))) },
+                )
+            }
+        }
+
+        if (folders.isNotEmpty()) {
+            item(key = "h-folders", span = full) { SectionTitle("Jump to") }
+            item(key = "folders", span = full) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
+                    items(folders, key = { it.path }) { f ->
+                        AssistChip(
+                            onClick = { openFolder(f.path) },
+                            label = { Text(f.label) },
+                            leadingIcon = { Icon(f.icon, null, Modifier.size(AssistChipDefaults.IconSize)) },
+                        )
+                    }
                 }
             }
         }
+
         item(key = "h-tools", span = full) { SectionTitle("Quick tools") }
         items(tools, key = { "tool-" + it.label }) { t -> ToolTile(t) }
+
         if (state.bookmarks.isNotEmpty()) {
             item(key = "h-bm", span = full) { SectionTitle("Bookmarks & shortcuts") }
-            items(state.bookmarks.take(8), key = { "bm-" + it.id }) { b ->
-                ToolTile(QuickTool(b.label, Icons.Outlined.Bookmark) { onEvent(UiEvent.OpenBookmark(b.path)) })
+            item(key = "bm", span = full) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
+                    items(state.bookmarks.take(12), key = { "bm-" + it.id }) { b ->
+                        AssistChip(
+                            onClick = { onEvent(UiEvent.OpenBookmark(b.path)) },
+                            label = { Text(b.label, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 140.dp)) },
+                            leadingIcon = { Icon(Icons.Outlined.Bookmark, null, Modifier.size(AssistChipDefaults.IconSize)) },
+                        )
+                    }
+                }
             }
         }
+
         item(key = "h-recent", span = full) { SectionTitle("Recent files") }
         val rec = recent
         when {
@@ -204,59 +269,102 @@ private fun SectionTitle(text: String) {
         style = MaterialTheme.typography.titleSmall,
         color = MaterialTheme.colorScheme.primary,
         fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.padding(top = Spacing.s),
+        modifier = Modifier.padding(top = Spacing.m, bottom = Spacing.xs),
     )
 }
 
+/** Looks like a search field, opens the Search screen: the most common first step on a file manager. */
 @Composable
-private fun StorageCard(v: StorageVolumeInfo, onAnalyze: (() -> Unit)? = null, onClick: () -> Unit) {
-    val progress by animateFloatAsState(v.usedFraction, tween(600), label = "storage")
-    ElevatedCard(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
-        Row(Modifier.padding(Spacing.l), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier.size(44.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
-                contentAlignment = Alignment.Center,
-            ) { Icon(Icons.Outlined.SdStorage, null, tint = MaterialTheme.colorScheme.onPrimaryContainer) }
-            Spacer(Modifier.width(Spacing.l))
-            Column(Modifier.weight(1f)) {
-                Text(v.label, style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.height(Spacing.xs))
-                LinearProgressIndicator(
-                    progress = { progress },
-                    modifier = Modifier.fillMaxWidth().height(8.dp),
-                    color = if (v.usedFraction > 0.9f) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                    drawStopIndicator = {},
-                )
-                Spacer(Modifier.height(Spacing.xs))
-                Text(
-                    "${formatBytes(v.usedBytes)} used of ${formatBytes(v.totalBytes)} · ${formatBytes(v.freeBytes)} free",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            if (onAnalyze != null) {
-                androidx.compose.material3.TextButton(onClick = onAnalyze) { Text("Analyze") }
+private fun SearchEntry(onClick: () -> Unit) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = CircleShape,
+        modifier = Modifier.fillMaxWidth().height(48.dp).clip(CircleShape).clickable(onClick = onClick).testTag("home-search"),
+    ) {
+        Row(Modifier.padding(horizontal = Spacing.l), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Outlined.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.width(Spacing.m))
+            Text("Search files", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** All volumes in one card (one row each) instead of one big card per volume, so Home fits on one screen. */
+@Composable
+private fun StorageSummary(
+    volumes: List<StorageVolumeInfo>,
+    onOpen: (StorageVolumeInfo) -> Unit,
+    onAnalyze: (StorageVolumeInfo) -> Unit,
+) {
+    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(vertical = Spacing.s)) {
+            volumes.forEach { v ->
+                StorageRow(v, onOpen = { onOpen(v) }, onAnalyze = if (v.label == "System") null else { { onAnalyze(v) } })
             }
         }
     }
 }
 
 @Composable
-private fun ToolTile(t: QuickTool) {
-    OutlinedCard(onClick = t.onClick, modifier = Modifier.fillMaxWidth().height(96.dp)) {
-        Column(
-            Modifier.fillMaxSize().padding(Spacing.s),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
-            Box(
-                Modifier.size(40.dp).background(MaterialTheme.colorScheme.secondaryContainer, CircleShape),
-                contentAlignment = Alignment.Center,
-            ) { Icon(t.icon, null, tint = MaterialTheme.colorScheme.onSecondaryContainer) }
-            Spacer(Modifier.height(Spacing.s))
-            Text(t.label, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+private fun StorageRow(v: StorageVolumeInfo, onOpen: () -> Unit, onAnalyze: (() -> Unit)?) {
+    val progress by animateFloatAsState(v.usedFraction, tween(600), label = "storage")
+    Column(Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(start = Spacing.l, end = Spacing.xs, top = Spacing.s, bottom = Spacing.s)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Outlined.SdStorage, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(Spacing.s))
+            Text(v.label, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                "${formatBytes(v.freeBytes)} free",
+                style = MaterialTheme.typography.labelLarge,
+                color = if (v.usedFraction > 0.9f) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (onAnalyze != null) {
+                IconButton(onClick = onAnalyze, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Outlined.PieChart, contentDescription = "Analyze ${v.label}", modifier = Modifier.size(20.dp))
+                }
+            } else {
+                Spacer(Modifier.width(Spacing.m))
+            }
         }
+        Spacer(Modifier.height(Spacing.xs))
+        Row(Modifier.padding(end = Spacing.m), verticalAlignment = Alignment.CenterVertically) {
+            LinearProgressIndicator(
+                progress = { progress },
+                modifier = Modifier.weight(1f).height(6.dp),
+                color = if (v.usedFraction > 0.9f) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                drawStopIndicator = {},
+            )
+        }
+        Spacer(Modifier.height(2.dp))
+        Text(
+            "${formatBytes(v.usedBytes)} of ${formatBytes(v.totalBytes)} used",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** Icon over a label, no card outline: four fit across a phone and the grid reads as a launcher, not a form. */
+@Composable
+private fun ToolTile(t: QuickTool) {
+    Column(
+        Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).clickable(onClick = t.onClick).padding(vertical = Spacing.s, horizontal = 2.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(
+            Modifier.size(48.dp).background(MaterialTheme.colorScheme.secondaryContainer, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) { Icon(t.icon, null, tint = MaterialTheme.colorScheme.onSecondaryContainer) }
+        Spacer(Modifier.height(Spacing.xs))
+        Text(
+            t.label,
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 2,
+            textAlign = TextAlign.Center,
+            overflow = TextOverflow.Ellipsis,
+            minLines = 2,
+        )
     }
 }
 
