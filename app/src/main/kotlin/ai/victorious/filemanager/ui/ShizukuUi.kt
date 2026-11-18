@@ -113,8 +113,15 @@ fun PowerOpsSection(onEvent: (UiEvent) -> Unit) {
 
     Text("Power ops", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
     Text("Runs via Root or the Shizuku service. Nothing runs without your confirmation.", style = MaterialTheme.typography.bodySmall)
-    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        choices.forEach { a -> FilterChip(selected = action == a, onClick = { action = a }, label = { Text(a.name.lowercase()) }) }
+    // FlowRow, not Row: five chips are wider than a phone, and a plain Row squeezed the last one ("uninstall")
+    // into a one-letter-wide column. Chips now wrap onto a second line instead.
+    androidx.compose.foundation.layout.FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        choices.forEach { a ->
+            FilterChip(selected = action == a, onClick = { action = a }, label = { Text(a.name.lowercase(), maxLines = 1, softWrap = false) })
+        }
     }
     OutlinedTextField(target, { target = it }, label = {
         Text(when (action) { PowerAction.UNINSTALL -> "Package name"; PowerAction.REMOUNT -> "Mount point (/system…)"; PowerAction.INSTALL -> "APK path"; else -> "Path" })
