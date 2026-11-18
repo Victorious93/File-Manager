@@ -103,7 +103,7 @@ Details: [Testing](docs/TESTING.md).
 
 ## Documentation
 
-Start with the **[User Manual](docs/MANUAL.md)**, which describes only features that exist. The same text is built into the app (*Settings → Help & manual*).
+Start with the **[User Manual](docs/MANUAL.md)**, which describes only features that exist. It includes a [tool reference](docs/MANUAL.md#8-tool-reference) for every entry in the Tools tab and a [glossary](docs/MANUAL.md#9-glossary). The same text is built into the app (*Settings → Help & manual*).
 
 | Topic | Docs |
 | --- | --- |
