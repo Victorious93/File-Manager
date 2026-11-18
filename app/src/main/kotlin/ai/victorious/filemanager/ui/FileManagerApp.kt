@@ -359,7 +359,8 @@ fun FileManagerApp(
                                 selected = state.destination == item.dest,
                                 onClick = { onEvent(UiEvent.Navigate(item.dest)) },
                                 icon = { Icon(item.icon, contentDescription = null) },
-                                label = { Text(item.label) },
+                                // One line always: with seven tabs "Settings" used to wrap to "Setting / s".
+                                label = { Text(item.label, style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis) },
                             )
                         }
                     }
