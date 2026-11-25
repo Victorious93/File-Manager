@@ -138,3 +138,10 @@ cbssh in phase 2 touches only that file. The host-key, resume and verify logic d
 - Enroll this app's key through VictorSuite's `PcEnrollService` (no manual authorized_keys step).
 - Handle VictorSuite's `com.termux.victor.action.OPEN_PC` (mode `sftp`) and its consent screen.
 - Pin VictorSuite's signer before trusting its provider.
+
+**Planned, not in the app yet:** optional extras when the PC is running
+VictorLinux (a connect guide, folder quick links, and sending `.gguf` files to
+a models folder). Design only: [docs/design/VICTORLINUX_INTEGRATION.md](design/VICTORLINUX_INTEGRATION.md).
+Draft user guide: [docs/VICTORLINUX.md](VICTORLINUX.md). File Manager still
+works fully without VictorLinux, and the other way around. No feature code
+lands until Don approves that plan.
