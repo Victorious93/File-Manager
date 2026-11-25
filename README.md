@@ -14,6 +14,7 @@
   <a href="https://github.com/Victorious93/File-Manager/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Victorious93/File-Manager/actions/workflows/ci.yml/badge.svg"></a>
   <img alt="Android 8.0+" src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white">
   <img alt="Kotlin 2.4" src="https://img.shields.io/badge/Kotlin-2.4-7F52FF?logo=kotlin&logoColor=white">
+  <a href="https://victorious-framework.pages.dev"><img alt="Victorious Framework" src="https://img.shields.io/badge/Victorious-Framework-FF2BD6?labelColor=0B0F1A"></a>
   <img alt="Jetpack Compose and Material 3" src="https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4?logo=jetpackcompose&logoColor=white">
 </p>
 
@@ -119,16 +120,9 @@ Start with the **[User Manual](docs/MANUAL.md)**, which describes only features 
 
 VictorFiles is part of the Victorious app fleet, and it can optionally act as an **EXTERNAL_NODE** for DroidCommand AI over a local Messenger bridge. It is not a bound companion: there is no shared signing key, no special bind permission, and no dependency guard. **Allow external control** (*Settings → Fleet*) is off by default, and only DroidCommand AI's packages are accepted as callers. See [Fleet bridge](docs/FLEET_BRIDGE.md) and section 5 of the [manual](docs/MANUAL.md).
 
-<!-- victorious-fleet-readme-refresh:start -->
-**Package id:** `ai.victorious.filemanager` (the app is named VictorFiles; the package id is unchanged)
+**Package id:** `ai.victorious.filemanager` (the app is named VictorFiles; the package id is unchanged). `app/build.gradle.kts` uses this id, which is what DroidCommand AI and VictorSuite look for.
 
-> **Package note:** `app/build.gradle.kts` uses `ai.victorious.filemanager`, matching the fleet-manifest ROADMAP target and what DroidCommand AI and VictorSuite look for.
-
-**Status:** blocked (CI stack) *(from [fleet-manifest ROADMAP](https://github.com/Victorious93/fleet-manifest/blob/main/ROADMAP.md))*
-
-- Monorepo: [https://github.com/Victorious93/victorious-fleet](https://github.com/Victorious93/victorious-fleet)
-- Fleet site: [https://victorious-framework.pages.dev](https://victorious-framework.pages.dev)
-<!-- victorious-fleet-readme-refresh:end -->
+Part of the [Victorious Framework](https://victorious-framework.pages.dev). **Every fleet app works standalone; integrations are optional.** Related: [droidcommand-AI](https://github.com/Victorious93/droidcommand-AI) (optional controller), [VictorSuite](https://github.com/Victorious93/VictorSuite) (terminal), the [victorious-fleet](https://github.com/Victorious93/victorious-fleet) roster and live [fleet-manifest](https://github.com/Victorious93/fleet-manifest) status.
 
 <details>
 <summary><b>Development phases</b></summary>
@@ -166,3 +160,11 @@ The built-in AI assistant that shipped in Phase 9 has been removed. DroidCommand
 - Per-feature library and licence tables are in [Network](docs/NETWORK.md), [Server mode](docs/SERVER_MODE.md), [Media Pro](docs/MEDIA_PRO.md) and [DEX and ARSC](docs/MT_NP_FINISH.md).
 
 </details>
+
+## Contributing
+
+Issues and pull requests are welcome. Keep changes focused, match the existing Kotlin/Compose style, never commit secrets or release keys, and keep any fleet integration optional so the app still works on its own. Open a PR against `main` and wait for CI to pass.
+
+## License
+
+This repository does not include a top-level LICENSE file yet, so no license is granted beyond what the author states elsewhere. Third-party components keep their own licences (see *Third-party components* above and the per-feature docs). Please open an issue before reusing the code.
